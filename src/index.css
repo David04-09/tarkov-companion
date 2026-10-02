@@ -1,0 +1,59 @@
+@import "tailwindcss";
+
+/* Tarkov-style dark theme tokens. Tailwind v4 turns each --color-* into
+   utilities (bg-surface, text-ink, border-line, text-accent, ...). */
+@theme {
+  --color-surface: #0c0c0b;
+  --color-surface-2: #141412;
+  --color-surface-3: #1c1c19;
+  --color-line: #2a2924;
+  --color-ink: #e5e0d4;
+  --color-ink-muted: #9a9385;
+  --color-ink-dim: #6b665b;
+  --color-accent: #c7a66b;
+  --color-accent-dim: #8f7646;
+  --color-success: #7ea86a;
+  --color-danger: #c0634f;
+  --color-info: #6b9bc7;
+  --font-sans: "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background-color: var(--color-surface);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-line) transparent;
+}
+
+input[type="checkbox"] {
+  accent-color: var(--color-accent);
+}
+
+select option {
+  background-color: var(--color-surface-2);
+  color: var(--color-ink);
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center gap-2 rounded border border-line bg-surface-3 px-3 py-1.5 text-sm text-ink transition-colors hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-40;
+  }
+  .card {
+    @apply rounded-lg border border-line bg-surface-2 p-4;
+  }
+  .card-title {
+    @apply text-xs font-semibold uppercase tracking-wide text-ink-muted;
+  }
+}
