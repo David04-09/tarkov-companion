@@ -13,12 +13,6 @@ function ComingSoon({ title, blurb }: { title: string; blurb: string }) {
   )
 }
 
-export const MapsPage = () => (
-  <ComingSoon title="Maps" blurb="Interactive maps with extracts, quest zones and loot." />
-)
-export const PlanningPage = () => (
-  <ComingSoon title="Planning" blurb="Plan raids by picking a map and seeing every quest you can work on there." />
-)
 export const ItemCollectionPage = () => (
   <ComingSoon title="Item Collection" blurb="Track the quest and hideout items you still need to find." />
 )

@@ -27,7 +27,8 @@ Press `Ctrl+C` in the terminal to stop it.
 
 - **Dashboard**: set your player level and faction, see how many quests are completed / available / locked, and a "Next up" list of the ten available quests with the lowest level requirement.
 - **Quests**: every quest in the game with trader, map, minimum level and status. Filter by trader, map, status and text, sort any column, tick quests off as you complete them, and click a quest to see its objectives, prerequisites and wiki link. Kappa-required quests carry a badge.
-- **Maps, Planning, Item Collection, Crafts, Flea Market**: placeholders for later.
+- **Maps**: interactive map viewer (zoom, pan, fullscreen) for every playable map, with floor switching on multi-level maps and a Satellite / Abstract style toggle where both exist. Imagery, bounds and coordinate transforms come from the open-source tarkov.dev project (see `src/data/mapConfig.json` and `src/maps/projection.ts`).
+- **Item Collection, Crafts, Flea Market**: placeholders for later.
 - **PvP / PvE toggle** (sidebar footer): switches which game mode's data is loaded. Progress is stored separately per mode, just like in the game.
 - **Settings** (sidebar footer): export your progress to a JSON file, import it again, reset it, or force a data refresh.
 

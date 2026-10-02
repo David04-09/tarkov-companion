@@ -57,3 +57,36 @@ select option {
     @apply text-xs font-semibold uppercase tracking-wide text-ink-muted;
   }
 }
+
+/* ---- Leaflet map theming ------------------------------------------------ */
+.leaflet-container {
+  font-family: var(--font-sans);
+}
+.leaflet-bar a,
+.leaflet-bar a:hover,
+.leaflet-bar a:focus {
+  background-color: var(--color-surface-2);
+  color: var(--color-ink);
+  border-bottom-color: var(--color-line);
+}
+.leaflet-bar a.leaflet-disabled {
+  color: var(--color-ink-dim);
+  background-color: var(--color-surface-2);
+}
+.leaflet-bar {
+  border-color: var(--color-line) !important;
+}
+
+/* Floors inside the tarkov.dev SVG maps: top-level <g id> groups. */
+.tc-svg-overlay g.tc-overlay-group {
+  display: none;
+}
+.tc-svg-overlay g.tc-overlay-group.tc-visible {
+  display: inline;
+}
+.tc-svg-overlay.tc-hide-base g.tc-base-group {
+  display: none;
+}
+.tc-svg-overlay.tc-off-level g.tc-base-group {
+  opacity: 0.2;
+}
