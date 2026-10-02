@@ -118,6 +118,11 @@ export interface RawTaskObjective {
   zones?: RawZone[]
   /** Item spawn points (findItem / findQuestItem). */
   possibleLocations?: RawPossibleLocation[]
+  /** Key item ids needed to reach the objective: groups of alternatives, all groups required. */
+  requiredKeys?: string[][]
+  /** Extract objectives: translation key of the extract name. */
+  exitName?: string
+  exitStatus?: string[]
   // Item objectives (giveItem / findItem / plantItem / sellItem ...)
   count?: number
   /** Accepted item ids (any one of them satisfies the objective). */
@@ -163,7 +168,8 @@ export interface RawTask {
   traderRequirements: RawTraderRequirement[]
   otherRequirements?: RawOtherRequirement[]
   objectives: RawTaskObjective[]
-  neededKeys?: unknown[]
+  /** Keys the task needs per map: { map: map id, keys: [item ids] }. */
+  neededKeys?: { map: string; keys: string[] }[]
   availableDelaySecondsMin?: number
   availableDelaySecondsMax?: number
   /** Present on some tasks, e.g. ["regular"]. */
@@ -299,6 +305,10 @@ export interface RawMap {
 
 export interface RawMapsData {
   maps: Record<string, RawMap>
+  /** Loot container definitions (name is a translation key). */
+  lootContainers?: Record<string, { id: string; name: string; normalizedName: string }>
+  /** Boss/mob definitions (name is a translation key). */
+  mobs?: Record<string, { id: string; name: string; normalizedName: string; imagePortraitLink?: string | null }>
 }
 
 export type RawMapsDoc = TranslatedBaseDoc<RawMapsData>
@@ -438,6 +448,10 @@ export interface TaskObjective {
   foundInRaid: boolean | null
   targetNames: string[]
   locations: ObjectiveLocation[]
+  /** Key item ids: groups of alternatives, every group needed. */
+  requiredKeys: string[][]
+  /** Extract objectives: English extract name (matches MapExtract.name). */
+  exitName: string | null
 }
 
 export interface MapExtract {
@@ -517,6 +531,8 @@ export interface Task {
    */
   otherRequirements: string[]
   objectives: TaskObjective[]
+  /** Keys the task needs, per map id. */
+  neededKeys: { mapId: string; keyIds: string[] }[]
 }
 
 /** Everything the Quests/Dashboard tabs need, loaded for one game mode. */
@@ -528,6 +544,10 @@ export interface GameData {
   maps: GameMap[]
   /** Extracts, transits, spawns etc. keyed by map id. */
   mapDetails: Record<string, MapDetails>
+  /** Loot container names by container id (for MapDetails.lootContainers). */
+  lootContainerNames: Record<string, string>
+  /** Boss names by mob id (for MapDetails.bosses). */
+  mobNames: Record<string, string>
   /** When the data was fetched (for the "updated" hint in the UI). */
   fetchedAt: number
 }

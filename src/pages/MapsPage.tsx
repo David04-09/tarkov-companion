@@ -1,20 +1,41 @@
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import { Image as ImageIcon, Info, Layers } from 'lucide-react'
+import { useGameData, useItems } from '../api/hooks'
 import { SegmentButton } from '../components/SegmentButton'
 import { MapCredits } from '../maps/MapCredits'
 import { MapViewer } from '../maps/MapViewer'
 import { floorIsDrawable, resolveBaseLayer } from '../maps/mapConfig'
+import { FocusController } from '../maps/overlay/FocusController'
+import { Legend } from '../maps/overlay/Legend'
+import { OtherLayers } from '../maps/overlay/OtherLayers'
+import { QuestPanel } from '../maps/overlay/QuestPanel'
+import { TaskLayer } from '../maps/overlay/TaskLayer'
+import { layerHasFloorHeights } from '../maps/overlay/floors'
+import { buildMapTasks, type MapTask } from '../maps/overlay/mapTasks'
 import { useMapOptions } from '../maps/useMapOptions'
+import { computeTaskStatuses, isFactionEligible } from '../lib/taskStatus'
+import { taskColor, useMapOverlayStore } from '../store/mapOverlay'
+import { useProfile } from '../store/progress'
 import { useUiStore } from '../store/ui'
+
+/** Above this many markers on screen, quest markers switch to canvas circles. */
+const CANVAS_THRESHOLD = 200
 
 export function MapsPage() {
   const options = useMapOptions()
+  const gameData = useGameData()
+  // Items are only needed for key names/prices and popup item names; load in the background.
+  const itemsQuery = useItems()
+  const profile = useProfile()
   const lastMapKey = useUiStore((s) => s.lastMapKey)
   const setLastMapKey = useUiStore((s) => s.setLastMapKey)
   const baseLayerByMap = useUiStore((s) => s.baseLayerByMap)
   const setBaseLayer = useUiStore((s) => s.setBaseLayer)
   const floorByMap = useUiStore((s) => s.floorByMap)
   const setFloor = useUiStore((s) => s.setFloor)
+  const checkedTaskIds = useMapOverlayStore((s) => s.checkedTaskIds)
+  const colorIndexByTask = useMapOverlayStore((s) => s.colorIndexByTask)
+  const layerToggles = useMapOverlayStore((s) => s.layers)
 
   const selected = options.find((o) => o.key === lastMapKey) ?? options[0]
 
@@ -22,13 +43,36 @@ export function MapsPage() {
     if (selected && selected.key !== lastMapKey) setLastMapKey(selected.key)
   }, [selected, lastMapKey, setLastMapKey])
 
-  if (!selected) return null
-  const cfg = selected.cfg
-  const layer = resolveBaseLayer(cfg, baseLayerByMap[selected.key])
+  const cfg = selected?.cfg
+  const layer = cfg ? resolveBaseLayer(cfg, baseLayerByMap[selected.key]) : null
+  const mapId = selected?.id ?? null
+
+  // Tasks with objectives on this map, positions resolved. Memoised per map/layer/data.
+  const mapTasks = useMemo<MapTask[]>(() => {
+    if (!gameData.data || !mapId || !layer) return []
+    return buildMapTasks(gameData.data, mapId, layer).filter((m) => isFactionEligible(m.task, profile.faction))
+  }, [gameData.data, mapId, layer, profile.faction])
+
+  const statuses = useMemo(
+    () => computeTaskStatuses(mapTasks.map((m) => m.task), profile),
+    [mapTasks, profile],
+  )
+
+  const shown = useMemo(() => {
+    const byId = new Map(mapTasks.map((m) => [m.task.id, m]))
+    return checkedTaskIds
+      .map((id) => byId.get(id))
+      .filter((m): m is MapTask => Boolean(m))
+      .map((mapTask) => ({ mapTask, color: taskColor(colorIndexByTask[mapTask.task.id]) }))
+  }, [checkedTaskIds, colorIndexByTask, mapTasks])
+
+  if (!selected || !cfg || !layer) return null
   const floors = layer.floors.filter((f) => floorIsDrawable(f, layer))
   const storedFloor = floorByMap[selected.key]
-  const activeFloor =
-    storedFloor === undefined ? (floors.find((f) => f.show)?.name ?? null) : storedFloor
+  const activeFloor = storedFloor === undefined ? (floors.find((f) => f.show)?.name ?? null) : storedFloor
+  const hasFloors = layerHasFloorHeights(layer)
+  const markerCount = shown.reduce((n, s) => n + s.mapTask.placements.length, 0)
+  const canvas = markerCount > CANVAS_THRESHOLD
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -53,12 +97,7 @@ export function MapsPage() {
             <Layers className="ml-1 h-4 w-4 text-ink-dim" aria-hidden />
             <SegmentButton label="Ground" active={activeFloor === null} onClick={() => setFloor(selected.key, null)} />
             {floors.map((f) => (
-              <SegmentButton
-                key={f.name}
-                label={f.name}
-                active={activeFloor === f.name}
-                onClick={() => setFloor(selected.key, f.name)}
-              />
+              <SegmentButton key={f.name} label={f.name} active={activeFloor === f.name} onClick={() => setFloor(selected.key, f.name)} />
             ))}
           </div>
         )}
@@ -83,17 +122,48 @@ export function MapsPage() {
       </div>
 
       {layer.note && (
-        <p
-          role="note"
-          className="flex items-center gap-2 border-b border-line bg-surface-3 px-3 py-1 text-[11px] text-ink-muted md:px-4"
-        >
+        <p role="note" className="flex items-center gap-2 border-b border-line bg-surface-3 px-3 py-1 text-[11px] text-ink-muted md:px-4">
           <Info className="h-3.5 w-3.5 shrink-0 text-accent" aria-hidden />
           {layer.note}
         </p>
       )}
 
-      <div className="min-h-0 flex-1">
-        <MapViewer mapKey={selected.key} layer={layer} floorName={activeFloor} />
+      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+        <div className="min-h-0 min-w-0 flex-1">
+          <MapViewer mapKey={selected.key} layer={layer} floorName={activeFloor}>
+            {gameData.data && mapId && (
+              <OtherLayers
+                data={gameData.data}
+                mapId={mapId}
+                layer={layer}
+                activeFloor={activeFloor}
+                toggles={layerToggles}
+                items={itemsQuery.data}
+              />
+            )}
+            {shown.map(({ mapTask, color }) => (
+              <TaskLayer
+                key={mapTask.task.id}
+                mapTask={mapTask}
+                color={color}
+                activeFloor={activeFloor}
+                hasFloors={hasFloors}
+                canvas={canvas}
+              />
+            ))}
+            <FocusController mapTasks={mapTasks} maxZoom={layer.maxZoom} />
+            <Legend entries={shown} />
+          </MapViewer>
+        </div>
+
+        <QuestPanel
+          mapName={selected.name}
+          mapTasks={mapTasks}
+          statuses={statuses}
+          traders={gameData.data?.traders ?? []}
+          items={itemsQuery.data}
+          hasFloors={hasFloors}
+        />
       </div>
 
       <MapCredits cfg={cfg} mapName={selected.name} activeLayer={layer} />

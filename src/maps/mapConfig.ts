@@ -21,6 +21,15 @@ import { affineFromTarkovDev, boundsFromImage, type Affine, type GameBounds } fr
 
 export type { GameBounds } from './projection'
 
+/**
+ * A height range that belongs to a floor, optionally limited to buildings:
+ * `bounds` holds rectangles as [[x, z], [x, z], label?] in game coordinates.
+ */
+export interface FloorExtent {
+  height: [number, number]
+  bounds?: [[number, number], [number, number], ...unknown[]][]
+}
+
 export interface FloorLayerConfig {
   /** Display name, e.g. "2nd Floor". */
   name: string
@@ -30,8 +39,8 @@ export interface FloorLayerConfig {
   tilePath?: string
   /** Shown by default (e.g. Interchange opens on the 2nd floor). */
   show: boolean
-  /** Height ranges (game y) that belong to this floor. */
-  extents?: { height: [number, number] }[]
+  /** Height ranges (and buildings) that belong to this floor. */
+  extents?: FloorExtent[]
 }
 
 export interface LayerCredit {
@@ -95,7 +104,7 @@ interface TarkovDevLayer {
   svgLayer?: string
   tilePath?: string
   show: boolean
-  extents?: { height: [number, number] }[]
+  extents?: FloorExtent[]
 }
 
 interface TarkovDevMap {

@@ -143,6 +143,8 @@ function adaptObjective(
     foundInRaid: typeof raw.foundInRaid === 'boolean' ? raw.foundInRaid : null,
     targetNames: (raw.targetNames ?? []).map((n) => t(n, n)),
     locations: adaptObjectiveLocations(raw),
+    requiredKeys: (raw.requiredKeys ?? []).map((g) => (Array.isArray(g) ? g : [g]).filter(Boolean)),
+    exitName: raw.exitName ? t(raw.exitName, raw.exitName) : null,
   }
 }
 
@@ -204,6 +206,9 @@ function adaptTask(
       status: r.status ?? [],
     })),
     otherRequirements: describeOtherRequirements(raw, tradersById),
+    neededKeys: (raw.neededKeys ?? [])
+      .filter((k) => k && k.map && Array.isArray(k.keys))
+      .map((k) => ({ mapId: k.map, keyIds: k.keys })),
     objectives: (raw.objectives ?? []).map((o) => adaptObjective(o, t, mapsById, questItems)),
   }
 }
@@ -239,6 +244,14 @@ export async function fetchGameData(gameMode: GameMode, signal?: AbortSignal): P
   for (const rawMap of Object.values(mapsRes.doc.data.maps)) {
     mapDetails[rawMap.id] = adaptMapDetails(rawMap, mapsRes.t)
   }
+  const lootContainerNames: Record<string, string> = {}
+  for (const c of Object.values(mapsRes.doc.data.lootContainers ?? {})) {
+    lootContainerNames[c.id] = mapsRes.t(c.name, c.normalizedName)
+  }
+  const mobNames: Record<string, string> = {}
+  for (const m of Object.values(mapsRes.doc.data.mobs ?? {})) {
+    mobNames[m.id] = mapsRes.t(m.name, m.normalizedName)
+  }
 
   const tasks = Object.values(tasksRes.doc.data.tasks).map((raw) =>
     adaptTask(raw, tasksRes.t, tradersById, mapsById, questItems),
@@ -251,6 +264,8 @@ export async function fetchGameData(gameMode: GameMode, signal?: AbortSignal): P
     traders,
     maps,
     mapDetails,
+    lootContainerNames,
+    mobNames,
     fetchedAt: Date.now(),
   }
 }
