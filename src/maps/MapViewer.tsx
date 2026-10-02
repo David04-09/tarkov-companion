@@ -65,6 +65,8 @@ function Imagery({ cfg, style, floor, onState }: ImageryProps) {
     [cfg, bounds],
   )
   const useTiles = Boolean(cfg.tilePath) && (style === 'tile' || !cfg.svgPath)
+  const useTilesRef = useRef(useTiles)
+  useTilesRef.current = useTiles
 
   // Base imagery + SVG document (SVG is loaded whenever it exists, because
   // floors for tile maps are drawn from it).
@@ -110,11 +112,12 @@ function Imagery({ cfg, style, floor, onState }: ImageryProps) {
           svgOverlayRef.current = overlay
           overlay.addTo(map)
           setSvgReady(true)
-          if (!cfg.tilePath) settle('ready')
+          // In Abstract mode (or when there are no tiles) the SVG is the imagery.
+          if (!useTilesRef.current) settle('ready')
         })
         .catch((err: unknown) => {
           if (controller.signal.aborted) return
-          if (!cfg.tilePath) settle('error', `The map image could not be downloaded (${err instanceof Error ? err.message : 'error'}).`)
+          if (!useTilesRef.current) settle('error', `The map image could not be downloaded (${err instanceof Error ? err.message : 'error'}).`)
         })
     }
 
@@ -142,8 +145,11 @@ function Imagery({ cfg, style, floor, onState }: ImageryProps) {
     const svg = svgElRef.current
     if (svg) {
       svg.classList.toggle('tc-hide-base', useTiles)
+      // Switching to Abstract with the SVG already loaded: imagery is visible.
+      if (!useTiles) onState('ready')
     }
     if (useTiles) tile?.bringToBack()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [useTiles, map, svgReady])
 
   // Floor switching.

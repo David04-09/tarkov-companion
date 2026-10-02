@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from 'react'
-import { Layers } from 'lucide-react'
+import { Info, Layers } from 'lucide-react'
 import { useGameData } from '../api/hooks'
 import { MapViewer } from '../maps/MapViewer'
 import {
@@ -28,7 +28,7 @@ export function MapsPage() {
   const gameData = useGameData()
   const lastMapKey = useUiStore((s) => s.lastMapKey)
   const setLastMapKey = useUiStore((s) => s.setLastMapKey)
-  const mapStyle = useUiStore((s) => s.mapStyle)
+  const styleByMap = useUiStore((s) => s.styleByMap)
   const setMapStyle = useUiStore((s) => s.setMapStyle)
   const floorByMap = useUiStore((s) => s.floorByMap)
   const setFloor = useUiStore((s) => s.setFloor)
@@ -58,6 +58,9 @@ export function MapsPage() {
   const activeFloor =
     storedFloor === undefined ? (floors.find((l) => l.show)?.name ?? null) : storedFloor
   const hasBothStyles = Boolean(cfg.tilePath && cfg.svgPath)
+  // Explicit user choice for this map, else the config's preference (set where
+  // the satellite tiles are known to be outdated), else satellite.
+  const mapStyle = styleByMap[selected.key] ?? cfg.preferredStyle ?? 'tile'
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -94,11 +97,21 @@ export function MapsPage() {
 
         {hasBothStyles && (
           <div className="ml-auto flex rounded border border-line bg-surface p-0.5" role="group" aria-label="Map style">
-            <FloorButton label="Satellite" active={mapStyle === 'tile'} onClick={() => setMapStyle('tile')} />
-            <FloorButton label="Abstract" active={mapStyle === 'svg'} onClick={() => setMapStyle('svg')} />
+            <FloorButton label="Satellite" active={mapStyle === 'tile'} onClick={() => setMapStyle(selected.key, 'tile')} />
+            <FloorButton label="Abstract" active={mapStyle === 'svg'} onClick={() => setMapStyle(selected.key, 'svg')} />
           </div>
         )}
       </div>
+
+      {cfg.imageryNote && (
+        <p
+          role="note"
+          className="flex items-center gap-2 border-b border-line bg-surface-3 px-3 py-1 text-[11px] text-ink-muted md:px-4"
+        >
+          <Info className="h-3.5 w-3.5 shrink-0 text-accent" aria-hidden />
+          {cfg.imageryNote}
+        </p>
+      )}
 
       <div className="min-h-0 flex-1">
         <MapViewer cfg={cfg} style={mapStyle} floorName={activeFloor} />

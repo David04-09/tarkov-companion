@@ -5,7 +5,7 @@
     "commit": "ef62766bbd7ffb294c7184f9b8bfe8ed0f18320e",
     "fetched": "2026-10-02",
     "license": "MIT (tarkov.dev); map imagery by the authors credited per map",
-    "note": "Only projection==interactive entries are kept. bounds are [[x,z],[x,z]] in game coordinates; transform is [scaleX, offsetX, scaleY, offsetY]; coordinateRotation is degrees applied before the transform."
+    "note": "Only projection==interactive entries are kept. bounds are [[x,z],[x,z]] in game coordinates; transform is [scaleX, offsetX, scaleY, offsetY]; coordinateRotation is degrees applied before the transform. Fields preferredStyle and imageryNote are Tarkov Companion additions (verified against the tarkov.dev asset host on 2026-10-02)."
   },
   "maps": [
     {
@@ -1101,7 +1101,9 @@
             }
           ]
         }
-      ]
+      ],
+      "preferredStyle": "svg",
+      "imageryNote": "Satellite tiles date from November 2023 (before the map expansion). The Abstract map was updated January 2026 and shows the current layout."
     },
     {
       "key": "the-lab",
@@ -1230,7 +1232,8 @@
       "svgPath": "https://assets.tarkov.dev/maps/svg/Lighthouse.svg",
       "svgLayer": "Ground_Level",
       "normalizedName": "lighthouse",
-      "layers": []
+      "layers": [],
+      "imageryNote": "tarkov.dev has no satellite imagery for Lighthouse; only the abstract map (last updated January 2024)."
     },
     {
       "key": "reserve",

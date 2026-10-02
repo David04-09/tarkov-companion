@@ -53,6 +53,13 @@ export interface MapConfig extends MapProjection {
   /** API normalizedNames that reuse this config (night-factory, ground-zero-21, the-lab-dark). */
   altMaps?: string[]
   layers: MapLayerConfig[]
+  /**
+   * Tarkov Companion addition: which imagery to show by default when both
+   * exist. Set to "svg" where the satellite tiles are known to be outdated.
+   */
+  preferredStyle?: 'tile' | 'svg'
+  /** Tarkov Companion addition: shown to the user to explain imagery age/limits. */
+  imageryNote?: string
 }
 
 interface MapConfigFile {
