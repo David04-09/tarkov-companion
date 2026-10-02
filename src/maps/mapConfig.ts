@@ -1,76 +1,261 @@
 /**
- * Typed access to src/data/mapConfig.json.
+ * Map imagery configuration: every map has one or more "base layers" (images),
+ * each with its own affine transform from game coordinates to image pixels.
  *
- * Source of the image URLs, bounds, transforms and floor layers:
- *   https://github.com/the-hideout/tarkov-dev  (src/data/maps.json, MIT)
- * The JSON file records the exact commit it was copied from. Imagery is served
- * from assets.tarkov.dev; per-map authors are credited in `author`/`authorLink`.
+ * Sources
+ *  - tarkov.dev layers come from src/data/mapConfig.json, vendored verbatim from
+ *    https://github.com/the-hideout/tarkov-dev (src/data/maps.json, MIT). The
+ *    JSON records the commit it was copied from. Their imagery is served from
+ *    assets.tarkov.dev and credited per map.
+ *  - Extra layers (third-party renders we align ourselves) are declared in
+ *    EXTRA_BASE_LAYERS below. Their affine comes from the /dev/align tool:
+ *    paste the "Copy transform" output into the layer's `affine`.
  *
  * The tarkov.dev JSON API's /maps document has no image or transform data at
- * all (only `coordinateToCardinalRotation`), so the repo config is the only
- * source for a working image + coordinate system.
+ * all (only `coordinateToCardinalRotation`), so these are the only sources for a
+ * working image + coordinate system.
  */
 
 import raw from '../data/mapConfig.json'
-import type { MapProjection } from './projection'
+import { affineFromTarkovDev, boundsFromImage, type Affine, type GameBounds } from './projection'
 
-export type GameBounds = [[number, number], [number, number]]
+export type { GameBounds } from './projection'
 
-export interface MapLayerConfig {
+export interface FloorLayerConfig {
   /** Display name, e.g. "2nd Floor". */
   name: string
-  /** Id of the <g> group inside the map SVG that draws this floor. */
+  /** Id of the <g> group inside the base layer's SVG that draws this floor. */
   svgLayer?: string
   /** Tile pyramid for this floor, when it exists as raster imagery. */
   tilePath?: string
   /** Shown by default (e.g. Interchange opens on the 2nd floor). */
   show: boolean
-  /** Height ranges (game y) that belong to this floor; used to auto-pick floors for markers. */
+  /** Height ranges (game y) that belong to this floor. */
   extents?: { height: [number, number] }[]
 }
 
-export interface MapConfig extends MapProjection {
-  /** tarkov.dev key, e.g. "customs". */
-  key: string
-  /** tarkov.dev page slug; matches the API map's normalizedName for primary maps. */
-  normalizedName: string
-  minZoom: number
-  maxZoom: number
-  bounds: GameBounds
+export interface LayerCredit {
+  /** e.g. "tarkov.dev", "RE3MR" */
+  name: string
+  link?: string
+  /** e.g. "MIT", "CC BY-NC-SA 4.0" */
+  license?: string
+  /** Individual map author, when known. */
   author?: string
   authorLink?: string
-  /** Abstract vector map (one SVG with floors as top-level <g id> groups). */
+}
+
+export interface BaseLayerConfig {
+  /** Stable id, stored in user preferences. */
+  id: string
+  /** Shown in the layer selector. */
+  label: string
+  kind: 'tiles' | 'svg'
+  /** Tile URL template ("{z}/{x}/{y}") for kind "tiles". */
+  tilePath?: string
+  tileSize?: number
+  /** SVG document: the base image for kind "svg", and the source of SVG floors for kind "tiles". */
   svgPath?: string
-  /** Id of the ground-floor group inside the SVG. */
+  /** Id of the ground-floor <g> group inside the SVG. */
   svgLayer?: string
   /** Bounds for the SVG when they differ from the tile bounds (Reserve). */
   svgBounds?: GameBounds
-  /** Satellite-style raster tiles: ".../{z}/{x}/{y}.png". */
-  tilePath?: string
-  tileSize?: number
-  /** Game-y range considered "ground level". */
-  heightRange?: [number, number]
+  /** Native zoom range of the imagery. */
+  minZoom: number
+  maxZoom: number
+  /** Game (x, z) -> zoom-0 pixel transform. */
+  affine: Affine
+  /** Image extent in game coordinates [[x, z], [x, z]] (bounding box). */
+  bounds: GameBounds
+  floors: FloorLayerConfig[]
+  credit: LayerCredit
+  /** Explanation of imagery age or limits, shown above the map. */
+  note?: string
+  /** Known to be out of date; labelled as such in the selector. */
+  outdated?: boolean
+}
+
+export interface MapConfig {
+  /** tarkov.dev key, e.g. "customs". */
+  key: string
+  /** Matches the API map's normalizedName for primary maps. */
+  normalizedName: string
   /** API normalizedNames that reuse this config (night-factory, ground-zero-21, the-lab-dark). */
   altMaps?: string[]
-  layers: MapLayerConfig[]
-  /**
-   * Tarkov Companion addition: which imagery to show by default when both
-   * exist. Set to "svg" where the satellite tiles are known to be outdated.
-   */
+  baseLayers: BaseLayerConfig[]
+  defaultBaseLayerId: string
+}
+
+// ---------------------------------------------------------------------------
+// Vendored tarkov.dev config (shape of src/data/mapConfig.json)
+// ---------------------------------------------------------------------------
+
+interface TarkovDevLayer {
+  name: string
+  svgLayer?: string
+  tilePath?: string
+  show: boolean
+  extents?: { height: [number, number] }[]
+}
+
+interface TarkovDevMap {
+  key: string
+  normalizedName: string
+  minZoom: number
+  maxZoom: number
+  transform: [number, number, number, number]
+  coordinateRotation: number
+  bounds: GameBounds
+  author?: string
+  authorLink?: string
+  svgPath?: string
+  svgLayer?: string
+  svgBounds?: GameBounds
+  tilePath?: string
+  tileSize?: number
+  heightRange?: [number, number]
+  altMaps?: string[]
+  layers: TarkovDevLayer[]
   preferredStyle?: 'tile' | 'svg'
-  /** Tarkov Companion addition: shown to the user to explain imagery age/limits. */
   imageryNote?: string
 }
 
-interface MapConfigFile {
+interface TarkovDevConfigFile {
   _source: Record<string, string>
-  maps: MapConfig[]
+  maps: TarkovDevMap[]
 }
 
-const file = raw as unknown as MapConfigFile
-
+const file = raw as unknown as TarkovDevConfigFile
 export const MAP_CONFIG_SOURCE = file._source
-export const MAP_CONFIGS: MapConfig[] = file.maps
+
+export const TARKOV_DEV_PHOTO = 'tarkovdev-photo'
+export const TARKOV_DEV_DRAWING = 'tarkovdev-drawing'
+
+const TARKOV_DEV_CREDIT = (m: TarkovDevMap): LayerCredit => ({
+  name: 'tarkov.dev',
+  link: 'https://tarkov.dev/maps',
+  license: 'MIT',
+  author: m.author,
+  authorLink: m.authorLink,
+})
+
+function tarkovDevLayers(m: TarkovDevMap): BaseLayerConfig[] {
+  const affine = affineFromTarkovDev(m.transform, m.coordinateRotation)
+  const shared = {
+    svgPath: m.svgPath,
+    svgLayer: m.svgLayer,
+    svgBounds: m.svgBounds,
+    minZoom: m.minZoom,
+    maxZoom: m.maxZoom,
+    affine,
+    bounds: m.bounds,
+    floors: m.layers,
+    credit: TARKOV_DEV_CREDIT(m),
+  }
+  const out: BaseLayerConfig[] = []
+  if (m.tilePath) {
+    out.push({
+      ...shared,
+      id: TARKOV_DEV_PHOTO,
+      label: 'tarkov.dev photo',
+      kind: 'tiles',
+      tilePath: m.tilePath,
+      tileSize: m.tileSize,
+      note: m.preferredStyle === 'svg' ? m.imageryNote : undefined,
+      outdated: m.preferredStyle === 'svg',
+    })
+  }
+  if (m.svgPath) {
+    out.push({
+      ...shared,
+      id: TARKOV_DEV_DRAWING,
+      label: 'tarkov.dev drawing',
+      kind: 'svg',
+      note: m.preferredStyle !== 'svg' ? m.imageryNote : undefined,
+    })
+  }
+  return out
+}
+
+// ---------------------------------------------------------------------------
+// Extra base layers (Tarkov Companion additions)
+// ---------------------------------------------------------------------------
+
+/** RE3MR Lighthouse render: 8259 x 7560 px sliced into a 7-level pyramid (zoom-0 = source / 64). */
+const RE3MR_LIGHTHOUSE_SIZE: [number, number] = [8259 / 64, 7560 / 64]
+/**
+ * First-pass fit on 2026-10-03 from 15 extract/transit icons on the render
+ * matched to API positions (RMS ~20 m; icons sit near, not exactly on, the
+ * points). Refine with /dev/align and paste the result here.
+ */
+const RE3MR_LIGHTHOUSE_AFFINE: Affine = [-0.079955, 0.000654, 84.375332, 0.00125, 0.064708, 68.316682]
+
+interface ExtraLayers {
+  layers: BaseLayerConfig[]
+  defaultBaseLayerId?: string
+  /** Relabel/mark existing tarkov.dev layers. */
+  overrides?: Record<string, Partial<Pick<BaseLayerConfig, 'label' | 'note' | 'outdated'>>>
+}
+
+export const EXTRA_BASE_LAYERS: Record<string, ExtraLayers> = {
+  lighthouse: {
+    defaultBaseLayerId: 're3mr',
+    layers: [
+      {
+        id: 're3mr',
+        label: 'RE3MR render',
+        kind: 'tiles',
+        tilePath: '/tiles/lighthouse-re3mr/{z}/{x}/{y}.png',
+        tileSize: 256,
+        minZoom: 1,
+        maxZoom: 6,
+        affine: RE3MR_LIGHTHOUSE_AFFINE,
+        bounds: boundsFromImage(RE3MR_LIGHTHOUSE_AFFINE, RE3MR_LIGHTHOUSE_SIZE[0], RE3MR_LIGHTHOUSE_SIZE[1]),
+        floors: [],
+        credit: {
+          name: 'RE3MR',
+          link: 'https://reemr.se',
+          license: 'CC BY-NC-SA 4.0',
+          author: 're3mr',
+          authorLink: 'https://reemr.se/maps/Lighthouse/',
+        },
+        note: 'Post-1.1.5 layout rendered by RE3MR. Alignment is a first pass (about 20 m accuracy); refine it with the alignment tool.',
+      },
+    ],
+    overrides: {
+      [TARKOV_DEV_DRAWING]: {
+        label: 'tarkov.dev drawing (pre-1.1.5, outdated)',
+        outdated: true,
+        note: 'This drawing predates the 1.1.5 Lighthouse rework and no longer matches the map.',
+      },
+    },
+  },
+}
+
+// ---------------------------------------------------------------------------
+// Assembled configs
+// ---------------------------------------------------------------------------
+
+function buildConfig(m: TarkovDevMap): MapConfig {
+  const extra = EXTRA_BASE_LAYERS[m.normalizedName]
+  let layers = tarkovDevLayers(m)
+  if (extra?.overrides) {
+    layers = layers.map((l) => (extra.overrides?.[l.id] ? { ...l, ...extra.overrides[l.id] } : l))
+  }
+  if (extra?.layers) layers = [...extra.layers, ...layers]
+  const preferred =
+    extra?.defaultBaseLayerId ??
+    (m.preferredStyle === 'svg' && m.svgPath ? TARKOV_DEV_DRAWING : m.tilePath ? TARKOV_DEV_PHOTO : TARKOV_DEV_DRAWING)
+  return {
+    key: m.key,
+    normalizedName: m.normalizedName,
+    altMaps: m.altMaps,
+    baseLayers: layers,
+    defaultBaseLayerId: layers.some((l) => l.id === preferred) ? preferred : layers[0].id,
+  }
+}
+
+export const MAP_CONFIGS: MapConfig[] = file.maps.map(buildConfig)
 
 /** Display order for the selector; anything else follows alphabetically. */
 export const PREFERRED_MAP_ORDER = [
@@ -98,7 +283,6 @@ export function findMapConfig(normalizedName: string): MapConfig | undefined {
 }
 
 export function mapOrderIndex(normalizedName: string): number {
-  // Variants sort right after their primary map.
   const cfg = findMapConfig(normalizedName)
   const primary = cfg?.normalizedName ?? normalizedName
   const i = PREFERRED_MAP_ORDER.indexOf(primary)
@@ -106,7 +290,15 @@ export function mapOrderIndex(normalizedName: string): number {
   return primary === normalizedName ? base : base + 1
 }
 
-/** True when a layer's tile/SVG imagery is available to draw. */
-export function layerIsDrawable(layer: MapLayerConfig, cfg: MapConfig): boolean {
-  return Boolean(layer.tilePath || (layer.svgLayer && cfg.svgPath))
+/** True when a floor's imagery is available to draw on this base layer. */
+export function floorIsDrawable(floor: FloorLayerConfig, layer: BaseLayerConfig): boolean {
+  return Boolean(floor.tilePath || (floor.svgLayer && layer.svgPath))
+}
+
+export function resolveBaseLayer(cfg: MapConfig, preferredId: string | undefined): BaseLayerConfig {
+  return (
+    cfg.baseLayers.find((l) => l.id === preferredId) ??
+    cfg.baseLayers.find((l) => l.id === cfg.defaultBaseLayerId) ??
+    cfg.baseLayers[0]
+  )
 }

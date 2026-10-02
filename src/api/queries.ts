@@ -7,9 +7,12 @@ import type {
   GameMap,
   Item,
   ItemsById,
+  MapDetails,
+  ObjectiveLocation,
   PricePoint,
   QuestItem,
   RawItemsData,
+  RawMap,
   RawMapsData,
   RawPriceHistoryDoc,
   RawStatusDoc,
@@ -43,6 +46,71 @@ function adaptMaps(data: RawMapsData, t: Translator): GameMap[] {
   }))
 }
 
+const toFactionTag = (f: string): 'pmc' | 'scav' | 'shared' =>
+  f === 'pmc' || f === 'scav' ? f : 'shared'
+
+function adaptMapDetails(m: RawMap, t: Translator): MapDetails {
+  return {
+    extracts: (m.extracts ?? []).map((e) => ({
+      id: e.id,
+      name: t(e.name, e.name),
+      faction: toFactionTag(e.faction),
+      position: e.position,
+      outline: e.outline ?? [],
+    })),
+    transits: (m.transits ?? []).map((x) => ({
+      id: x.id,
+      name: t(x.description, 'Transit'),
+      targetMapId: x.map ?? null,
+      position: x.position,
+      outline: x.outline ?? [],
+    })),
+    spawns: (m.spawns ?? []).map((s) => ({
+      position: s.position,
+      sides: s.sides ?? [],
+      categories: s.categories ?? [],
+      zoneName: s.zoneName ?? '',
+    })),
+    bosses: (m.bosses ?? []).map((b) => ({
+      mobId: b.mob ?? null,
+      spawnChance: b.spawnChance ?? 0,
+      locations: (b.spawnLocations ?? []).map((l) => ({
+        name: t(l.name, l.name),
+        chance: l.chance ?? 0,
+        positions: l.positions ?? [],
+      })),
+    })),
+    lootContainers: (m.lootContainers ?? []).map((c) => ({ containerId: c.lootContainer, position: c.position })),
+    locks: (m.locks ?? []).map((l) => ({
+      id: l.id,
+      lockType: l.lockType,
+      keyId: l.key,
+      needsPower: Boolean(l.needsPower),
+      position: l.position,
+    })),
+    hazards: (m.hazards ?? []).map((h) => ({
+      id: h.id,
+      type: h.hazardType,
+      name: t(h.name, h.hazardType),
+      position: h.position,
+      outline: h.outline ?? [],
+    })),
+  }
+}
+
+function adaptObjectiveLocations(raw: RawTaskObjective): ObjectiveLocation[] {
+  const out: ObjectiveLocation[] = []
+  for (const z of raw.zones ?? []) {
+    if (!z?.map || !z.position) continue
+    out.push({ mapId: z.map, positions: [z.position], outline: z.outline && z.outline.length > 2 ? z.outline : null, zoneId: z.id })
+  }
+  for (const p of raw.possibleLocations ?? []) {
+    if (!p?.map || !p.positions?.length) continue
+    out.push({ mapId: p.map, positions: p.positions, outline: null, zoneId: null })
+  }
+  return out
+}
+
 function adaptQuestItems(data: RawTasksData, t: Translator): Record<string, QuestItem> {
   const out: Record<string, QuestItem> = {}
   for (const q of Object.values(data.questItems ?? {})) {
@@ -74,6 +142,7 @@ function adaptObjective(
     questItem: raw.questItem ? (questItems[raw.questItem] ?? null) : null,
     foundInRaid: typeof raw.foundInRaid === 'boolean' ? raw.foundInRaid : null,
     targetNames: (raw.targetNames ?? []).map((n) => t(n, n)),
+    locations: adaptObjectiveLocations(raw),
   }
 }
 
@@ -166,6 +235,11 @@ export async function fetchGameData(gameMode: GameMode, signal?: AbortSignal): P
   const mapsById = indexById(maps)
   const questItems = adaptQuestItems(tasksRes.doc.data, tasksRes.t)
 
+  const mapDetails: Record<string, MapDetails> = {}
+  for (const rawMap of Object.values(mapsRes.doc.data.maps)) {
+    mapDetails[rawMap.id] = adaptMapDetails(rawMap, mapsRes.t)
+  }
+
   const tasks = Object.values(tasksRes.doc.data.tasks).map((raw) =>
     adaptTask(raw, tasksRes.t, tradersById, mapsById, questItems),
   )
@@ -176,6 +250,7 @@ export async function fetchGameData(gameMode: GameMode, signal?: AbortSignal): P
     tasksById: indexById(tasks),
     traders,
     maps,
+    mapDetails,
     fetchedAt: Date.now(),
   }
 }

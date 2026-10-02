@@ -12,6 +12,13 @@
 
 import type { GameMode } from './client'
 
+/** In-game position; y is height. */
+export interface Position {
+  x: number
+  y: number
+  z: number
+}
+
 // ---------------------------------------------------------------------------
 // Catalog: GET /endpoints
 // ---------------------------------------------------------------------------
@@ -82,6 +89,22 @@ export interface RawOtherRequirement {
   value?: number
 }
 
+export interface RawZone {
+  id: string
+  /** Map id. */
+  map: string
+  position: Position
+  outline?: Position[]
+  top?: number
+  bottom?: number
+}
+
+export interface RawPossibleLocation {
+  /** Map id. */
+  map: string
+  positions: Position[]
+}
+
 export interface RawTaskObjective {
   id: string
   /** Translation key (equals the objective id). */
@@ -91,7 +114,10 @@ export interface RawTaskObjective {
   optional: boolean
   /** Map ids this objective can be done on (empty = anywhere). */
   maps?: string[]
-  zones?: unknown[]
+  /** Visit/plant/mark zones with a centre and an outline polygon. */
+  zones?: RawZone[]
+  /** Item spawn points (findItem / findQuestItem). */
+  possibleLocations?: RawPossibleLocation[]
   // Item objectives (giveItem / findItem / plantItem / sellItem ...)
   count?: number
   /** Accepted item ids (any one of them satisfies the objective). */
@@ -187,6 +213,70 @@ export type RawTradersDoc = TranslatedBaseDoc<Record<string, RawTrader>>
 // Maps: GET /{gameMode}/maps   -> data.maps is keyed by map id
 // ---------------------------------------------------------------------------
 
+export interface RawExtract {
+  id: string
+  /** Translation key. */
+  name: string
+  /** "pmc" | "scav" | "shared" */
+  faction: string
+  position: Position
+  outline?: Position[]
+  top?: number
+  bottom?: number
+  switch?: string | null
+}
+
+export interface RawTransit {
+  id: string
+  /** Translation key, e.g. "CUS_TRANSIT_9_DESC". */
+  description: string
+  /** Destination map id. */
+  map: string
+  position: Position
+  outline?: Position[]
+}
+
+export interface RawSpawn {
+  position: Position
+  /** "pmc" | "scav" | "none" */
+  sides: string[]
+  /** "player" | "bot" | "botpmc" | "boss" ... */
+  categories: string[]
+  zoneName: string
+}
+
+export interface RawBossSpawn {
+  spawnChance: number
+  spawnLocations: { name: string; chance: number; spawnKey?: string; positions: Position[] }[]
+  /** Mob id (data.mobs). */
+  mob?: string
+}
+
+export interface RawLootContainerSpawn {
+  /** Container id (data.lootContainers). */
+  lootContainer: string
+  position: Position
+}
+
+export interface RawLock {
+  id: string
+  /** "door" | "container" | "trunk" ... */
+  lockType: string
+  /** Key item id. */
+  key: string
+  needsPower: boolean
+  position: Position
+}
+
+export interface RawHazard {
+  id: string
+  hazardType: string
+  /** Translation key or raw name. */
+  name: string
+  position: Position
+  outline?: Position[]
+}
+
 export interface RawMap {
   id: string
   /** Translation key, e.g. "55f2d3fd4bdc2d5f408b4567 Name". */
@@ -198,6 +288,13 @@ export interface RawMap {
   wiki?: string | null
   minPlayerLevel?: number
   maxPlayerLevel?: number
+  extracts?: RawExtract[]
+  transits?: RawTransit[]
+  spawns?: RawSpawn[]
+  bosses?: RawBossSpawn[]
+  lootContainers?: RawLootContainerSpawn[]
+  locks?: RawLock[]
+  hazards?: RawHazard[]
 }
 
 export interface RawMapsData {
@@ -319,6 +416,15 @@ export interface TaskRequirement {
   status: string[]
 }
 
+/** Where an objective happens on one map: zone centre(s) or item spawn points. */
+export interface ObjectiveLocation {
+  mapId: string
+  positions: Position[]
+  /** Zone polygon, when the objective is an area rather than points. */
+  outline: Position[] | null
+  zoneId: string | null
+}
+
 export interface TaskObjective {
   id: string
   type: string
@@ -331,6 +437,62 @@ export interface TaskObjective {
   questItem: QuestItem | null
   foundInRaid: boolean | null
   targetNames: string[]
+  locations: ObjectiveLocation[]
+}
+
+export interface MapExtract {
+  id: string
+  name: string
+  faction: 'pmc' | 'scav' | 'shared'
+  position: Position
+  outline: Position[]
+}
+
+export interface MapTransit {
+  id: string
+  name: string
+  targetMapId: string | null
+  position: Position
+  outline: Position[]
+}
+
+export interface MapSpawn {
+  position: Position
+  sides: string[]
+  categories: string[]
+  zoneName: string
+}
+
+export interface MapBoss {
+  mobId: string | null
+  spawnChance: number
+  locations: { name: string; chance: number; positions: Position[] }[]
+}
+
+export interface MapLock {
+  id: string
+  lockType: string
+  keyId: string
+  needsPower: boolean
+  position: Position
+}
+
+export interface MapHazard {
+  id: string
+  type: string
+  name: string
+  position: Position
+  outline: Position[]
+}
+
+export interface MapDetails {
+  extracts: MapExtract[]
+  transits: MapTransit[]
+  spawns: MapSpawn[]
+  bosses: MapBoss[]
+  lootContainers: { containerId: string; position: Position }[]
+  locks: MapLock[]
+  hazards: MapHazard[]
 }
 
 export type FactionName = 'Any' | 'USEC' | 'BEAR'
@@ -364,6 +526,8 @@ export interface GameData {
   tasksById: Record<string, Task>
   traders: Trader[]
   maps: GameMap[]
+  /** Extracts, transits, spawns etc. keyed by map id. */
+  mapDetails: Record<string, MapDetails>
   /** When the data was fetched (for the "updated" hint in the UI). */
   fetchedAt: number
 }

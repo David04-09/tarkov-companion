@@ -4,7 +4,8 @@ import { Sidebar } from './Sidebar'
 
 export function Layout() {
   const { pathname } = useLocation()
-  const fullBleed = NAV_ITEMS.some((i) => i.fullBleed && i.path === pathname)
+  const fullBleed =
+    pathname.startsWith('/dev/') || NAV_ITEMS.some((i) => i.fullBleed && i.path === pathname)
 
   return (
     <div className="flex h-full bg-surface text-ink">

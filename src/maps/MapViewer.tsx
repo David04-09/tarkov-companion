@@ -3,12 +3,14 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { MapContainer, useMap } from 'react-leaflet'
 import { AlertTriangle, Loader2, Maximize2, Minimize2 } from 'lucide-react'
-import { type MapConfig, type MapLayerConfig, layerIsDrawable } from './mapConfig'
+import { floorIsDrawable, type BaseLayerConfig, type FloorLayerConfig } from './mapConfig'
 import { createMapCRS, gameBoundsToLatLngBounds } from './projection'
-import type { MapStyle } from '../store/ui'
 
 /** Extra zoom beyond the native tiles, like tarkov.dev (max(7, maxZoom)). */
 const OVERZOOM = 7
+/** 1x1 transparent PNG so missing tiles never show a broken-image icon. */
+const BLANK_TILE =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
 
 type ImageryState = 'loading' | 'ready' | 'error'
 
@@ -16,8 +18,8 @@ type ImageryState = 'loading' | 'ready' | 'error'
  * Loads a tarkov.dev map SVG once and returns a detached <svg> element whose
  * top-level <g id> groups are classified as base (ground) or overlay (floors).
  */
-async function loadSvg(cfg: MapConfig, signal: AbortSignal): Promise<SVGSVGElement> {
-  const res = await fetch(cfg.svgPath as string, { signal })
+async function loadSvg(layer: BaseLayerConfig, signal: AbortSignal): Promise<SVGSVGElement> {
+  const res = await fetch(layer.svgPath as string, { signal })
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
   const text = await res.text()
   const doc = new DOMParser().parseFromString(text, 'image/svg+xml')
@@ -27,31 +29,29 @@ async function loadSvg(cfg: MapConfig, signal: AbortSignal): Promise<SVGSVGEleme
   svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg')
   const viewBox = inner.getAttribute('viewBox')
   if (viewBox) svg.setAttribute('viewBox', viewBox)
-  // Move children across; top-level groups with ids are floors.
   while (inner.firstChild) svg.appendChild(inner.firstChild)
   for (const child of Array.from(svg.children)) {
     if (child.nodeName.toLowerCase() !== 'g' || !child.id) continue
     const g = child as SVGGElement
     const keepWith = g.dataset['keepWithGroup']
-    if (g.id === cfg.svgLayer || keepWith === cfg.svgLayer) g.classList.add('tc-base-group')
+    if (g.id === layer.svgLayer || keepWith === layer.svgLayer) g.classList.add('tc-base-group')
     else g.classList.add('tc-overlay-group')
   }
   return svg
 }
 
 interface ImageryProps {
-  cfg: MapConfig
-  style: MapStyle
-  floor: MapLayerConfig | null
+  layer: BaseLayerConfig
+  floor: FloorLayerConfig | null
   onState: (state: ImageryState, message?: string) => void
 }
 
 /**
  * Imperative Leaflet layer management (tiles, SVG, floors). Lives inside
- * MapContainer so it can use the map instance. Everything is keyed on the map
- * config, so switching maps remounts the whole MapContainer (CRS can't change).
+ * MapContainer so it can use the map instance. The MapContainer is keyed on the
+ * base layer, so changing imagery remounts everything (the CRS can't change).
  */
-function Imagery({ cfg, style, floor, onState }: ImageryProps) {
+function Imagery({ layer, floor, onState }: ImageryProps) {
   const map = useMap()
   const tileRef = useRef<L.TileLayer | null>(null)
   const svgOverlayRef = useRef<L.SVGOverlay | null>(null)
@@ -59,17 +59,13 @@ function Imagery({ cfg, style, floor, onState }: ImageryProps) {
   const floorTileRef = useRef<L.TileLayer | null>(null)
   const [svgReady, setSvgReady] = useState(false)
 
-  const bounds = useMemo(() => gameBoundsToLatLngBounds(cfg.bounds), [cfg])
+  const bounds = useMemo(() => gameBoundsToLatLngBounds(layer.bounds), [layer])
   const svgBounds = useMemo(
-    () => (cfg.svgBounds ? gameBoundsToLatLngBounds(cfg.svgBounds) : bounds),
-    [cfg, bounds],
+    () => (layer.svgBounds ? gameBoundsToLatLngBounds(layer.svgBounds) : bounds),
+    [layer, bounds],
   )
-  const useTiles = Boolean(cfg.tilePath) && (style === 'tile' || !cfg.svgPath)
-  const useTilesRef = useRef(useTiles)
-  useTilesRef.current = useTiles
+  const useTiles = layer.kind === 'tiles'
 
-  // Base imagery + SVG document (SVG is loaded whenever it exists, because
-  // floors for tile maps are drawn from it).
   useEffect(() => {
     const controller = new AbortController()
     let tileErrors = 0
@@ -82,14 +78,15 @@ function Imagery({ cfg, style, floor, onState }: ImageryProps) {
     }
     onState('loading')
 
-    if (cfg.tilePath) {
-      const tile = L.tileLayer(cfg.tilePath, {
-        tileSize: cfg.tileSize ?? 256,
+    if (useTiles && layer.tilePath) {
+      const tile = L.tileLayer(layer.tilePath, {
+        tileSize: layer.tileSize ?? 256,
         bounds,
-        minZoom: cfg.minZoom,
-        maxZoom: Math.max(OVERZOOM, cfg.maxZoom),
-        maxNativeZoom: cfg.maxZoom,
+        minZoom: layer.minZoom,
+        maxZoom: Math.max(OVERZOOM, layer.maxZoom),
+        maxNativeZoom: layer.maxZoom,
         noWrap: true,
+        errorTileUrl: BLANK_TILE,
         className: 'tc-base-tiles',
       })
       tile.on('tileload', () => {
@@ -98,26 +95,35 @@ function Imagery({ cfg, style, floor, onState }: ImageryProps) {
       })
       tile.on('tileerror', () => {
         tileErrors += 1
-        // All of the first wave failed: the imagery host is unreachable.
-        if (tileLoads === 0 && tileErrors >= 4) settle('error', 'The map tiles could not be downloaded from assets.tarkov.dev.')
+        if (tileLoads === 0 && tileErrors >= 4) {
+          settle(
+            'error',
+            layer.tilePath?.startsWith('/')
+              ? 'The map tiles are missing. Generate them with "npm run tiles:lighthouse" (see README).'
+              : 'The map tiles could not be downloaded from the imagery host.',
+          )
+        }
       })
+      tile.addTo(map)
       tileRef.current = tile
     }
 
-    if (cfg.svgPath) {
-      loadSvg(cfg, controller.signal)
+    // The SVG is loaded whenever it exists: it is the base image for "svg"
+    // layers and the source of floor plans for tile layers.
+    if (layer.svgPath) {
+      loadSvg(layer, controller.signal)
         .then((svg) => {
           svgElRef.current = svg
+          svg.classList.toggle('tc-hide-base', useTiles)
           const overlay = L.svgOverlay(svg, svgBounds, { className: 'tc-svg-overlay', interactive: false })
           svgOverlayRef.current = overlay
           overlay.addTo(map)
           setSvgReady(true)
-          // In Abstract mode (or when there are no tiles) the SVG is the imagery.
-          if (!useTilesRef.current) settle('ready')
+          if (!useTiles) settle('ready')
         })
         .catch((err: unknown) => {
           if (controller.signal.aborted) return
-          if (!useTilesRef.current) settle('error', `The map image could not be downloaded (${err instanceof Error ? err.message : 'error'}).`)
+          if (!useTiles) settle('error', `The map image could not be downloaded (${err instanceof Error ? err.message : 'error'}).`)
         })
     }
 
@@ -133,24 +139,7 @@ function Imagery({ cfg, style, floor, onState }: ImageryProps) {
       setSvgReady(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cfg, map])
-
-  // Choose which base is visible (tiles vs abstract SVG).
-  useEffect(() => {
-    const tile = tileRef.current
-    if (tile) {
-      if (useTiles && !map.hasLayer(tile)) tile.addTo(map)
-      if (!useTiles && map.hasLayer(tile)) tile.remove()
-    }
-    const svg = svgElRef.current
-    if (svg) {
-      svg.classList.toggle('tc-hide-base', useTiles)
-      // Switching to Abstract with the SVG already loaded: imagery is visible.
-      if (!useTiles) onState('ready')
-    }
-    if (useTiles) tile?.bringToBack()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [useTiles, map, svgReady])
+  }, [layer, map])
 
   // Floor switching.
   useEffect(() => {
@@ -168,19 +157,20 @@ function Imagery({ cfg, style, floor, onState }: ImageryProps) {
     if (tile) tile.setOpacity(floor ? 0.25 : 1)
 
     if (floor?.tilePath) {
-      const layer = L.tileLayer(floor.tilePath, {
-        tileSize: cfg.tileSize ?? 256,
+      const fl = L.tileLayer(floor.tilePath, {
+        tileSize: layer.tileSize ?? 256,
         bounds,
-        minZoom: cfg.minZoom,
-        maxZoom: Math.max(OVERZOOM, cfg.maxZoom),
-        maxNativeZoom: cfg.maxZoom,
+        minZoom: layer.minZoom,
+        maxZoom: Math.max(OVERZOOM, layer.maxZoom),
+        maxNativeZoom: layer.maxZoom,
         noWrap: true,
+        errorTileUrl: BLANK_TILE,
         className: 'tc-floor-tiles',
       })
-      layer.addTo(map)
-      floorTileRef.current = layer
+      fl.addTo(map)
+      floorTileRef.current = fl
     }
-  }, [floor, cfg, bounds, map, svgReady])
+  }, [floor, layer, bounds, map, svgReady])
 
   return null
 }
@@ -191,7 +181,6 @@ function FullscreenButton({ target }: { target: React.RefObject<HTMLDivElement |
   useEffect(() => {
     const onChange = () => {
       setActive(document.fullscreenElement === target.current)
-      // Let the container settle, then tell Leaflet the size changed.
       setTimeout(() => map.invalidateSize(), 50)
     }
     document.addEventListener('fullscreenchange', onChange)
@@ -227,32 +216,40 @@ function FullscreenButton({ target }: { target: React.RefObject<HTMLDivElement |
 }
 
 export interface MapViewerProps {
-  cfg: MapConfig
-  style: MapStyle
+  /** Unique key for the map (remount when it changes). */
+  mapKey: string
+  layer: BaseLayerConfig
   /** Layer name of the active floor; null = ground. */
   floorName: string | null
+  /** Override the layer's affine (used by the align tool to preview a fit). */
+  affineOverride?: BaseLayerConfig['affine']
   children?: ReactNode
 }
 
-export function MapViewer({ cfg, style, floorName, children }: MapViewerProps) {
+export function MapViewer({ mapKey, layer, floorName, affineOverride, children }: MapViewerProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [state, setState] = useState<ImageryState>('loading')
   const [message, setMessage] = useState<string | undefined>()
-  const crs = useMemo(() => createMapCRS(cfg), [cfg])
-  const bounds = useMemo(() => gameBoundsToLatLngBounds(cfg.bounds), [cfg])
-  const floor = useMemo(
-    () => cfg.layers.find((l) => l.name === floorName && layerIsDrawable(l, cfg)) ?? null,
-    [cfg, floorName],
+  const effectiveLayer = useMemo(
+    () => (affineOverride ? { ...layer, affine: affineOverride } : layer),
+    [layer, affineOverride],
   )
+  const crs = useMemo(() => createMapCRS(effectiveLayer), [effectiveLayer])
+  const bounds = useMemo(() => gameBoundsToLatLngBounds(effectiveLayer.bounds), [effectiveLayer])
+  const floor = useMemo(
+    () => effectiveLayer.floors.find((l) => l.name === floorName && floorIsDrawable(l, effectiveLayer)) ?? null,
+    [effectiveLayer, floorName],
+  )
+  const remountKey = `${mapKey}:${layer.id}:${(affineOverride ?? layer.affine).join(',')}`
 
   return (
     <div ref={containerRef} className="relative h-full w-full bg-[#0a0a09]">
       <MapContainer
-        key={cfg.key}
+        key={remountKey}
         crs={crs}
         bounds={bounds}
-        minZoom={cfg.minZoom}
-        maxZoom={Math.max(OVERZOOM, cfg.maxZoom)}
+        minZoom={effectiveLayer.minZoom}
+        maxZoom={Math.max(OVERZOOM, effectiveLayer.maxZoom)}
         zoomSnap={0.25}
         zoomDelta={0.5}
         wheelPxPerZoomLevel={80}
@@ -260,8 +257,7 @@ export function MapViewer({ cfg, style, floorName, children }: MapViewerProps) {
         className="h-full w-full !bg-[#0a0a09]"
       >
         <Imagery
-          cfg={cfg}
-          style={style}
+          layer={effectiveLayer}
           floor={floor}
           onState={(s, m) => {
             setState(s)
@@ -283,9 +279,7 @@ export function MapViewer({ cfg, style, floorName, children }: MapViewerProps) {
         <div className="absolute inset-x-0 top-3 z-[1000] flex justify-center px-4">
           <div role="alert" className="flex items-start gap-2 rounded border border-danger/50 bg-surface-2/95 px-3 py-2 text-xs text-ink">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-danger" />
-            <span>
-              {message ?? 'The map image is unavailable.'} Markers and drawings still work; try again later.
-            </span>
+            <span>{message ?? 'The map image is unavailable.'} Markers and drawings still work.</span>
           </div>
         </div>
       )}
