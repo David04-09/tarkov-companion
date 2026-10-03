@@ -96,6 +96,8 @@ export type UpdateStatus =
   | { state: 'none'; checkedAt: number }
   | { state: 'downloading'; version?: string; percent: number }
   | { state: 'ready'; version: string }
+  /** Portable exe: a newer release exists but must be downloaded by hand. */
+  | { state: 'available'; version: string; url: string }
   | { state: 'error'; message: string }
 
 export interface WipeEvent {

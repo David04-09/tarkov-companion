@@ -31,6 +31,8 @@ function UpdateLine() {
         return `Downloading ${status.version ?? 'update'}… ${status.percent}%`
       case 'ready':
         return `Version ${status.version} is downloaded; restart to apply.`
+      case 'available':
+        return `Version ${status.version} is available; download it from GitHub (the portable exe cannot update itself).`
       case 'none':
         return 'You are up to date.'
       case 'error':
@@ -54,9 +56,9 @@ function UpdateLine() {
       >
         <RefreshCw className={`h-3.5 w-3.5 ${busy ? 'animate-spin' : ''}`} /> Check for updates
       </button>
-      {status?.state === 'ready' && (
+      {(status?.state === 'ready' || status?.state === 'available') && (
         <button type="button" onClick={() => void window.desktop?.installUpdate()} className="btn !py-1 border-accent text-accent">
-          Restart to update
+          {status.state === 'available' ? 'Download' : 'Restart to update'}
         </button>
       )}
       <span className="text-ink-muted">{text}</span>
