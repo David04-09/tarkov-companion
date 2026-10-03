@@ -409,6 +409,8 @@ export interface GameMap {
   scenePath: string | null
   /** Matches the "Location:" value in the game log's raid lines. */
   nameId: string
+  /** Raid length in minutes. */
+  raidDuration: number
 }
 
 export interface QuestItem {

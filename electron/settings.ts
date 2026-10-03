@@ -13,6 +13,7 @@ export interface WindowBounds {
 
 export interface StoredSettings extends DesktopSettings {
   window: WindowBounds
+  overlay: WindowBounds
 }
 
 export const DEFAULT_SETTINGS: StoredSettings = {
@@ -23,7 +24,12 @@ export const DEFAULT_SETTINGS: StoredSettings = {
   openMapOnRaid: true,
   initialBackfillDone: false,
   paused: false,
+  overlayHotkey: 'Control+Shift+T',
+  overlayOpacity: 0.9,
+  knownProfileId: null,
+  knownGameVersion: null,
   window: { width: 1360, height: 860 },
+  overlay: { width: 560, height: 480 },
 }
 
 export class SettingsStore {
@@ -35,7 +41,12 @@ export class SettingsStore {
     this.data = { ...DEFAULT_SETTINGS }
     try {
       const raw = JSON.parse(fs.readFileSync(this.file, 'utf8')) as Partial<StoredSettings>
-      this.data = { ...DEFAULT_SETTINGS, ...raw, window: { ...DEFAULT_SETTINGS.window, ...(raw.window ?? {}) } }
+      this.data = {
+        ...DEFAULT_SETTINGS,
+        ...raw,
+        window: { ...DEFAULT_SETTINGS.window, ...(raw.window ?? {}) },
+        overlay: { ...DEFAULT_SETTINGS.overlay, ...(raw.overlay ?? {}) },
+      }
     } catch {
       // first run
     }
@@ -47,12 +58,17 @@ export class SettingsStore {
 
   /** The renderer-facing subset (no window bounds). */
   getPublic(): DesktopSettings {
-    const { window: _w, ...rest } = this.data
+    const { window: _w, overlay: _o, ...rest } = this.data
     return rest
   }
 
   update(patch: Partial<StoredSettings>): StoredSettings {
-    this.data = { ...this.data, ...patch, window: { ...this.data.window, ...(patch.window ?? {}) } }
+    this.data = {
+      ...this.data,
+      ...patch,
+      window: { ...this.data.window, ...(patch.window ?? {}) },
+      overlay: { ...this.data.overlay, ...(patch.overlay ?? {}) },
+    }
     this.save()
     return this.get()
   }

@@ -5,6 +5,7 @@ import { Layout } from './components/Layout'
 import { NAV_ITEMS } from './config/nav'
 import { DesktopBridge, isDesktop } from './desktop/useDesktop'
 import { AlignPage } from './pages/AlignPage'
+import { OverlayPage } from './pages/OverlayPage'
 
 export default function App() {
   // The packaged desktop app loads from file://, where only hash routing works.
@@ -14,6 +15,8 @@ export default function App() {
       <Router>
         {isDesktop() && <DesktopBridge />}
         <Routes>
+          {/* The always-on-top overlay window renders without the sidebar. */}
+          {isDesktop() && <Route path="/overlay" element={<OverlayPage />} />}
           <Route element={<Layout />}>
             {NAV_ITEMS.map((item) => {
               const Page = item.component

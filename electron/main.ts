@@ -1,12 +1,15 @@
 /**
- * Tarkov Companion desktop shell: window + tray + read-only EFT log watcher.
- * The React app runs in the renderer with contextIsolation; the only bridge is
- * the typed API in preload.ts.
+ * Tarkov Companion desktop shell: main window + tray + overlay window + the
+ * read-only EFT log watcher. The React app runs in the renderer with
+ * contextIsolation; the only bridge is the typed API in preload.ts.
+ *
+ * Nothing here touches the game: the overlay is an ordinary always-on-top
+ * window (works with the game in borderless windowed mode).
  */
-import { BrowserWindow, Menu, Tray, app, dialog, ipcMain, nativeImage, shell } from 'electron'
+import { BrowserWindow, Menu, Tray, app, dialog, globalShortcut, ipcMain, nativeImage, shell } from 'electron'
 import fs from 'node:fs'
 import path from 'node:path'
-import type { DesktopSettings } from '../src/shared/desktop-api'
+import type { DesktopSettings, GameEvent, WipeEvent } from '../src/shared/desktop-api'
 import { detectLogsFolder } from './logs/locator'
 import { LogWatcher } from './logs/watcher'
 import { SettingsStore } from './settings'
@@ -14,6 +17,7 @@ import { SettingsStore } from './settings'
 const DEV_URL = process.env.VITE_DEV_SERVER_URL
 
 let win: BrowserWindow | null = null
+let overlay: BrowserWindow | null = null
 let tray: Tray | null = null
 let quitting = false
 let settings: SettingsStore
@@ -27,13 +31,17 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 function resourcePath(...p: string[]): string {
-  // dist-electron/main.cjs -> project root (dev) or resources/app.asar (prod)
   return path.join(__dirname, '..', ...p)
 }
 
 function appIcon(): Electron.NativeImage {
   const img = nativeImage.createFromPath(resourcePath('build', 'icon.png'))
   return img.isEmpty() ? nativeImage.createEmpty() : img
+}
+
+/** Sends to every open renderer (main + overlay). */
+function broadcast(channel: string, payload: unknown) {
+  for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send(channel, payload)
 }
 
 function bootstrap() {
@@ -43,21 +51,70 @@ function bootstrap() {
   createWindow(!startHidden)
   createTray()
   registerIpc()
+  registerHotkey()
   applyWatcherSettings()
   app.setLoginItemSettings({ openAtLogin: settings.get().startWithWindows, args: ['--minimized'] })
 
-  watcher.on('event', (e) => win?.webContents.send('watcher:event', e))
-  watcher.on('state', (s) => win?.webContents.send('watcher:state', s))
+  watcher.on('event', (e: GameEvent) => {
+    broadcast('watcher:event', e)
+    detectWipe(e)
+  })
+  watcher.on('state', (s) => broadcast('watcher:state', s))
 
   app.on('before-quit', () => {
     quitting = true
     watcher.stop()
+    globalShortcut.unregisterAll()
   })
   app.on('window-all-closed', () => {
-    // Keep running in the tray; "Quit" in the tray menu exits.
     if (process.platform !== 'darwin' && quitting) app.quit()
   })
   app.on('activate', () => showWindow())
+}
+
+// ---------------------------------------------------------------------------
+// Wipe detection: a new profile id, or a jump in the game's major version.
+// ---------------------------------------------------------------------------
+
+function majorVersion(v: string): string {
+  const parts = v.split('.')
+  return parts.slice(0, 2).join('.')
+}
+
+function detectWipe(e: GameEvent) {
+  const s = settings.get()
+  if (e.kind === 'profile') {
+    if (s.knownProfileId && s.knownProfileId !== e.profileId) {
+      const ev: WipeEvent = { reason: 'profile', previous: s.knownProfileId, current: e.profileId }
+      settings.update({ knownProfileId: e.profileId })
+      broadcast('wipe:detected', ev)
+    } else if (!s.knownProfileId) {
+      settings.update({ knownProfileId: e.profileId })
+    }
+  } else if (e.kind === 'gameVersion') {
+    if (s.knownGameVersion && majorVersion(s.knownGameVersion) !== majorVersion(e.version)) {
+      const ev: WipeEvent = { reason: 'version', previous: s.knownGameVersion, current: e.version }
+      settings.update({ knownGameVersion: e.version })
+      broadcast('wipe:detected', ev)
+    } else if (!s.knownGameVersion || s.knownGameVersion !== e.version) {
+      settings.update({ knownGameVersion: e.version })
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Windows
+// ---------------------------------------------------------------------------
+
+function rendererUrl(hash: string): { url?: string; file?: string } {
+  if (DEV_URL) return { url: `${DEV_URL}#${hash}` }
+  return { file: resourcePath('dist', 'index.html') }
+}
+
+function load(w: BrowserWindow, hash: string) {
+  const target = rendererUrl(hash)
+  if (target.url) void w.loadURL(target.url)
+  else void w.loadFile(target.file as string, { hash })
 }
 
 function createWindow(show: boolean) {
@@ -79,6 +136,7 @@ function createWindow(show: boolean) {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      additionalArguments: ['--tc-window=main'],
     },
   })
   if (b.maximized) win.maximize()
@@ -107,12 +165,7 @@ function createWindow(show: boolean) {
     if (/^https?:/i.test(url)) void shell.openExternal(url)
     return { action: 'deny' }
   })
-
-  if (DEV_URL) {
-    void win.loadURL(DEV_URL)
-  } else {
-    void win.loadFile(resourcePath('dist', 'index.html'))
-  }
+  load(win, '/')
 }
 
 function showWindow() {
@@ -121,6 +174,69 @@ function showWindow() {
   if (win.isMinimized()) win.restore()
   win.focus()
 }
+
+/** Small frameless always-on-top window showing the map, timers and item lookup. */
+function toggleOverlay() {
+  if (overlay && !overlay.isDestroyed()) {
+    if (overlay.isVisible()) overlay.hide()
+    else overlay.show()
+    return
+  }
+  const b = settings.get().overlay
+  overlay = new BrowserWindow({
+    x: b.x,
+    y: b.y,
+    width: b.width,
+    height: b.height,
+    minWidth: 320,
+    minHeight: 240,
+    frame: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    resizable: true,
+    title: 'Tarkov Companion overlay',
+    backgroundColor: '#0c0c0b',
+    icon: appIcon(),
+    opacity: settings.get().overlayOpacity,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.cjs'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      additionalArguments: ['--tc-window=overlay'],
+    },
+  })
+  overlay.setAlwaysOnTop(true, 'screen-saver')
+  overlay.setVisibleOnAllWorkspaces(true)
+  const saveBounds = () => {
+    if (overlay && !overlay.isDestroyed()) settings.update({ overlay: overlay.getBounds() })
+  }
+  overlay.on('resize', saveBounds)
+  overlay.on('move', saveBounds)
+  overlay.on('closed', () => {
+    overlay = null
+  })
+  load(overlay, '/overlay')
+}
+
+function applyOverlayOpacity() {
+  if (overlay && !overlay.isDestroyed()) overlay.setOpacity(settings.get().overlayOpacity)
+}
+
+function registerHotkey() {
+  globalShortcut.unregisterAll()
+  const key = settings.get().overlayHotkey
+  if (!key) return
+  try {
+    globalShortcut.register(key, toggleOverlay)
+  } catch {
+    // Invalid accelerator: ignore; the Settings screen shows the current value.
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Tray + settings + IPC
+// ---------------------------------------------------------------------------
 
 function createTray() {
   const img = nativeImage.createFromPath(resourcePath('build', 'tray.png'))
@@ -136,12 +252,8 @@ function refreshTrayMenu() {
   tray.setContextMenu(
     Menu.buildFromTemplate([
       { label: 'Open Tarkov Companion', click: showWindow },
-      {
-        label: paused ? 'Resume log watching' : 'Pause log watching',
-        click: () => {
-          updateSettings({ paused: !settings.get().paused })
-        },
-      },
+      { label: 'Toggle overlay', click: toggleOverlay },
+      { label: paused ? 'Resume log watching' : 'Pause log watching', click: () => updateSettings({ paused: !settings.get().paused }) },
       { type: 'separator' },
       {
         label: 'Quit',
@@ -169,7 +281,10 @@ function updateSettings(patch: Partial<DesktopSettings>): DesktopSettings {
     app.setLoginItemSettings({ openAtLogin: after.startWithWindows, args: ['--minimized'] })
   }
   if (patch.logsPath !== undefined || patch.paused !== undefined) applyWatcherSettings()
-  win?.webContents.send('watcher:state', watcher.getState())
+  if (patch.overlayHotkey !== undefined) registerHotkey()
+  if (patch.overlayOpacity !== undefined) applyOverlayOpacity()
+  broadcast('watcher:state', watcher.getState())
+  broadcast('settings:changed', settings.getPublic())
   return settings.getPublic()
 }
 
@@ -178,6 +293,10 @@ function registerIpc() {
   ipcMain.handle('settings:get', () => settings.getPublic())
   ipcMain.handle('settings:set', (_e, patch: Partial<DesktopSettings>) => updateSettings(patch ?? {}))
   ipcMain.handle('watcher:recent', () => watcher.getRecentEvents())
+  ipcMain.handle('overlay:toggle', () => toggleOverlay())
+  ipcMain.handle('overlay:close', () => {
+    if (overlay && !overlay.isDestroyed()) overlay.hide()
+  })
   ipcMain.handle('watcher:pickFolder', async () => {
     if (!win) return null
     const res = await dialog.showOpenDialog(win, {
@@ -191,7 +310,7 @@ function registerIpc() {
     return picked
   })
   ipcMain.handle('watcher:backfill', async () => {
-    const result = watcher.backfill((p) => win?.webContents.send('watcher:backfillProgress', p))
+    const result = watcher.backfill((p) => broadcast('watcher:backfillProgress', p))
     settings.update({ initialBackfillDone: true })
     const summary = {
       at: new Date().toISOString(),
@@ -207,7 +326,6 @@ function registerIpc() {
       },
     }
     console.log('[backfill]', JSON.stringify(summary))
-    // Also kept on disk for troubleshooting (userData/last-backfill.json).
     try {
       fs.writeFileSync(path.join(app.getPath('userData'), 'last-backfill.json'), JSON.stringify(summary, null, 2))
     } catch {

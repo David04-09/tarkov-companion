@@ -50,6 +50,7 @@ function adaptMaps(data: RawMapsData, t: Translator): GameMap[] {
     normalizedName: m.normalizedName,
     scenePath: m.scenePath ?? null,
     nameId: m.nameId,
+    raidDuration: typeof m.raidDuration === 'number' ? m.raidDuration : 0,
   }))
 }
 

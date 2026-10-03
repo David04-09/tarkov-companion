@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { BackfillProgress, DesktopApi, DesktopSettings, GameEvent, WatcherState } from '../src/shared/desktop-api'
+import type { BackfillProgress, DesktopApi, DesktopSettings, GameEvent, WatcherState, WipeEvent } from '../src/shared/desktop-api'
 
 function subscribe<T>(channel: string, cb: (payload: T) => void): () => void {
   const listener = (_e: Electron.IpcRendererEvent, payload: T) => cb(payload)
@@ -10,6 +10,7 @@ function subscribe<T>(channel: string, cb: (payload: T) => void): () => void {
 const api: DesktopApi = {
   platform: process.platform,
   appVersion: process.env.TC_APP_VERSION ?? '',
+  isOverlay: process.argv.includes('--tc-window=overlay'),
   getState: () => ipcRenderer.invoke('watcher:getState'),
   getSettings: () => ipcRenderer.invoke('settings:get'),
   setSettings: (patch: Partial<DesktopSettings>) => ipcRenderer.invoke('settings:set', patch),
@@ -18,9 +19,13 @@ const api: DesktopApi = {
   getRecentEvents: () => ipcRenderer.invoke('watcher:recent'),
   openLogsFolder: () => ipcRenderer.invoke('watcher:openFolder'),
   openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),
+  toggleOverlay: () => ipcRenderer.invoke('overlay:toggle'),
+  closeOverlay: () => ipcRenderer.invoke('overlay:close'),
   onEvent: (cb) => subscribe<GameEvent>('watcher:event', cb),
   onState: (cb) => subscribe<WatcherState>('watcher:state', cb),
   onBackfillProgress: (cb) => subscribe<BackfillProgress>('watcher:backfillProgress', cb),
+  onWipeDetected: (cb) => subscribe<WipeEvent>('wipe:detected', cb),
+  onSettingsChanged: (cb) => subscribe<DesktopSettings>('settings:changed', cb),
 }
 
 contextBridge.exposeInMainWorld('desktop', api)

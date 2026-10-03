@@ -79,6 +79,19 @@ export interface DesktopSettings {
   /** Set after the first automatic backfill so it only runs once. */
   initialBackfillDone: boolean
   paused: boolean
+  /** Electron accelerator for toggling the overlay window. */
+  overlayHotkey: string
+  /** 0.3 .. 1 */
+  overlayOpacity: number
+  /** Last profile id / game version seen in the logs, for wipe detection. */
+  knownProfileId: string | null
+  knownGameVersion: string | null
+}
+
+export interface WipeEvent {
+  reason: 'profile' | 'version'
+  previous: string | null
+  current: string
 }
 
 export interface BackfillProgress {
@@ -98,6 +111,12 @@ export interface BackfillResult {
 export interface DesktopApi {
   platform: string
   appVersion: string
+  /** True inside the small always-on-top overlay window. */
+  isOverlay: boolean
+  toggleOverlay: () => Promise<void>
+  closeOverlay: () => Promise<void>
+  onWipeDetected: (cb: (e: WipeEvent) => void) => () => void
+  onSettingsChanged: (cb: (s: DesktopSettings) => void) => () => void
   getState: () => Promise<WatcherState>
   getSettings: () => Promise<DesktopSettings>
   setSettings: (patch: Partial<DesktopSettings>) => Promise<DesktopSettings>

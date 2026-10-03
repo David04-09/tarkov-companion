@@ -3,7 +3,65 @@ import { FolderOpen, FolderSearch, History, Loader2, Pause, Play, RotateCcw } fr
 import { useGameData } from '../api/hooks'
 import { formatTimeAgo } from '../lib/format'
 import type { DesktopSettings, GameEvent } from '../shared/desktop-api'
+import { useArchivesStore } from '../store/archives'
+import { useProgressStore } from '../store/progress'
+import { useTimersStore } from './timers'
 import { isDesktop, runBackfill, updateDesktopSettings, useDesktopStore } from './useDesktop'
+import { archiveAndReset } from './wipe'
+
+function TimersSettings() {
+  const sounds = useTimersStore((s) => s.soundsEnabled)
+  const setSounds = useTimersStore((s) => s.setSoundsEnabled)
+  const minutes = useTimersStore((s) => s.scavCooldownMinutes)
+  const setMinutes = useTimersStore((s) => s.setScavCooldownMinutes)
+  return (
+    <section className="space-y-1.5">
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Timers</h3>
+      <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={sounds} onChange={(e) => setSounds(e.target.checked)} className="h-4 w-4" /> Play a short sound at raid start, when the run-through window passes and when the scav cooldown ends</label>
+      <label className="flex items-center gap-2 text-sm">Scav cooldown length <input type="number" min={1} max={90} value={minutes} onChange={(e) => setMinutes(e.target.valueAsNumber)} className="w-16 rounded border border-line bg-surface px-1.5 py-0.5 text-sm" /> minutes</label>
+    </section>
+  )
+}
+
+function ArchivesSettings() {
+  const archives = useArchivesStore((s) => s.archives)
+  const remove = useArchivesStore((s) => s.remove)
+  const importProgress = useProgressStore((s) => s.importProgress)
+  const [confirm, setConfirm] = useState<string | null>(null)
+  return (
+    <section className="space-y-1.5">
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Progress archives</h3>
+      <p className="text-xs text-ink-muted">Snapshots taken when a wipe was detected, or by hand. Restoring replaces your current progress.</p>
+      <button
+        type="button"
+        onClick={() => {
+          if (confirm !== 'new') {
+            setConfirm('new')
+            return
+          }
+          archiveAndReset(`Manual · ${new Date().toLocaleDateString()}`)
+          setConfirm(null)
+        }}
+        onBlur={() => setConfirm(null)}
+        className={`btn ${confirm === 'new' ? 'border-danger text-danger' : ''}`}
+      >
+        {confirm === 'new' ? 'Click again: archive and reset quests' : 'Archive now and start fresh'}
+      </button>
+      {archives.length > 0 && (
+        <ul className="space-y-1 text-xs">
+          {archives.map((a) => (
+            <li key={a.id} className="flex flex-wrap items-center gap-2 rounded border border-line bg-surface px-2 py-1">
+              <span className="min-w-0 flex-1 truncate">{a.label}</span>
+              <span className="text-ink-dim">PvP {a.progress.profiles.regular.completedTaskIds.length} · PvE {a.progress.profiles.pve.completedTaskIds.length} done</span>
+              <button type="button" onClick={() => importProgress(a.progress)} className="underline hover:text-accent">Restore</button>
+              <button type="button" onClick={() => remove(a.id)} className="underline hover:text-danger">Delete</button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  )
+}
 
 function describeEvent(e: GameEvent, taskName: (id: string) => string): string {
   switch (e.kind) {
@@ -220,6 +278,36 @@ export function DesktopSettingsSection() {
           )}
         </div>
       </section>
+
+      <section className="space-y-2">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Overlay window</h3>
+        <p className="text-xs text-ink-muted">
+          A small always-on-top window with the current map, timers and item lookup. It is an ordinary window: use the game in
+          borderless windowed mode so it can sit on top. It never interacts with the game process.
+        </p>
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <button type="button" onClick={() => void window.desktop?.toggleOverlay()} className="btn">Show / hide overlay</button>
+          <label className="flex items-center gap-1.5">
+            Hotkey
+            <input
+              type="text"
+              defaultValue={settings?.overlayHotkey ?? 'Control+Shift+T'}
+              onBlur={(e) => e.target.value.trim() && set({ overlayHotkey: e.target.value.trim() })}
+              aria-label="Overlay hotkey"
+              className="w-40 rounded border border-line bg-surface px-2 py-1 font-mono text-xs"
+            />
+          </label>
+          <label className="flex items-center gap-1.5">
+            Opacity
+            <input type="range" min={0.3} max={1} step={0.05} value={settings?.overlayOpacity ?? 0.9} onChange={(e) => set({ overlayOpacity: Number(e.target.value) })} aria-label="Overlay opacity" />
+            {Math.round((settings?.overlayOpacity ?? 0.9) * 100)}%
+          </label>
+        </div>
+        <p className="text-[11px] text-ink-dim">Hotkey format: Electron accelerator, e.g. Control+Shift+T or Alt+F2. Position and size are remembered.</p>
+      </section>
+
+      <TimersSettings />
+      <ArchivesSettings />
 
       <section className="space-y-1">
         <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">About</h3>
