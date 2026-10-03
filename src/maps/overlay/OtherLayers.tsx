@@ -23,13 +23,13 @@ const Extracts = memo(function Extracts({ details, layer, activeFloor, pmc, scav
     <>
       {details.extracts
         .filter((e) => (e.faction === 'scav' ? scav : pmc))
-        .map((e) => {
+        .map((e, i) => {
           const color =
             e.faction === 'pmc' ? LAYER_COLORS.extractPmc : e.faction === 'scav' ? LAYER_COLORS.extractScav : LAYER_COLORS.extractShared
           const dim = hasFloors && floorForPosition(layer, e.position) !== activeFloor
           const label = `${e.name} · ${e.faction === 'pmc' ? 'PMC' : e.faction === 'scav' ? 'Scav' : 'PMC & Scav'} extract`
           return (
-            <Fragment key={e.id}>
+            <Fragment key={`${e.id}:${i}`}>
               {e.outline.length > 2 && (
                 <Polygon
                   positions={toLatLngs(e.outline)}
@@ -54,12 +54,12 @@ const Transits = memo(function Transits({ details, layer, activeFloor, maps }: C
   const hasFloors = layerHasFloorHeights(layer)
   return (
     <>
-      {details.transits.map((t) => {
+      {details.transits.map((t, i) => {
         const target = maps.find((m) => m.id === t.targetMapId)?.name
         const dim = hasFloors && floorForPosition(layer, t.position) !== activeFloor
         const label = `${t.name}${target ? ` → ${target}` : ''}`
         return (
-          <Fragment key={t.id}>
+          <Fragment key={`${t.id}:${i}`}>
             {t.outline.length > 2 && (
               <Polygon
                 positions={toLatLngs(t.outline)}

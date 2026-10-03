@@ -8,13 +8,18 @@ import { Trash2, Undo2 } from 'lucide-react'
 import { gameDistanceMeters } from '../projection'
 import { useDrawingsStore, type Drawing, type DrawingShape, type LatLngTuple } from '../../store/drawings'
 
+// Only layers that opt in (the user's drawings) get Geoman handles; overlay markers stay untouched.
+L.PM.setOptIn(true)
+
 const COLORS = ['#f9c74f', '#f94144', '#4cc9f0', '#90be6d', '#b5179e', '#ffffff']
 const MAX_HISTORY = 30
 
 /** Layers created by the route planner carry this flag so they are not persisted as drawings. */
 export const ROUTE_LAYER_FLAG = '__tcRoute'
+/** Set on layers the user drew (or we restored); everything else on the map is left alone. */
+const DRAWING_FLAG = '__tcDrawing'
 
-type AnyLayer = L.Layer & { [ROUTE_LAYER_FLAG]?: boolean; __tcId?: string; options: L.PathOptions & { textMarker?: boolean; text?: string } }
+type AnyLayer = L.Layer & { [ROUTE_LAYER_FLAG]?: boolean; [DRAWING_FLAG]?: boolean; __tcId?: string; options: L.PathOptions & { textMarker?: boolean; text?: string } }
 
 const tuple = (ll: L.LatLng): LatLngTuple => [ll.lat, ll.lng]
 
@@ -57,7 +62,7 @@ function serialize(layer: AnyLayer): Drawing | null {
 }
 
 function deserialize(d: Drawing): L.Layer | null {
-  const opts: L.PathOptions = { color: d.color, weight: d.weight, fillColor: d.color, fillOpacity: 0.15 }
+  const opts: L.PathOptions & { pmIgnore?: boolean } = { color: d.color, weight: d.weight, fillColor: d.color, fillOpacity: 0.15, pmIgnore: false }
   const s = d.shape
   let layer: L.Layer | null = null
   switch (s.type) {
@@ -74,13 +79,16 @@ function deserialize(d: Drawing): L.Layer | null {
       layer = L.polyline(s.latlngs, opts)
       break
     case 'marker':
-      layer = L.marker(s.latlng)
+      layer = L.marker(s.latlng, { pmIgnore: false } as L.MarkerOptions)
       break
     case 'text':
-      layer = L.marker(s.latlng, { textMarker: true, text: s.text } as L.MarkerOptions)
+      layer = L.marker(s.latlng, { textMarker: true, text: s.text, pmIgnore: false } as L.MarkerOptions)
       break
   }
-  if (layer) (layer as AnyLayer).__tcId = d.id
+  if (layer) {
+    ;(layer as AnyLayer).__tcId = d.id
+    ;(layer as AnyLayer)[DRAWING_FLAG] = true
+  }
   return layer
 }
 
@@ -103,8 +111,7 @@ export function DrawingLayer({ storageKey }: { storageKey: string }) {
   const persist = () => {
     if (loading.current) return
     const list: Drawing[] = []
-    for (const layer of map.pm.getGeomanLayers() as AnyLayer[]) {
-      if (layer[ROUTE_LAYER_FLAG]) continue
+    for (const layer of drawingLayers()) {
       const d = serialize(layer)
       if (d) list.push(d)
     }
@@ -115,9 +122,12 @@ export function DrawingLayer({ storageKey }: { storageKey: string }) {
     setDrawings(storageKey, list)
   }
 
+  /** Only the user's drawings: quest/extract/spawn markers also get a Geoman `pm` instance and must not be touched. */
+  const drawingLayers = () => (map.pm.getGeomanLayers() as AnyLayer[]).filter((l) => l[DRAWING_FLAG] && !l[ROUTE_LAYER_FLAG])
+
   const loadFromStore = (list: Drawing[]) => {
     loading.current = true
-    for (const layer of map.pm.getGeomanLayers() as AnyLayer[]) if (!layer[ROUTE_LAYER_FLAG]) layer.remove()
+    for (const layer of drawingLayers()) layer.remove()
     for (const d of list) {
       const layer = deserialize(d)
       if (!layer) continue
@@ -139,7 +149,8 @@ export function DrawingLayer({ storageKey }: { storageKey: string }) {
     map.pm.setGlobalOptions({ continueDrawing: false })
 
     const onCreate = (e: { layer: L.Layer }) => {
-      const layer = e.layer
+      const layer = e.layer as AnyLayer
+      layer[DRAWING_FLAG] = true
       if (layer instanceof L.Polyline && !(layer instanceof L.Polygon)) bindLength(layer)
       layer.on('pm:edit pm:dragend pm:textchange pm:markerdragend', persist)
       persist()
@@ -151,15 +162,13 @@ export function DrawingLayer({ storageKey }: { storageKey: string }) {
     history.current = []
     setHistoryLen(0)
     loadFromStore(useDrawingsStore.getState().byKey[storageKey] ?? [])
-    for (const layer of map.pm.getGeomanLayers() as AnyLayer[]) {
-      if (!layer[ROUTE_LAYER_FLAG]) layer.on('pm:edit pm:dragend pm:textchange pm:markerdragend', persist)
-    }
+    for (const layer of drawingLayers()) layer.on('pm:edit pm:dragend pm:textchange pm:markerdragend', persist)
 
     return () => {
       map.off('pm:create', onCreate)
       map.off('pm:remove', onRemove)
       map.pm.removeControls()
-      for (const layer of map.pm.getGeomanLayers() as AnyLayer[]) if (!layer[ROUTE_LAYER_FLAG]) layer.remove()
+      for (const layer of drawingLayers()) layer.remove()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, storageKey])

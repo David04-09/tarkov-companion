@@ -27,6 +27,8 @@ export interface SpawnModel {
 }
 
 const GOONS = new Set(['knight', 'big-pipe', 'birdeye'])
+/** PvE lists AI PMC squads as "bosses" (bear/usec, 50 %); they are not bosses and have no positions. */
+const AI_PMC = new Set(['bear', 'usec'])
 
 function groupOf(normalizedName: string): SpawnGroup {
   if (GOONS.has(normalizedName)) return 'goons'
@@ -50,6 +52,7 @@ export function buildSpawnModel(data: GameData, mapId: string): SpawnModel {
   const byKey = new Map<string, BossEntry>()
   for (const b of details?.bosses ?? []) {
     const key = b.normalizedName ?? b.mobId ?? 'boss'
+    if (AI_PMC.has(key)) continue
     const group = groupOf(key)
     let e = byKey.get(key)
     if (!e) {

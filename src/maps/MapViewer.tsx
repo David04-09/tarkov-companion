@@ -258,6 +258,7 @@ export function MapViewer({ mapKey, layer, floorName, affineOverride, children }
         wheelPxPerZoomLevel={80}
         attributionControl={false}
         preferCanvas
+        pmIgnore={false}
         className="h-full w-full !bg-[#0a0a09]"
       >
         <Imagery

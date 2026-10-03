@@ -1,6 +1,6 @@
 import { Fragment, memo, useMemo, useState } from 'react'
 import L from 'leaflet'
-import { CircleMarker, Marker, Polygon, Popup, Tooltip, useMap, useMapEvents } from 'react-leaflet'
+import { CircleMarker, Marker, Popup, Tooltip, useMap, useMapEvents } from 'react-leaflet'
 import type { Position } from '../../api/types'
 import { type BossEntry, type SpawnModel, spawnKey, toggleKeyFor } from './spawns'
 
@@ -49,34 +49,20 @@ function bossIcon(e: BossEntry): L.DivIcon {
   return icon
 }
 
-/** Convex hull (monotone chain) of a few points, in game coordinates. */
-function hull(points: Position[]): Position[] {
-  const pts = [...points].sort((a, b) => a.x - b.x || a.z - b.z)
-  if (pts.length < 3) return pts
-  const cross = (o: Position, a: Position, b: Position) => (a.x - o.x) * (b.z - o.z) - (a.z - o.z) * (b.x - o.x)
-  const lower: Position[] = []
-  for (const p of pts) {
-    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop()
-    lower.push(p)
-  }
-  const upper: Position[] = []
-  for (const p of [...pts].reverse()) {
-    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop()
-    upper.push(p)
-  }
-  return [...lower.slice(0, -1), ...upper.slice(0, -1)]
-}
-
-/** Pads a hull outwards from its centroid so a tight cluster still shows as an area. */
-function padded(points: Position[], meters: number): Position[] {
+/** The listed point closest to the group's centre: where the portrait goes. */
+function medoid(points: Position[]): Position {
   const cx = points.reduce((a, p) => a + p.x, 0) / points.length
   const cz = points.reduce((a, p) => a + p.z, 0) / points.length
-  return points.map((p) => {
-    const dx = p.x - cx
-    const dz = p.z - cz
-    const d = Math.hypot(dx, dz) || 1
-    return { x: p.x + (dx / d) * meters, y: p.y, z: p.z + (dz / d) * meters }
-  })
+  let best = points[0]
+  let bestD = Infinity
+  for (const p of points) {
+    const d = (p.x - cx) ** 2 + (p.z - cz) ** 2
+    if (d < bestD) {
+      bestD = d
+      best = p
+    }
+  }
+  return best
 }
 
 function BossPopup({ e, locationName, locationChance }: { e: BossEntry; locationName: string; locationChance: number }) {
@@ -110,19 +96,15 @@ const BossMarkers = memo(function BossMarkers({ entry, guards }: { entry: BossEn
       {entry.spawns.map((spawn, si) =>
         spawn.locations.map((loc, li) => {
           if (loc.positions.length === 0) return null
-          const centre = loc.positions.reduce((a, p) => ({ x: a.x + p.x / loc.positions.length, y: 0, z: a.z + p.z / loc.positions.length }), { x: 0, y: 0, z: 0 })
-          const area = loc.positions.length >= 3 ? padded(hull(loc.positions), 8) : null
+          const centre = medoid(loc.positions)
+          const title = `${entry.name} · ${loc.name} · ${Math.round(loc.chance * 100)}% of spawns`
           return (
             <Fragment key={`${si}:${li}`}>
-              {area ? (
-                <Polygon positions={area.map(ll)} pathOptions={{ color, weight: 1.5, opacity: 0.8, fillColor: color, fillOpacity: 0.18 }}>
-                  <Tooltip sticky>{`${entry.name} · ${loc.name} · ${Math.round(loc.chance * 100)}%`}</Tooltip>
-                </Polygon>
-              ) : (
-                <CircleMarker center={ll(centre)} radius={22} pathOptions={{ color, weight: 1.5, opacity: 0.8, fillColor: color, fillOpacity: 0.15 }}>
-                  <Tooltip sticky>{`${entry.name} · ${loc.name} · ${Math.round(loc.chance * 100)}%`}</Tooltip>
+              {loc.positions.map((p, pi) => (
+                <CircleMarker key={pi} center={ll(p)} radius={p === centre ? 26 : 9} pathOptions={{ color, weight: p === centre ? 1.5 : 1, opacity: 0.85, fillColor: color, fillOpacity: p === centre ? 0.12 : 0.3 }}>
+                  <Tooltip sticky>{`${title} · spawn point ${pi + 1}/${loc.positions.length}`}</Tooltip>
                 </CircleMarker>
-              )}
+              ))}
               <Marker position={ll(centre)} icon={bossIcon(entry)} zIndexOffset={200}>
                 <Tooltip direction="top" offset={[0, -17]}>{`${entry.name} · ${Math.round(entry.spawnChance * 100)}%`}</Tooltip>
                 <Popup maxWidth={320}>
