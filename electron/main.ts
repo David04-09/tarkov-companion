@@ -156,12 +156,18 @@ function createWindow(show: boolean) {
     if (settings.get().minimizeToTray) {
       e.preventDefault()
       win?.hide()
+      // Tell people once where the window went, so closing never looks like a crash.
+      if (!settings.get().trayNoticeShown && tray) {
+        tray.displayBalloon({
+          title: 'Tarkov Companion is still running',
+          content: 'It keeps tracking your quests from the tray. Right-click the tray icon to open it again or quit.',
+          iconType: 'info',
+        })
+        settings.update({ trayNoticeShown: true })
+      }
     } else {
       quitting = true
     }
-  })
-  win.on('minimize', () => {
-    if (settings.get().minimizeToTray) win?.hide()
   })
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:/i.test(url)) void shell.openExternal(url)

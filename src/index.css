@@ -166,6 +166,11 @@ select option {
   border-right-color: var(--color-line);
 }
 
+/* While a Geoman draw tool is active, markers must not swallow the clicks. */
+.tc-drawing .leaflet-marker-pane .leaflet-marker-icon:not(.leaflet-pm-draggable):not(.marker-icon) {
+  pointer-events: none;
+}
+
 /* ---- Loot clusters, route pins, Geoman theming ------------------------- */
 .tc-cluster {
   display: flex;

@@ -253,7 +253,7 @@ export function DesktopSettingsSection() {
 
         <div className="space-y-1.5">
           <Toggle label="Open the map when a raid starts" value={settings?.openMapOnRaid ?? true} onChange={(v) => set({ openMapOnRaid: v })} />
-          <Toggle label="Minimize to tray" hint="Closing or minimizing hides the window; use the tray icon to reopen or quit." value={settings?.minimizeToTray ?? true} onChange={(v) => set({ minimizeToTray: v })} />
+          <Toggle label="Close to tray" hint="The X button hides the window and keeps quest tracking running; use the tray icon to reopen or quit. Minimizing works as normal." value={settings?.minimizeToTray ?? true} onChange={(v) => set({ minimizeToTray: v })} />
           <Toggle label="Start with Windows" value={settings?.startWithWindows ?? false} onChange={(v) => set({ startWithWindows: v })} />
           <Toggle label="Start minimized to tray" value={settings?.startMinimized ?? false} onChange={(v) => set({ startMinimized: v })} />
         </div>

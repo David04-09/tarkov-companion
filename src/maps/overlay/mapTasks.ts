@@ -108,7 +108,10 @@ export function buildMapTasks(data: GameData, mapId: string, layer: BaseLayerCon
         }),
       )
 
-      const anywhere = placements.length === 0 && onThisMap
+      // Objectives without a map in the data (e.g. hand-ins, quest items) count for the task's own map.
+      const taskOnThisMap = task.map?.id === mapId
+      const unlocated = placements.length === 0 && o.maps.length === 0 && taskOnThisMap
+      const anywhere = placements.length === 0 && (onThisMap || unlocated)
       if (placements.length === 0 && !anywhere) continue
 
       let keyIds: string[]

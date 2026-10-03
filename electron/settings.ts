@@ -12,6 +12,8 @@ export interface WindowBounds {
 }
 
 export interface StoredSettings extends DesktopSettings {
+  /** The one-time "still running in the tray" balloon was shown. */
+  trayNoticeShown: boolean
   window: WindowBounds
   overlay: WindowBounds
 }
@@ -29,6 +31,7 @@ export const DEFAULT_SETTINGS: StoredSettings = {
   knownProfileId: null,
   knownGameVersion: null,
   setupDone: false,
+  trayNoticeShown: false,
   window: { width: 1360, height: 860 },
   overlay: { width: 560, height: 480 },
 }
@@ -61,7 +64,7 @@ export class SettingsStore {
 
   /** The renderer-facing subset (no window bounds). */
   getPublic(): DesktopSettings {
-    const { window: _w, overlay: _o, ...rest } = this.data
+    const { window: _w, overlay: _o, trayNoticeShown: _t, ...rest } = this.data
     return rest
   }
 

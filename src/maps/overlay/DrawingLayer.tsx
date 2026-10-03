@@ -123,7 +123,16 @@ export function DrawingLayer({ storageKey }: { storageKey: string }) {
   }
 
   /** Only the user's drawings: quest/extract/spawn markers also get a Geoman `pm` instance and must not be touched. */
-  const drawingLayers = () => (map.pm.getGeomanLayers() as AnyLayer[]).filter((l) => l[DRAWING_FLAG] && !l[ROUTE_LAYER_FLAG])
+  const drawingLayers = () => {
+    // Our own flag, not getGeomanLayers(): in opt-in mode freshly drawn shapes are not
+    // registered with Geoman until re-initialised, so they would silently not be saved.
+    const out: AnyLayer[] = []
+    map.eachLayer((layer) => {
+      const l = layer as AnyLayer
+      if (l[DRAWING_FLAG] && !l[ROUTE_LAYER_FLAG]) out.push(l)
+    })
+    return out
+  }
 
   const loadFromStore = (list: Drawing[]) => {
     loading.current = true
@@ -151,6 +160,9 @@ export function DrawingLayer({ storageKey }: { storageKey: string }) {
     const onCreate = (e: { layer: L.Layer }) => {
       const layer = e.layer as AnyLayer
       layer[DRAWING_FLAG] = true
+      // Opt the new shape into Geoman so edit/drag/remove work on it.
+      ;(layer.options as { pmIgnore?: boolean }).pmIgnore = false
+      L.PM.reInitLayer(layer)
       if (layer instanceof L.Polyline && !(layer instanceof L.Polygon)) bindLength(layer)
       layer.on('pm:edit pm:dragend pm:textchange pm:markerdragend', persist)
       persist()
@@ -158,6 +170,28 @@ export function DrawingLayer({ storageKey }: { storageKey: string }) {
     const onRemove = () => persist()
     map.on('pm:create', onCreate)
     map.on('pm:remove', onRemove)
+
+    // While a draw tool is active, every other layer must let clicks through:
+    // dense maps (Streets) are covered in loot/spawn dots on the canvas renderer,
+    // and a click on one of those never reaches Geoman, so nothing gets drawn.
+    const muted: L.Path[] = []
+    const container = map.getContainer()
+    const onDrawStart = () => {
+      container.classList.add('tc-drawing')
+      map.eachLayer((layer) => {
+        const l = layer as AnyLayer
+        if (layer instanceof L.Path && !l[DRAWING_FLAG] && layer.options.interactive !== false) {
+          layer.options.interactive = false
+          muted.push(layer)
+        }
+      })
+    }
+    const onDrawEnd = () => {
+      container.classList.remove('tc-drawing')
+      for (const layer of muted.splice(0)) layer.options.interactive = true
+    }
+    map.on('pm:drawstart', onDrawStart)
+    map.on('pm:drawend', onDrawEnd)
 
     history.current = []
     setHistoryLen(0)
@@ -167,6 +201,9 @@ export function DrawingLayer({ storageKey }: { storageKey: string }) {
     return () => {
       map.off('pm:create', onCreate)
       map.off('pm:remove', onRemove)
+      map.off('pm:drawstart', onDrawStart)
+      map.off('pm:drawend', onDrawEnd)
+      onDrawEnd()
       map.pm.removeControls()
       for (const layer of drawingLayers()) layer.remove()
     }
