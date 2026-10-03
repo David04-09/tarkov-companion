@@ -30,3 +30,6 @@ public/tiles/
 # Desktop build outputs
 dist-electron/
 release/
+
+# The EFT log-watcher source lives in electron/logs (not log output)
+!electron/logs/
