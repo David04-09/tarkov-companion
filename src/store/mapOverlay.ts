@@ -2,25 +2,15 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { TASK_PALETTE } from '../maps/overlay/palette'
 
-export type OverlayLayerId =
-  | 'extractsPmc'
-  | 'extractsScav'
-  | 'transits'
-  | 'locks'
-  | 'spawns'
-  | 'bosses'
-  | 'caches'
-  | 'containers'
+export type OverlayLayerId = 'extractsPmc' | 'extractsScav' | 'transits' | 'locks' | 'spawns' | 'bosses'
 
 export const OVERLAY_LAYERS: { id: OverlayLayerId; label: string; hint?: string }[] = [
   { id: 'extractsPmc', label: 'PMC extracts', hint: 'PMC and shared extracts' },
   { id: 'extractsScav', label: 'Scav extracts' },
   { id: 'transits', label: 'Transits' },
-  { id: 'locks', label: 'Locked doors & trunks', hint: 'Hover for the key name' },
+  { id: 'locks', label: 'Locked doors & trunks', hint: 'Green = you own the key' },
   { id: 'spawns', label: 'Player spawns' },
   { id: 'bosses', label: 'Boss spawns' },
-  { id: 'caches', label: 'Caches & stashes' },
-  { id: 'containers', label: 'Loot containers', hint: 'Can be hundreds of dots' },
 ]
 
 const DEFAULT_LAYERS: Record<OverlayLayerId, boolean> = {
@@ -30,8 +20,6 @@ const DEFAULT_LAYERS: Record<OverlayLayerId, boolean> = {
   locks: false,
   spawns: false,
   bosses: false,
-  caches: false,
-  containers: false,
 }
 
 export interface MapOverlayState {
@@ -40,6 +28,8 @@ export interface MapOverlayState {
   /** Palette index per checked task; recycled when a task is unchecked. */
   colorIndexByTask: Record<string, number>
   layers: Record<OverlayLayerId, boolean>
+  /** Loot container groups (by container name) that are switched on. */
+  lootGroups: Record<string, boolean>
   panelCollapsed: boolean
   /** Set by the panel's Focus button; consumed by the map. */
   focusRequest: { taskId: string; nonce: number } | null
@@ -47,6 +37,8 @@ export interface MapOverlayState {
   setTasksChecked: (taskIds: string[], checked: boolean) => void
   clearChecked: () => void
   toggleLayer: (id: OverlayLayerId) => void
+  setLootGroup: (name: string, on: boolean) => void
+  setLootGroups: (names: string[], on: boolean) => void
   setPanelCollapsed: (collapsed: boolean) => void
   requestFocus: (taskId: string) => void
 }
@@ -64,7 +56,6 @@ function assignColors(checked: string[], existing: Record<string, number>): Reco
     if (out[id] !== undefined) continue
     let i = 0
     while (used.has(i) && i < TASK_PALETTE.length) i++
-    // More tasks than colours: wrap around (still deterministic).
     if (i >= TASK_PALETTE.length) i = checked.indexOf(id) % TASK_PALETTE.length
     out[id] = i
     used.add(i)
@@ -78,6 +69,7 @@ export const useMapOverlayStore = create<MapOverlayState>()(
       checkedTaskIds: [],
       colorIndexByTask: {},
       layers: DEFAULT_LAYERS,
+      lootGroups: {},
       panelCollapsed: false,
       focusRequest: null,
       setTaskChecked: (taskId, checked) =>
@@ -99,24 +91,38 @@ export const useMapOverlayStore = create<MapOverlayState>()(
         }),
       clearChecked: () => set({ checkedTaskIds: [], colorIndexByTask: {} }),
       toggleLayer: (id) => set((s) => ({ layers: { ...s.layers, [id]: !s.layers[id] } })),
+      setLootGroup: (name, on) => set((s) => ({ lootGroups: { ...s.lootGroups, [name]: on } })),
+      setLootGroups: (names, on) =>
+        set((s) => {
+          const next = { ...s.lootGroups }
+          for (const n of names) next[n] = on
+          return { lootGroups: next }
+        }),
       setPanelCollapsed: (panelCollapsed) => set({ panelCollapsed }),
       requestFocus: (taskId) => set({ focusRequest: { taskId, nonce: Date.now() } }),
     }),
     {
       name: 'tarkov-companion-map-overlay',
-      version: 1,
+      version: 2,
+      migrate: (persisted) => persisted as MapOverlayState,
       partialize: (s) => ({
         checkedTaskIds: s.checkedTaskIds,
         colorIndexByTask: s.colorIndexByTask,
         layers: s.layers,
+        lootGroups: s.lootGroups,
         panelCollapsed: s.panelCollapsed,
       }),
       merge: (persisted, current) => {
-        const p = (persisted ?? {}) as Partial<MapOverlayState>
+        const p = (persisted ?? {}) as Partial<MapOverlayState> & { layers?: Record<string, boolean> }
+        const layers: Record<OverlayLayerId, boolean> = { ...DEFAULT_LAYERS }
+        for (const k of Object.keys(DEFAULT_LAYERS) as OverlayLayerId[]) if (typeof p.layers?.[k] === 'boolean') layers[k] = p.layers[k]
         return {
           ...current,
-          ...p,
-          layers: { ...DEFAULT_LAYERS, ...(p.layers ?? {}) },
+          checkedTaskIds: p.checkedTaskIds ?? [],
+          colorIndexByTask: p.colorIndexByTask ?? {},
+          lootGroups: p.lootGroups ?? {},
+          panelCollapsed: p.panelCollapsed ?? false,
+          layers,
           focusRequest: null,
         }
       },

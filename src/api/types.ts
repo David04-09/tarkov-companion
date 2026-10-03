@@ -301,6 +301,8 @@ export interface RawMap {
   spawns?: RawSpawn[]
   bosses?: RawBossSpawn[]
   lootContainers?: RawLootContainerSpawn[]
+  /** Loose loot spawn points with the item ids that can appear there. */
+  lootLoose?: { position: Position; items: string[] }[]
   locks?: RawLock[]
   hazards?: RawHazard[]
 }
@@ -603,6 +605,7 @@ export interface MapDetails {
   spawns: MapSpawn[]
   bosses: MapBoss[]
   lootContainers: { containerId: string; position: Position }[]
+  lootLoose: { position: Position; itemIds: string[] }[]
   locks: MapLock[]
   hazards: MapHazard[]
 }

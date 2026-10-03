@@ -88,6 +88,9 @@ function adaptMapDetails(m: RawMap, t: Translator): MapDetails {
       })),
     })),
     lootContainers: (m.lootContainers ?? []).map((c) => ({ containerId: c.lootContainer, position: c.position })),
+    lootLoose: (m.lootLoose ?? [])
+      .filter((l) => l && l.position)
+      .map((l) => ({ position: l.position, itemIds: Array.isArray(l.items) ? l.items : [] })),
     locks: (m.locks ?? []).map((l) => ({
       id: l.id,
       lockType: l.lockType,

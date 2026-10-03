@@ -11,8 +11,6 @@ import { LAYER_COLORS } from './palette'
 const toLatLngs = (outline: Position[]) => outline.map((p) => L.latLng(p.z, p.x))
 const ll = (p: Position) => L.latLng(p.z, p.x)
 
-const CACHE_RE = /cache|stash/i
-
 interface CommonProps {
   details: MapDetails
   layer: BaseLayerConfig
@@ -158,38 +156,6 @@ const Bosses = memo(function Bosses({ details, mobNames }: { details: MapDetails
   )
 })
 
-const Containers = memo(function Containers({
-  details,
-  names,
-  cachesOnly,
-}: {
-  details: MapDetails
-  names: Record<string, string>
-  cachesOnly: boolean
-}) {
-  const list = useMemo(
-    () => details.lootContainers.filter((c) => CACHE_RE.test(names[c.containerId] ?? '') === cachesOnly),
-    [details, names, cachesOnly],
-  )
-  const color = cachesOnly ? LAYER_COLORS.cache : LAYER_COLORS.container
-  return (
-    <>
-      {list.map((c, i) => (
-        <CircleMarker
-          key={i}
-          center={ll(c.position)}
-          radius={cachesOnly ? 4 : 2.5}
-          pathOptions={{ color: '#111', weight: cachesOnly ? 1 : 0.5, fillColor: color, fillOpacity: cachesOnly ? 0.95 : 0.7 }}
-        >
-          <Tooltip direction="top" offset={[0, -4]}>
-            {names[c.containerId] ?? 'Container'}
-          </Tooltip>
-        </CircleMarker>
-      ))}
-    </>
-  )
-})
-
 export interface OtherLayersProps {
   data: GameData
   mapId: string
@@ -214,8 +180,6 @@ export function OtherLayers({ data, mapId, layer, activeFloor, toggles, items, o
       {toggles.locks && <Locks details={details} layer={layer} activeFloor={activeFloor} items={items} ownedKeyIds={ownedKeyIds} />}
       {toggles.spawns && <Spawns details={details} />}
       {toggles.bosses && <Bosses details={details} mobNames={data.mobNames} />}
-      {toggles.caches && <Containers details={details} names={data.lootContainerNames} cachesOnly />}
-      {toggles.containers && <Containers details={details} names={data.lootContainerNames} cachesOnly={false} />}
     </>
   )
 }

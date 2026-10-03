@@ -165,3 +165,43 @@ select option {
 .leaflet-tooltip-right:before {
   border-right-color: var(--color-line);
 }
+
+/* ---- Loot clusters, route pins, Geoman theming ------------------------- */
+.tc-cluster {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  background: color-mix(in srgb, var(--c, #9a9385) 70%, #0c0c0b);
+  border: 2px solid var(--c, #9a9385);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.7);
+}
+.tc-route-pin {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 9999px;
+  background: #ffd166;
+  border: 2px solid #0c0c0b;
+  color: #0c0c0b;
+  font-size: 12px;
+  font-weight: 700;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.7);
+  cursor: grab;
+}
+.leaflet-pm-toolbar .leaflet-buttons-control-button,
+.leaflet-pm-toolbar .leaflet-pm-actions-container .leaflet-pm-action {
+  background-color: var(--color-surface-2) !important;
+  color: var(--color-ink) !important;
+}
+.leaflet-pm-toolbar .button-container.active .leaflet-buttons-control-button {
+  background-color: var(--color-accent) !important;
+}
+.leaflet-pm-toolbar .leaflet-buttons-control-button:hover {
+  background-color: var(--color-surface-3) !important;
+}
