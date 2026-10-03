@@ -2,15 +2,13 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { TASK_PALETTE } from '../maps/overlay/palette'
 
-export type OverlayLayerId = 'extractsPmc' | 'extractsScav' | 'transits' | 'locks' | 'spawns' | 'bosses'
+export type OverlayLayerId = 'extractsPmc' | 'extractsScav' | 'transits' | 'locks'
 
 export const OVERLAY_LAYERS: { id: OverlayLayerId; label: string; hint?: string }[] = [
   { id: 'extractsPmc', label: 'PMC extracts', hint: 'PMC and shared extracts' },
   { id: 'extractsScav', label: 'Scav extracts' },
   { id: 'transits', label: 'Transits' },
   { id: 'locks', label: 'Locked doors & trunks', hint: 'Green = you own the key' },
-  { id: 'spawns', label: 'Player spawns' },
-  { id: 'bosses', label: 'Boss spawns' },
 ]
 
 const DEFAULT_LAYERS: Record<OverlayLayerId, boolean> = {
@@ -18,9 +16,13 @@ const DEFAULT_LAYERS: Record<OverlayLayerId, boolean> = {
   extractsScav: false,
   transits: true,
   locks: false,
-  spawns: false,
-  bosses: false,
 }
+
+/**
+ * Spawn toggle keys: "boss:<mob>" / "guards:<mob>" per boss, plus the groups
+ * "goons", "cultists", "raiders", "rogues", "sniper", "pmc", "scav".
+ */
+export type SpawnToggleKey = string
 
 export interface MapOverlayState {
   /** Tasks shown on the map (global: survives switching maps). */
@@ -30,6 +32,7 @@ export interface MapOverlayState {
   layers: Record<OverlayLayerId, boolean>
   /** Loot container groups (by container name) that are switched on. */
   lootGroups: Record<string, boolean>
+  spawnToggles: Record<SpawnToggleKey, boolean>
   panelCollapsed: boolean
   /** Set by the panel's Focus button; consumed by the map. */
   focusRequest: { taskId: string; nonce: number } | null
@@ -39,6 +42,8 @@ export interface MapOverlayState {
   toggleLayer: (id: OverlayLayerId) => void
   setLootGroup: (name: string, on: boolean) => void
   setLootGroups: (names: string[], on: boolean) => void
+  setSpawnToggle: (key: SpawnToggleKey, on: boolean) => void
+  setSpawnToggles: (keys: SpawnToggleKey[], on: boolean) => void
   setPanelCollapsed: (collapsed: boolean) => void
   requestFocus: (taskId: string) => void
 }
@@ -70,6 +75,7 @@ export const useMapOverlayStore = create<MapOverlayState>()(
       colorIndexByTask: {},
       layers: DEFAULT_LAYERS,
       lootGroups: {},
+      spawnToggles: {},
       panelCollapsed: false,
       focusRequest: null,
       setTaskChecked: (taskId, checked) =>
@@ -98,18 +104,26 @@ export const useMapOverlayStore = create<MapOverlayState>()(
           for (const n of names) next[n] = on
           return { lootGroups: next }
         }),
+      setSpawnToggle: (key, on) => set((s) => ({ spawnToggles: { ...s.spawnToggles, [key]: on } })),
+      setSpawnToggles: (keys, on) =>
+        set((s) => {
+          const next = { ...s.spawnToggles }
+          for (const k of keys) next[k] = on
+          return { spawnToggles: next }
+        }),
       setPanelCollapsed: (panelCollapsed) => set({ panelCollapsed }),
       requestFocus: (taskId) => set({ focusRequest: { taskId, nonce: Date.now() } }),
     }),
     {
       name: 'tarkov-companion-map-overlay',
-      version: 2,
+      version: 3,
       migrate: (persisted) => persisted as MapOverlayState,
       partialize: (s) => ({
         checkedTaskIds: s.checkedTaskIds,
         colorIndexByTask: s.colorIndexByTask,
         layers: s.layers,
         lootGroups: s.lootGroups,
+        spawnToggles: s.spawnToggles,
         panelCollapsed: s.panelCollapsed,
       }),
       merge: (persisted, current) => {
@@ -121,6 +135,7 @@ export const useMapOverlayStore = create<MapOverlayState>()(
           checkedTaskIds: p.checkedTaskIds ?? [],
           colorIndexByTask: p.colorIndexByTask ?? {},
           lootGroups: p.lootGroups ?? {},
+          spawnToggles: p.spawnToggles ?? {},
           panelCollapsed: p.panelCollapsed ?? false,
           layers,
           focusRequest: null,

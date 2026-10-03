@@ -1,6 +1,6 @@
-import { Fragment, memo, useMemo } from 'react'
+import { Fragment, memo } from 'react'
 import L from 'leaflet'
-import { CircleMarker, Marker, Polygon, Tooltip } from 'react-leaflet'
+import { Marker, Polygon, Tooltip } from 'react-leaflet'
 import type { GameData, ItemsById, MapDetails, Position } from '../../api/types'
 import type { BaseLayerConfig } from '../mapConfig'
 import type { OverlayLayerId } from '../../store/mapOverlay'
@@ -113,49 +113,6 @@ const Locks = memo(function Locks({
   )
 })
 
-const Spawns = memo(function Spawns({ details }: { details: MapDetails }) {
-  const player = useMemo(() => details.spawns.filter((s) => s.categories.includes('player')), [details])
-  return (
-    <>
-      {player.map((s, i) => {
-        const scav = s.sides.includes('scav') && !s.sides.includes('pmc')
-        const color = scav ? LAYER_COLORS.spawnScav : LAYER_COLORS.spawnPmc
-        return (
-          <CircleMarker
-            key={i}
-            center={ll(s.position)}
-            radius={3.5}
-            pathOptions={{ color: '#111', weight: 1, fillColor: color, fillOpacity: 0.9 }}
-          >
-            <Tooltip direction="top" offset={[0, -4]}>
-              {scav ? 'Scav' : 'PMC'} spawn{s.zoneName ? ` · ${s.zoneName}` : ''}
-            </Tooltip>
-          </CircleMarker>
-        )
-      })}
-    </>
-  )
-})
-
-const Bosses = memo(function Bosses({ details, mobNames }: { details: MapDetails; mobNames: Record<string, string> }) {
-  return (
-    <>
-      {details.bosses.map((b, bi) =>
-        b.locations.map((loc, li) =>
-          loc.positions.map((p, pi) => (
-            <Marker key={`${bi}:${li}:${pi}`} position={ll(p)} icon={layerIcon('boss', LAYER_COLORS.boss)} zIndexOffset={-100}>
-              <Tooltip direction="top" offset={[0, -10]}>
-                {(b.mobId && mobNames[b.mobId]) || 'Boss'} · {loc.name} · {Math.round(loc.chance * 100)}% (spawns{' '}
-                {Math.round(b.spawnChance * 100)}%)
-              </Tooltip>
-            </Marker>
-          )),
-        ),
-      )}
-    </>
-  )
-})
-
 export interface OtherLayersProps {
   data: GameData
   mapId: string
@@ -178,8 +135,6 @@ export function OtherLayers({ data, mapId, layer, activeFloor, toggles, items, o
       )}
       {toggles.transits && <Transits details={details} layer={layer} activeFloor={activeFloor} maps={data.maps} />}
       {toggles.locks && <Locks details={details} layer={layer} activeFloor={activeFloor} items={items} ownedKeyIds={ownedKeyIds} />}
-      {toggles.spawns && <Spawns details={details} />}
-      {toggles.bosses && <Bosses details={details} mobNames={data.mobNames} />}
     </>
   )
 }

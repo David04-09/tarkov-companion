@@ -61,7 +61,12 @@ function adaptMaps(data: RawMapsData, t: Translator): GameMap[] {
 const toFactionTag = (f: string): 'pmc' | 'scav' | 'shared' =>
   f === 'pmc' || f === 'scav' ? f : 'shared'
 
-function adaptMapDetails(m: RawMap, t: Translator): MapDetails {
+interface MobLookup {
+  names: Record<string, string>
+  normalized: Record<string, string>
+}
+
+function adaptMapDetails(m: RawMap, t: Translator, mobs: MobLookup): MapDetails {
   return {
     extracts: (m.extracts ?? []).map((e) => ({
       id: e.id,
@@ -85,12 +90,24 @@ function adaptMapDetails(m: RawMap, t: Translator): MapDetails {
     })),
     bosses: (m.bosses ?? []).map((b) => ({
       mobId: b.mob ?? null,
+      name: (b.mob && mobs.names[b.mob]) || 'Boss',
+      normalizedName: (b.mob && mobs.normalized[b.mob]) || b.mob || 'boss',
       spawnChance: b.spawnChance ?? 0,
       locations: (b.spawnLocations ?? []).map((l) => ({
         name: t(l.name, l.name),
         chance: l.chance ?? 0,
         positions: l.positions ?? [],
       })),
+      escorts: (b.escorts ?? [])
+        .filter((e) => e && e.mob)
+        .map((e) => ({
+          mobId: e.mob,
+          name: mobs.names[e.mob] ?? e.mob,
+          counts: [...new Set((e.amount ?? []).map((a) => a.count).filter((n) => typeof n === 'number' && n > 0))].sort((a, b) => a - b),
+        })),
+      spawnTime: typeof b.spawnTime === 'number' ? b.spawnTime : -1,
+      spawnTimeRandom: Boolean(b.spawnTimeRandom),
+      trigger: b.spawnTrigger ?? null,
     })),
     lootContainers: (m.lootContainers ?? []).map((c) => ({ containerId: c.lootContainer, position: c.position })),
     lootLoose: (m.lootLoose ?? [])
@@ -258,18 +275,27 @@ export async function fetchGameData(gameMode: GameMode, signal?: AbortSignal): P
   const mapsById = indexById(maps)
   const questItems = adaptQuestItems(tasksRes.doc.data, tasksRes.t)
 
-  const mapDetails: Record<string, MapDetails> = {}
-  for (const rawMap of Object.values(mapsRes.doc.data.maps)) {
-    mapDetails[rawMap.id] = adaptMapDetails(rawMap, mapsRes.t)
-  }
   const lootContainerNames: Record<string, string> = {}
   for (const c of Object.values(mapsRes.doc.data.lootContainers ?? {})) {
     lootContainerNames[c.id] = mapsRes.t(c.name, c.normalizedName)
   }
   const mobNames: Record<string, string> = {}
+  const mobNormalized: Record<string, string> = {}
+  const mobPortraits: Record<string, string> = {}
   for (const m of Object.values(mapsRes.doc.data.mobs ?? {})) {
     mobNames[m.id] = mapsRes.t(m.name, m.normalizedName)
+    mobNormalized[m.id] = m.normalizedName
+    if (m.imagePortraitLink) mobPortraits[m.id] = m.imagePortraitLink
   }
+  const mapDetails: Record<string, MapDetails> = {}
+  for (const rawMap of Object.values(mapsRes.doc.data.maps)) {
+    mapDetails[rawMap.id] = adaptMapDetails(rawMap, mapsRes.t, { names: mobNames, normalized: mobNormalized })
+  }
+  const latestGoon = (mapsRes.doc.data.goonReports ?? [])
+    .map((g) => ({ mapId: g.map, at: Number(g.timestamp) }))
+    .filter((g) => g.mapId && Number.isFinite(g.at))
+    .sort((a, b) => b.at - a.at)[0]
+  const goonReport = latestGoon ?? null
 
   const tasks = Object.values(tasksRes.doc.data.tasks).map((raw) =>
     adaptTask(raw, tasksRes.t, tradersById, mapsById, questItems),
@@ -284,6 +310,8 @@ export async function fetchGameData(gameMode: GameMode, signal?: AbortSignal): P
     mapDetails,
     lootContainerNames,
     mobNames,
+    mobPortraits,
+    goonReport,
     fetchedAt: Date.now(),
   }
 }

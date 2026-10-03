@@ -14,6 +14,8 @@ import { buildLootGroups } from '../maps/overlay/lootGroups'
 import { OtherLayers } from '../maps/overlay/OtherLayers'
 import { QuestPanel } from '../maps/overlay/QuestPanel'
 import { RoutePlanLayer } from '../maps/overlay/RoutePlan'
+import { SpawnLayer } from '../maps/overlay/SpawnLayer'
+import { buildSpawnModel } from '../maps/overlay/spawns'
 import { TaskLayer } from '../maps/overlay/TaskLayer'
 import { layerHasFloorHeights } from '../maps/overlay/floors'
 import { buildMapTasks, type MapTask } from '../maps/overlay/mapTasks'
@@ -46,6 +48,7 @@ export function MapsPage() {
   const colorIndexByTask = useMapOverlayStore((s) => s.colorIndexByTask)
   const layerToggles = useMapOverlayStore((s) => s.layers)
   const lootOn = useMapOverlayStore((s) => s.lootGroups)
+  const spawnToggles = useMapOverlayStore((s) => s.spawnToggles)
 
   const selected = options.find((o) => o.key === lastMapKey) ?? options[0]
 
@@ -77,6 +80,7 @@ export function MapsPage() {
     [gameData.data, mapId],
   )
   const lootShown = useMemo(() => lootGroups.filter((g) => lootOn[g.name]), [lootGroups, lootOn])
+  const spawnModel = useMemo(() => (gameData.data && mapId ? buildSpawnModel(gameData.data, mapId) : null), [gameData.data, mapId])
 
   if (!selected || !cfg || !layer) return null
   const floors = layer.floors.filter((f) => floorIsDrawable(f, layer))
@@ -131,6 +135,7 @@ export function MapsPage() {
               <OtherLayers data={gameData.data} mapId={mapId} layer={layer} activeFloor={activeFloor} toggles={layerToggles} items={items} ownedKeyIds={ownedKeyIds} />
             )}
             {lootShown.length > 0 && <LootLayer groups={lootShown} clusterBelowZoom={layer.maxZoom - 1} />}
+            {spawnModel && <SpawnLayer model={spawnModel} toggles={spawnToggles} clusterBelowZoom={layer.maxZoom - 1} />}
             {shown.map(({ mapTask, color }) => (
               <TaskLayer key={mapTask.task.id} mapTask={mapTask} color={color} activeFloor={activeFloor} hasFloors={hasFloors} canvas={canvas} />
             ))}
@@ -150,6 +155,7 @@ export function MapsPage() {
           items={items}
           hasFloors={hasFloors}
           lootGroups={lootGroups}
+          spawnModel={spawnModel}
           briefing={
             gameData.data && mapId
               ? { data: gameData.data, mapId, mapKey: selected.key, gameMode, mapTasks, statuses, needs, items, ownedKeyIds, collected: inventory.collected }

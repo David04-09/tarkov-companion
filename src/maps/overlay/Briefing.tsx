@@ -9,6 +9,7 @@ import { useRoutePlanStore, type RoutePoint } from '../../store/routePlan'
 import { gameDistanceMeters } from '../projection'
 import type { MapTask } from './mapTasks'
 import { OBJECTIVE_TYPE_LABEL } from './objectiveIcons'
+import { buildSpawnModel } from './spawns'
 
 export interface BriefingProps {
   data: GameData
@@ -73,6 +74,7 @@ export function Briefing({ data, mapId, mapKey, gameMode, mapTasks, statuses, ne
   const [saved, setSaved] = useState(false)
 
   const details = data.mapDetails[mapId]
+  const spawnModel = useMemo(() => buildSpawnModel(data, mapId), [data, mapId])
   const available = useMemo(() => mapTasks.filter((m) => statuses[m.task.id] === 'available'), [mapTasks, statuses])
   const checkedSet = useMemo(() => new Set(checked), [checked])
 
@@ -200,13 +202,16 @@ export function Briefing({ data, mapId, mapKey, gameMode, mapTasks, statuses, ne
       </Section>
 
       <Section title="Bosses">
-        {(details?.bosses ?? []).length === 0 ? (
+        {spawnModel.bosses.length === 0 ? (
           <p className="text-ink-dim">No boss data for this map.</p>
         ) : (
           <ul>
-            {(details?.bosses ?? []).map((b, i) => (
-              <li key={i}>
-                {(b.mobId && data.mobNames[b.mobId]) || 'Boss'}: {Math.round(b.spawnChance * 100)}% ({b.locations.map((l) => `${l.name} ${Math.round(l.chance * 100)}%`).join(', ')})
+            {spawnModel.bosses.map((e) => (
+              <li key={e.key}>
+                {e.name}: {Math.round(e.spawnChance * 100)}%
+                {e.escorts.length > 0 ? ` · guards: ${e.escorts.map((g) => `${g.name} ×${g.counts.join('/') || '?'}`).join(', ')}` : ''}
+                {e.group === 'goons' && spawnModel.goonsHere ? ' · reported here now' : ''}
+                {e.conditions.length > 0 ? ` · ${e.conditions.join(' · ')}` : ''}
               </li>
             ))}
           </ul>

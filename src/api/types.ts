@@ -259,6 +259,10 @@ export interface RawBossSpawn {
   spawnLocations: { name: string; chance: number; spawnKey?: string; positions: Position[] }[]
   /** Mob id (data.mobs). */
   mob?: string
+  escorts?: { mob: string; amount?: { chance: number; count: number }[] }[]
+  spawnTime?: number
+  spawnTimeRandom?: boolean
+  spawnTrigger?: string | null
 }
 
 export interface RawLootContainerSpawn {
@@ -316,6 +320,8 @@ export interface RawMapsData {
   lootContainers?: Record<string, { id: string; name: string; normalizedName: string }>
   /** Boss/mob definitions (name is a translation key). */
   mobs?: Record<string, { id: string; name: string; normalizedName: string; imagePortraitLink?: string | null }>
+  /** Latest community goon sightings: map id + epoch ms (as a string). */
+  goonReports?: { map: string; timestamp: string | number }[]
 }
 
 export type RawMapsDoc = TranslatedBaseDoc<RawMapsData>
@@ -589,8 +595,17 @@ export interface MapSpawn {
 
 export interface MapBoss {
   mobId: string | null
+  name: string
+  normalizedName: string
   spawnChance: number
   locations: { name: string; chance: number; positions: Position[] }[]
+  /** Guards/escorts with the possible group sizes ("x2/3"). */
+  escorts: { mobId: string; name: string; counts: number[] }[]
+  /** Seconds after raid start before the boss can spawn; -1 = at start. */
+  spawnTime: number
+  spawnTimeRandom: boolean
+  /** Switch/lever id when the spawn needs activating, else null. */
+  trigger: string | null
 }
 
 export interface MapLock {
@@ -659,6 +674,10 @@ export interface GameData {
   lootContainerNames: Record<string, string>
   /** Boss names by mob id (for MapDetails.bosses). */
   mobNames: Record<string, string>
+  /** Boss portrait image by mob id, when the data has one. */
+  mobPortraits: Record<string, string>
+  /** Map id the Goons were last reported on (from goonReports), with the report time. */
+  goonReport: { mapId: string; at: number } | null
   /** When the data was fetched (for the "updated" hint in the UI). */
   fetchedAt: number
 }

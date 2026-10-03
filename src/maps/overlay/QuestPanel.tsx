@@ -10,6 +10,8 @@ import { KeyBadge } from './KeyBadge'
 import type { LootGroup } from './lootGroups'
 import type { MapTask } from './mapTasks'
 import { OBJECTIVE_TYPE_LABEL } from './objectiveIcons'
+import type { SpawnModel } from './spawns'
+import { SpawnsSection } from './SpawnsSection'
 
 type StatusFilter = 'all' | TaskStatus
 type PanelTab = 'quests' | 'briefing' | 'layers'
@@ -92,11 +94,12 @@ export interface QuestPanelProps {
   items: ItemsById | undefined
   hasFloors: boolean
   lootGroups: LootGroup[]
+  spawnModel: SpawnModel | null
   briefing: BriefingProps | null
 }
 
 /** Right-side panel (bottom drawer on narrow screens) with Quests, Briefing and Layers tabs. */
-export function QuestPanel({ mapName, mapTasks, statuses, traders, items, hasFloors, lootGroups, briefing }: QuestPanelProps) {
+export function QuestPanel({ mapName, mapTasks, statuses, traders, items, hasFloors, lootGroups, spawnModel, briefing }: QuestPanelProps) {
   const checkedTaskIds = useMapOverlayStore((s) => s.checkedTaskIds)
   const colorIndexByTask = useMapOverlayStore((s) => s.colorIndexByTask)
   const setTasksChecked = useMapOverlayStore((s) => s.setTasksChecked)
@@ -226,6 +229,7 @@ export function QuestPanel({ mapName, mapTasks, statuses, traders, items, hasFlo
               ))}
             </div>
           </section>
+          {spawnModel && <SpawnsSection model={spawnModel} />}
           <section className="px-3 py-2">
             <div className="mb-1 flex items-center gap-2">
               <h3 className="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">Loot containers</h3>
