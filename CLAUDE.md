@@ -66,4 +66,4 @@ src/data/mapConfig.json      vendored tarkov.dev map config (records source comm
 
 ## Status
 Done: everything above (incl. Spawns filter group and packaging/updates, 2026-10-03) plus Dashboard, Quests, Maps (viewer, base layers, Lighthouse render, overlay, dev alignment tool), desktop app with tray and log watcher (parser + 10 tests, backfill, status light), level estimate, README.
-Next candidates: owner refines Lighthouse alignment in `/dev/align`; auto-update for the desktop build; hands-on test of overlay hotkey/timers during a live raid; manual "story stage" setting if the Available filter stays too generous. There is no Tarkov Tracker sync in this repo (the owner once mentioned one; it was never built).
+Released v1.0.0 via GitHub Actions (github.com/David04-09/tarkov-companion); the installed app on this PC updates from there. Next candidates: owner refines Lighthouse alignment in `/dev/align`; auto-update for the desktop build; hands-on test of overlay hotkey/timers during a live raid; manual "story stage" setting if the Available filter stays too generous. There is no Tarkov Tracker sync in this repo (the owner once mentioned one; it was never built).
