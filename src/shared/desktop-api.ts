@@ -86,7 +86,17 @@ export interface DesktopSettings {
   /** Last profile id / game version seen in the logs, for wipe detection. */
   knownProfileId: string | null
   knownGameVersion: string | null
+  /** First-run setup screen completed (logs folder, mode, faction). */
+  setupDone: boolean
 }
+
+export type UpdateStatus =
+  | { state: 'idle' | 'checking' }
+  | { state: 'disabled'; message: string }
+  | { state: 'none'; checkedAt: number }
+  | { state: 'downloading'; version?: string; percent: number }
+  | { state: 'ready'; version: string }
+  | { state: 'error'; message: string }
 
 export interface WipeEvent {
   reason: 'profile' | 'version'
@@ -125,6 +135,10 @@ export interface DesktopApi {
   getRecentEvents: () => Promise<GameEvent[]>
   openLogsFolder: () => Promise<void>
   openExternal: (url: string) => Promise<void>
+  getUpdateStatus: () => Promise<UpdateStatus>
+  checkForUpdates: () => Promise<UpdateStatus>
+  installUpdate: () => Promise<void>
+  onUpdateStatus: (cb: (s: UpdateStatus) => void) => () => void
   onEvent: (cb: (event: GameEvent) => void) => () => void
   onState: (cb: (state: WatcherState) => void) => () => void
   onBackfillProgress: (cb: (p: BackfillProgress) => void) => () => void

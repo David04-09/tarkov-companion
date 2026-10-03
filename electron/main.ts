@@ -13,6 +13,7 @@ import type { DesktopSettings, GameEvent, WipeEvent } from '../src/shared/deskto
 import { detectLogsFolder } from './logs/locator'
 import { LogWatcher } from './logs/watcher'
 import { SettingsStore } from './settings'
+import { checkForUpdates, getUpdateStatus, installUpdate, setupUpdater } from './updater'
 
 const DEV_URL = process.env.VITE_DEV_SERVER_URL
 
@@ -52,6 +53,7 @@ function bootstrap() {
   createTray()
   registerIpc()
   registerHotkey()
+  setupUpdater(broadcast)
   applyWatcherSettings()
   app.setLoginItemSettings({ openAtLogin: settings.get().startWithWindows, args: ['--minimized'] })
 
@@ -136,7 +138,7 @@ function createWindow(show: boolean) {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
-      additionalArguments: ['--tc-window=main'],
+      additionalArguments: ['--tc-window=main', `--tc-version=${app.getVersion()}`],
     },
   })
   if (b.maximized) win.maximize()
@@ -203,7 +205,7 @@ function toggleOverlay() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
-      additionalArguments: ['--tc-window=overlay'],
+      additionalArguments: ['--tc-window=overlay', `--tc-version=${app.getVersion()}`],
     },
   })
   overlay.setAlwaysOnTop(true, 'screen-saver')
@@ -337,6 +339,9 @@ function registerIpc() {
     const p = watcher.getState().logsPath
     if (p) await shell.openPath(p)
   })
+  ipcMain.handle('update:status', () => getUpdateStatus())
+  ipcMain.handle('update:check', () => checkForUpdates())
+  ipcMain.handle('update:install', () => installUpdate())
   ipcMain.handle('shell:openExternal', async (_e, url: string) => {
     if (/^https?:/i.test(url)) await shell.openExternal(url)
   })

@@ -4,7 +4,8 @@ import { defineConfig } from 'vite'
 import electron from 'vite-plugin-electron/simple'
 import { readFileSync } from 'node:fs'
 
-const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as { version: string }
+const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as { version: string; repository?: { url?: string } }
+const repoUrl = (pkg.repository?.url ?? '').replace(/^git+/, '').replace(/.git$/, '')
 
 // `vite --mode desktop` / `vite build --mode desktop` adds the Electron main +
 // preload builds and makes asset URLs relative so dist/index.html works from
@@ -14,7 +15,7 @@ export default defineConfig(({ mode }) => {
   const cjs = { rollupOptions: { output: { format: 'cjs' as const, entryFileNames: '[name].cjs' } } }
   return {
     base: desktop ? './' : '/',
-    define: { 'import.meta.env.VITE_APP_VERSION': JSON.stringify(pkg.version) },
+    define: { 'import.meta.env.VITE_APP_VERSION': JSON.stringify(pkg.version), 'import.meta.env.VITE_REPO_URL': JSON.stringify(repoUrl) },
     plugins: [
       react(),
       tailwindcss(),

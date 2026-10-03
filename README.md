@@ -1,6 +1,23 @@
 # Tarkov Companion
 
-A web app for Escape from Tarkov players: track your quests, level and faction, and see what you can work on next. Game data comes live from the free [tarkov.dev](https://tarkov.dev) JSON API.
+A free Windows app (and web app) for Escape from Tarkov players: quest tracking that fills itself in from the game's log files, interactive maps with quest, loot and boss-spawn overlays, item collection, hideout, crafts and flea market tools. Game data comes live from the free [tarkov.dev](https://tarkov.dev) JSON API.
+
+## For friends: install it
+
+1. Download **TarkovCompanion-Setup-x.y.z.exe** from the [latest release](https://github.com/OWNER/REPO/releases/latest) (or the `-portable.exe` if you prefer no installer).
+2. Run it. **Windows SmartScreen will say "Windows protected your PC"**: click **More info**, then **Run anyway**. This appears because the app is not code-signed (certificates cost money); it is a one-time thing. Updates install from inside the app and do not trigger it again.
+3. The installer needs no admin rights: it installs for your user only, with a desktop and Start-menu shortcut.
+4. On first start a short setup screen finds your EFT logs folder (or lets you pick it), asks PvP/PvE and faction, and offers to read your old logs so quests you have already finished are ticked.
+
+### How it works, in one paragraph
+
+Escape from Tarkov writes plain-text log files while you play. The app watches the newest log and notices lines like "quest finished", "raid started" and "game mode PvE". That is how it ticks quests, starts the raid timer and opens the right map. **It only reads those files.** It never touches the game process, its memory, its files or its network traffic, and never writes into the game folder. Everything else (quest list, items, prices, maps) comes from tarkov.dev over HTTPS and is cached on your PC, so the app keeps working offline except for live flea prices.
+
+Your data (progress, settings, map drawings) lives in `%APPDATA%Tarkov Companion` and survives updates and reinstalls. Export it from Settings to move it to another PC.
+
+### Updates
+
+The app checks GitHub Releases on launch and every 6 hours, downloads the new version in the background and shows a small "restart to update" bar. Because the builds are unsigned, the updater cannot verify a publisher signature: the only guarantees are HTTPS and the GitHub account that owns this repository.
 
 ## How to open the app
 
@@ -70,7 +87,17 @@ This starts the Vite dev server and opens the desktop window with hot reload. Th
 npm run dist:desktop
 ```
 
-Produces `release/Tarkov Companion-<version>-x64.exe` (NSIS installer) and `release/Tarkov Companion-<version>-portable.exe`. Both need no other software.
+Produces `release/TarkovCompanion-Setup-<version>.exe` (NSIS installer, per-user) and `release/TarkovCompanion-<version>-portable.exe`, plus `latest.yml` for the in-app updater. Build the Lighthouse tiles first (`npm run tiles:fetch && npm run tiles:lighthouse`) so they are bundled.
+
+### Releasing
+
+Bump `version` in `package.json`, commit, then tag and push:
+
+```bash
+git tag v1.0.1 && git push && git push --tags
+```
+
+The GitHub Actions workflow (`.github/workflows/release.yml`) builds the tiles and the installer on a Windows runner and attaches everything to the GitHub Release. Installed apps pick the new version up automatically.
 
 ### How the log watching works
 

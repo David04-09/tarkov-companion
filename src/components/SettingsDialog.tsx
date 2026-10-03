@@ -6,6 +6,7 @@ import { JSON_API_BASE } from '../api/client'
 import { useProgressStore } from '../store/progress'
 import { DesktopSettingsSection } from '../desktop/DesktopSettings'
 import { parseDrawings, useDrawingsStore } from '../store/drawings'
+import { AboutSection } from './AboutSection'
 
 function downloadJson(filename: string, data: unknown) {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
@@ -160,6 +161,8 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
           </section>
 
           <DesktopSettingsSection />
+
+          <AboutSection />
 
           {message && (
             <p

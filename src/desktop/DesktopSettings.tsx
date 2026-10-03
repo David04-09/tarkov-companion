@@ -309,17 +309,6 @@ export function DesktopSettingsSection() {
       <TimersSettings />
       <ArchivesSettings />
 
-      <section className="space-y-1">
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">About</h3>
-        <p className="text-xs text-ink-muted">
-          Tarkov Companion {window.desktop?.appVersion ? `v${window.desktop.appVersion}` : ''}. Game data from{' '}
-          <a href="https://tarkov.dev" target="_blank" rel="noreferrer" className="underline">tarkov.dev</a>. Lighthouse render by{' '}
-          <a href="https://reemr.se" target="_blank" rel="noreferrer" className="underline">RE3MR</a> (CC BY-NC-SA 4.0). The log
-          format knowledge comes from the open-source{' '}
-          <a href="https://github.com/the-hideout/TarkovMonitor" target="_blank" rel="noreferrer" className="underline">TarkovMonitor</a>{' '}
-          project (GPL-3.0); the parser here is an independent TypeScript implementation.
-        </p>
-      </section>
     </>
   )
 }

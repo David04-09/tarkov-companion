@@ -1,5 +1,6 @@
-import { QueryClientProvider } from '@tanstack/react-query'
+import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client'
 import { BrowserRouter, HashRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { persistOptions } from './api/persist'
 import { queryClient } from './api/queryClient'
 import { Layout } from './components/Layout'
 import { NAV_ITEMS } from './config/nav'
@@ -11,7 +12,7 @@ export default function App() {
   // The packaged desktop app loads from file://, where only hash routing works.
   const Router = isDesktop() ? HashRouter : BrowserRouter
   return (
-    <QueryClientProvider client={queryClient}>
+    <PersistQueryClientProvider client={queryClient} persistOptions={persistOptions(queryClient)}>
       <Router>
         {isDesktop() && <DesktopBridge />}
         <Routes>
@@ -28,6 +29,6 @@ export default function App() {
           </Route>
         </Routes>
       </Router>
-    </QueryClientProvider>
+    </PersistQueryClientProvider>
   )
 }

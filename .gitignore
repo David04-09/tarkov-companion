@@ -33,3 +33,12 @@ release/
 
 # The EFT log-watcher source lives in electron/logs (not log output)
 !electron/logs/
+
+# Machine-specific notes, secrets and signing material: never commit
+CLAUDE.local.md
+.env
+.env.*
+*.pem
+*.pfx
+*.p12
+*.key

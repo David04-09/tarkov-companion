@@ -28,6 +28,7 @@ export const DEFAULT_SETTINGS: StoredSettings = {
   overlayOpacity: 0.9,
   knownProfileId: null,
   knownGameVersion: null,
+  setupDone: false,
   window: { width: 1360, height: 860 },
   overlay: { width: 560, height: 480 },
 }
@@ -47,6 +48,8 @@ export class SettingsStore {
         window: { ...DEFAULT_SETTINGS.window, ...(raw.window ?? {}) },
         overlay: { ...DEFAULT_SETTINGS.overlay, ...(raw.overlay ?? {}) },
       }
+      // Installs from before the setup screen existed: an earlier backfill means setup already happened.
+      if (raw.setupDone === undefined && raw.initialBackfillDone) this.data.setupDone = true
     } catch {
       // first run
     }

@@ -1,7 +1,7 @@
 {
   "name": "tarkov-companion",
   "private": true,
-  "version": "0.3.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,24 +11,21 @@
     "tiles:lighthouse": "node scripts/tile-lighthouse.mjs",
     "dev:desktop": "vite --mode desktop",
     "build:desktop": "tsc -b && vite build --mode desktop",
-    "dist:desktop": "npm run build:desktop && electron-builder --win nsis portable",
+    "dist:desktop": "npm run build:desktop && electron-builder --win nsis portable --publish never",
     "test": "vitest run",
-    "scan:logs": "tsx scripts/scan-logs.ts"
+    "scan:logs": "tsx scripts/scan-logs.ts",
+    "tiles:fetch": "node scripts/fetch-lighthouse-source.mjs"
   },
   "dependencies": {
-    "@geoman-io/leaflet-geoman-free": "^2.20.2",
-    "@tanstack/react-query": "^5.104.1",
-    "@tanstack/react-virtual": "^3.14.13",
-    "leaflet": "^1.9.4",
-    "lucide-react": "^1.50.0",
-    "react": "^19.2.8",
-    "react-dom": "^19.2.8",
-    "react-leaflet": "^5.0.0",
-    "react-router-dom": "^7.18.4",
-    "zustand": "^5.0.15"
+    "electron-updater": "^6.8.9"
   },
   "devDependencies": {
+    "@geoman-io/leaflet-geoman-free": "^2.20.2",
     "@tailwindcss/vite": "^4.3.3",
+    "@tanstack/query-async-storage-persister": "^5.104.1",
+    "@tanstack/react-query": "^5.104.1",
+    "@tanstack/react-query-persist-client": "^5.104.1",
+    "@tanstack/react-virtual": "^3.14.13",
     "@types/leaflet": "^1.9.22",
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.18",
@@ -36,14 +33,22 @@
     "@vitejs/plugin-react": "^6.1.1",
     "electron": "^44.5.1",
     "electron-builder": "^26.15.3",
+    "idb-keyval": "^6.3.0",
+    "leaflet": "^1.9.4",
+    "lucide-react": "^1.50.0",
     "oxlint": "^1.81.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "react-leaflet": "^5.0.0",
+    "react-router-dom": "^7.18.4",
     "sharp": "^0.35.5",
     "tailwindcss": "^4.3.3",
     "tsx": "^4.23.15",
     "typescript": "~6.0.2",
     "vite": "^8.3.0",
     "vite-plugin-electron": "^1.1.2",
-    "vitest": "^5.0.3"
+    "vitest": "^5.0.3",
+    "zustand": "^5.0.15"
   },
   "allowScripts": {
     "esbuild@0.28.2": true,
@@ -56,6 +61,7 @@
   "build": {
     "appId": "io.github.david04-09.tarkov-companion",
     "productName": "Tarkov Companion",
+    "copyright": "Free for personal use. Not affiliated with Battlestate Games.",
     "directories": {
       "output": "release",
       "buildResources": "build"
@@ -65,27 +71,46 @@
       "dist-electron/**",
       "build/icon.png",
       "build/tray.png",
-      "package.json"
+      "package.json",
+      "!node_modules/**/*.{md,map,ts}"
     ],
     "asarUnpack": [
       "build/**"
     ],
+    "publish": {
+      "provider": "github",
+      "owner": "OWNER",
+      "repo": "REPO",
+      "releaseType": "release"
+    },
     "win": {
       "target": [
         "nsis",
         "portable"
       ],
       "icon": "build/icon.png",
-      "artifactName": "${productName}-${version}-${arch}.${ext}"
+      "artifactName": "TarkovCompanion-${version}-${arch}.${ext}",
+      "verifyUpdateCodeSignature": false
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
       "perMachine": false,
-      "shortcutName": "Tarkov Companion"
+      "allowElevation": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Tarkov Companion",
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false,
+      "artifactName": "TarkovCompanion-Setup-${version}.${ext}"
     },
     "portable": {
-      "artifactName": "${productName}-${version}-portable.exe"
+      "artifactName": "TarkovCompanion-${version}-portable.exe"
     }
+  },
+  "homepage": "https://github.com/OWNER/REPO",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/OWNER/REPO.git"
   }
 }

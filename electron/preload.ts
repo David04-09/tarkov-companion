@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { BackfillProgress, DesktopApi, DesktopSettings, GameEvent, WatcherState, WipeEvent } from '../src/shared/desktop-api'
+import type { BackfillProgress, DesktopApi, DesktopSettings, GameEvent, UpdateStatus, WatcherState, WipeEvent } from '../src/shared/desktop-api'
 
 function subscribe<T>(channel: string, cb: (payload: T) => void): () => void {
   const listener = (_e: Electron.IpcRendererEvent, payload: T) => cb(payload)
@@ -9,7 +9,7 @@ function subscribe<T>(channel: string, cb: (payload: T) => void): () => void {
 
 const api: DesktopApi = {
   platform: process.platform,
-  appVersion: process.env.TC_APP_VERSION ?? '',
+  appVersion: process.argv.find((a) => a.startsWith('--tc-version='))?.slice('--tc-version='.length) ?? '',
   isOverlay: process.argv.includes('--tc-window=overlay'),
   getState: () => ipcRenderer.invoke('watcher:getState'),
   getSettings: () => ipcRenderer.invoke('settings:get'),
@@ -21,6 +21,10 @@ const api: DesktopApi = {
   openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),
   toggleOverlay: () => ipcRenderer.invoke('overlay:toggle'),
   closeOverlay: () => ipcRenderer.invoke('overlay:close'),
+  getUpdateStatus: () => ipcRenderer.invoke('update:status'),
+  checkForUpdates: () => ipcRenderer.invoke('update:check'),
+  installUpdate: () => ipcRenderer.invoke('update:install'),
+  onUpdateStatus: (cb) => subscribe<UpdateStatus>('update:status', cb),
   onEvent: (cb) => subscribe<GameEvent>('watcher:event', cb),
   onState: (cb) => subscribe<WatcherState>('watcher:state', cb),
   onBackfillProgress: (cb) => subscribe<BackfillProgress>('watcher:backfillProgress', cb),
