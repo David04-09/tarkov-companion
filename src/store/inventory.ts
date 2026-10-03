@@ -11,6 +11,8 @@ export interface ModeInventory {
   ownedKeyIds: string[]
   /** Current built level per hideout station id (0 = not built). */
   stationLevels: Record<string, number>
+  /** Current loyalty level per trader id (1 = default). */
+  traderLevels: Record<string, number>
 }
 
 export interface InventoryState {
@@ -20,10 +22,11 @@ export interface InventoryState {
   setCollected: (mode: GameMode, itemId: string, count: number) => void
   setKeyOwned: (mode: GameMode, keyId: string, owned: boolean) => void
   setStationLevel: (mode: GameMode, stationId: string, level: number) => void
+  setTraderLevel: (mode: GameMode, traderId: string, level: number) => void
   toggleFavoriteCraft: (craftId: string) => void
 }
 
-const empty = (): ModeInventory => ({ collected: {}, ownedKeyIds: [], stationLevels: {} })
+const empty = (): ModeInventory => ({ collected: {}, ownedKeyIds: [], stationLevels: {}, traderLevels: {} })
 
 export const useInventoryStore = create<InventoryState>()(
   persist(
@@ -49,6 +52,8 @@ export const useInventoryStore = create<InventoryState>()(
           }),
         setStationLevel: (mode, stationId, level) =>
           update(mode, (inv) => ({ ...inv, stationLevels: { ...inv.stationLevels, [stationId]: Math.max(0, level) } })),
+        setTraderLevel: (mode, traderId, level) =>
+          update(mode, (inv) => ({ ...inv, traderLevels: { ...inv.traderLevels, [traderId]: Math.max(1, Math.min(4, level)) } })),
         toggleFavoriteCraft: (craftId) =>
           set((s) => ({
             favoriteCraftIds: s.favoriteCraftIds.includes(craftId)
@@ -59,7 +64,8 @@ export const useInventoryStore = create<InventoryState>()(
     },
     {
       name: 'tarkov-companion-inventory',
-      version: 1,
+      version: 2,
+      migrate: (persisted) => persisted as InventoryState,
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<InventoryState>
         return {

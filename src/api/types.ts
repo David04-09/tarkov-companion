@@ -211,6 +211,9 @@ export interface RawTrader {
   description: string
   currency: string
   imageLink: string | null
+  /** ISO timestamp of the next restock (observed 40 min .. 3 h ahead). */
+  resetTime?: string | null
+  levels?: { level: number }[]
 }
 
 export type RawTradersDoc = TranslatedBaseDoc<Record<string, RawTrader>>
@@ -399,6 +402,11 @@ export interface Trader {
   name: string
   normalizedName: string
   imageLink: string | null
+  currency: string
+  /** Next restock as ms since epoch, or null when the data has none. */
+  resetTime: number | null
+  /** Number of loyalty levels (1 for the minor traders). */
+  maxLevel: number
 }
 
 export interface GameMap {

@@ -1,15 +1,19 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowDown, ArrowUp, ArrowUpDown, Search } from 'lucide-react'
+import { memo, useEffect, useMemo, useRef, useState } from 'react'
+import { useVirtualizer } from '@tanstack/react-virtual'
+import { ArrowDown, ArrowUp, ArrowUpDown, RefreshCw, RotateCcw, Search } from 'lucide-react'
 import { useGameData, useItems, usePriceHistory } from '../api/hooks'
-import type { Item } from '../api/types'
+import type { Item, PricePoint } from '../api/types'
 import { ErrorPanel, LoadingPanel } from '../components/DataState'
+import { TradersPanel } from '../components/TradersPanel'
 import { useNeeds } from '../hooks/useNeeds'
-import { fleaFee } from '../lib/economy'
+import { FEE_NOTE, fleaFee } from '../lib/economy'
 import { formatRoubles, formatTimeAgo } from '../lib/format'
+import { remainingFor, type ItemNeed } from '../lib/needs'
+import { useFleaStore, type FleaSortKey } from '../store/flea'
 
 const TEN_MINUTES = 10 * 60 * 1000
 const ROW_HEIGHT = 44
-const OVERSCAN = 8
+const EXPANDED_HEIGHT = 190
 
 const selectClass =
   'rounded border border-line bg-surface-2 px-2 py-1.5 text-sm text-ink focus:border-accent focus:outline-none'
@@ -23,39 +27,35 @@ const HIDDEN_TYPES = new Set(['noFlea', 'preset', 'markedOnly', 'specialSlot', '
 
 interface Row {
   item: Item
+  banned: boolean
   flea: number | null
   perSlot: number | null
   traderSell: number
   traderSellId: string | null
   traderBuy: number | null
   traderBuyId: string | null
-  /** Profit from buying at a trader and selling on the flea, after fee. */
+  /** Profit from buying at a trader and selling on the flea, after the fee. */
   flip: number | null
-  change: number | null
 }
 
-type SortKey = 'name' | 'flea' | 'low' | 'high' | 'change' | 'perSlot' | 'traderSell' | 'flip'
-const NUMERIC: Record<SortKey, (r: Row) => number | null> = {
-  name: () => null,
-  flea: (r) => r.flea,
-  low: (r) => r.item.low24hPrice,
-  high: (r) => r.item.high24hPrice,
-  change: (r) => r.change,
-  perSlot: (r) => r.perSlot,
-  traderSell: (r) => r.traderSell,
-  flip: (r) => r.flip,
+/** 24h / 7d change computed from lazily loaded history, shared with the sort. */
+interface Changes {
+  c24: number | null
+  c7: number | null
+  points: { t: number; p: number }[]
 }
 
 function buildRow(item: Item): Row {
-  const flea = item.types.includes('noFlea') ? null : item.avg24hPrice
+  const banned = item.types.includes('noFlea')
+  const flea = banned ? null : item.avg24hPrice
   const traderSell = item.sellToTrader[0]?.priceRUB ?? 0
   const best = Math.max(flea ?? 0, traderSell)
   const slots = item.width * item.height || 1
   const traderBuy = item.buyFromTrader[0]?.priceRUB ?? null
-  const flip =
-    flea != null && traderBuy != null ? Math.round(flea - fleaFee(item.basePrice, flea) - traderBuy) : null
+  const flip = flea != null && traderBuy != null ? Math.round(flea - fleaFee(item.basePrice, flea) - traderBuy) : null
   return {
     item,
+    banned,
     flea,
     perSlot: best > 0 ? Math.round(best / slots) : null,
     traderSell,
@@ -63,23 +63,45 @@ function buildRow(item: Item): Row {
     traderBuy,
     traderBuyId: item.buyFromTrader[0]?.traderId ?? null,
     flip,
-    change: item.changeLast48hPercent,
   }
 }
 
-function Head({
-  label,
-  k,
-  sort,
-  onSort,
-  className = '',
-}: {
-  label: string
-  k: SortKey
-  sort: { key: SortKey; dir: 'asc' | 'desc' }
-  onSort: (k: SortKey) => void
-  className?: string
-}) {
+function computeChanges(history: PricePoint[]): Changes {
+  const pts = history.map((p) => ({ t: p.timestamp, p: p.price })).sort((a, b) => a.t - b.t)
+  if (pts.length === 0) return { c24: null, c7: null, points: [] }
+  const now = pts[pts.length - 1]
+  const at = (ms: number) => {
+    const target = now.t - ms
+    let best = pts[0]
+    for (const p of pts) if (p.t <= target) best = p
+    return best
+  }
+  const pct = (from: number, to: number) => (from > 0 ? ((to - from) / from) * 100 : null)
+  return { c24: pct(at(86_400_000).p, now.p), c7: pct(at(7 * 86_400_000).p, now.p), points: pts.filter((p) => p.t >= now.t - 7 * 86_400_000) }
+}
+
+const Pct = ({ v }: { v: number | null | undefined }) =>
+  v == null ? <span className="text-ink-dim">—</span> : <span className={v > 0 ? 'text-success' : v < 0 ? 'text-danger' : ''}>{`${v > 0 ? '+' : ''}${v.toFixed(1)}%`}</span>
+
+function Sparkline({ points }: { points: { t: number; p: number }[] }) {
+  if (points.length < 2) return <span className="text-xs text-ink-dim">Not enough history for a chart.</span>
+  const w = 240
+  const h = 48
+  const min = Math.min(...points.map((p) => p.p))
+  const max = Math.max(...points.map((p) => p.p))
+  const t0 = points[0].t
+  const t1 = points[points.length - 1].t
+  const d = points
+    .map((p, i) => `${i === 0 ? 'M' : 'L'}${(t1 === t0 ? 0 : ((p.t - t0) / (t1 - t0)) * w).toFixed(1)},${(max === min ? h / 2 : h - ((p.p - min) / (max - min)) * h).toFixed(1)}`)
+    .join(' ')
+  return (
+    <svg width={w} height={h} className="overflow-visible" aria-label="7-day price chart">
+      <path d={d} fill="none" stroke="var(--color-accent)" strokeWidth={1.5} />
+    </svg>
+  )
+}
+
+function Head({ label, k, sort, onSort, className = '' }: { label: string; k: FleaSortKey; sort: { key: FleaSortKey; dir: 'asc' | 'desc' }; onSort: (k: FleaSortKey) => void; className?: string }) {
   const active = sort.key === k
   const Icon = !active ? ArrowUpDown : sort.dir === 'asc' ? ArrowUp : ArrowDown
   return (
@@ -89,83 +111,118 @@ function Head({
   )
 }
 
-function Sparkline({ points }: { points: { t: number; p: number }[] }) {
-  if (points.length < 2) return null
-  const w = 220
-  const h = 44
-  const min = Math.min(...points.map((p) => p.p))
-  const max = Math.max(...points.map((p) => p.p))
-  const t0 = points[0].t
-  const t1 = points[points.length - 1].t
-  const d = points
-    .map((p, i) => {
-      const x = t1 === t0 ? 0 : ((p.t - t0) / (t1 - t0)) * w
-      const y = max === min ? h / 2 : h - ((p.p - min) / (max - min)) * h
-      return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`
-    })
-    .join(' ')
-  return (
-    <svg width={w} height={h} className="overflow-visible" aria-hidden>
-      <path d={d} fill="none" stroke="var(--color-accent)" strokeWidth={1.5} />
-    </svg>
-  )
+const GRID = 'grid grid-cols-[minmax(220px,2fr)_100px_90px_90px_70px_70px_90px_150px_100px] items-center gap-2 px-3'
+
+interface RowProps {
+  row: Row
+  open: boolean
+  needed: ItemNeed | undefined
+  collected: number
+  traderName: (id: string | null) => string
+  changes: Changes | undefined
+  onChanges: (id: string, c: Changes) => void
+  onToggle: () => void
 }
 
-function HistoryPanel({ item }: { item: Item }) {
-  const history = usePriceHistory(item.id)
-  const stats = useMemo(() => {
-    const pts = (history.data ?? []).map((p) => ({ t: p.timestamp, p: p.price })).sort((a, b) => a.t - b.t)
-    if (pts.length === 0) return null
-    const now = pts[pts.length - 1]
-    const at = (ms: number) => {
-      const target = now.t - ms
-      let best = pts[0]
-      for (const p of pts) if (p.t <= target) best = p
-      return best
-    }
-    const d1 = at(24 * 3600 * 1000)
-    const d7 = at(7 * 24 * 3600 * 1000)
-    const pct = (from: number, to: number) => (from > 0 ? ((to - from) / from) * 100 : null)
-    return { last7: pts.filter((p) => p.t >= now.t - 7 * 24 * 3600 * 1000), c24: pct(d1.p, now.p), c7: pct(d7.p, now.p), latest: now }
-  }, [history.data])
+/** One row; loads its price history when it has been on screen for a moment (or is expanded). */
+const FleaRow = memo(function FleaRow({ row, open, needed, collected, traderName, changes, onChanges, onToggle }: RowProps) {
+  // Load history once the row has been on screen for a moment, or immediately when expanded.
+  const [lingered, setLingered] = useState(false)
+  useEffect(() => {
+    const t = setTimeout(() => setLingered(true), 600)
+    return () => clearTimeout(t)
+  }, [])
+  const wanted = open || lingered
+  const history = usePriceHistory(wanted && !changes ? row.item.id : null)
+  useEffect(() => {
+    if (history.data && !changes) onChanges(row.item.id, computeChanges(history.data))
+  }, [history.data, changes, onChanges, row.item.id])
 
+  const fir = needed?.fir ? needed.fir > 0 : false
+  const remaining = needed ? remainingFor(needed, collected) : 0
   return (
-    <div className="flex flex-wrap items-center gap-6 border-t border-line bg-surface px-4 py-2 text-xs">
-      {history.isPending && <span className="text-ink-dim">Loading price history…</span>}
-      {history.isError && <span className="text-danger">Price history unavailable.</span>}
-      {stats && (
-        <>
-          <Sparkline points={stats.last7} />
-          <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
-            <dt className="text-ink-muted">24h change</dt>
-            <dd className={stats.c24 != null && stats.c24 > 0 ? 'text-success' : stats.c24 != null && stats.c24 < 0 ? 'text-danger' : ''}>{stats.c24 != null ? `${stats.c24 > 0 ? '+' : ''}${stats.c24.toFixed(1)}%` : '—'}</dd>
-            <dt className="text-ink-muted">7d change</dt>
-            <dd className={stats.c7 != null && stats.c7 > 0 ? 'text-success' : stats.c7 != null && stats.c7 < 0 ? 'text-danger' : ''}>{stats.c7 != null ? `${stats.c7 > 0 ? '+' : ''}${stats.c7.toFixed(1)}%` : '—'}</dd>
-            <dt className="text-ink-muted">Last point</dt>
-            <dd>{formatRoubles(stats.latest.p)} · {formatTimeAgo(stats.latest.t)}</dd>
-          </dl>
-        </>
+    <div>
+      <div role="button" tabIndex={0} onClick={onToggle} onKeyDown={(e) => e.key === 'Enter' && onToggle()} className={`${GRID} h-11 cursor-pointer border-b border-line text-sm hover:bg-surface-3 ${open ? 'bg-surface-3' : ''}`}>
+        <div className="flex min-w-0 items-center gap-2">
+          {row.item.iconLink && <img src={row.item.iconLink} alt="" className="h-8 w-8 shrink-0 object-contain" loading="lazy" />}
+          <span className="min-w-0 truncate">{row.item.name}</span>
+          {needed && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" title={`Needed: ${remaining} remaining`} />}
+          {fir && <span className="shrink-0 rounded border border-info/60 px-1 text-[9px] font-semibold uppercase text-info" title="A quest needs this found in raid">FIR</span>}
+          {row.banned && <span className="shrink-0 rounded border border-line px-1 text-[9px] uppercase text-ink-dim" title="Cannot be sold on the flea market">no flea</span>}
+        </div>
+        <div className="text-right tabular-nums">{row.flea != null ? formatRoubles(row.flea) : <span className="text-ink-dim">—</span>}</div>
+        <div className="text-right text-xs tabular-nums text-ink-muted">{row.banned ? '—' : formatRoubles(row.item.low24hPrice)}</div>
+        <div className="text-right text-xs tabular-nums text-ink-muted">{row.banned ? '—' : formatRoubles(row.item.high24hPrice)}</div>
+        <div className="text-right text-xs tabular-nums">{changes ? <Pct v={changes.c24} /> : <span className="text-ink-dim">{wanted && !row.banned ? '…' : '—'}</span>}</div>
+        <div className="text-right text-xs tabular-nums">{changes ? <Pct v={changes.c7} /> : <span className="text-ink-dim">{wanted && !row.banned ? '…' : '—'}</span>}</div>
+        <div className="text-right text-xs tabular-nums">{row.perSlot != null ? formatRoubles(row.perSlot) : '—'}</div>
+        <div className="truncate text-right text-xs tabular-nums">{row.traderSell ? `${traderName(row.traderSellId)} ${formatRoubles(row.traderSell)}` : '—'}</div>
+        <div className={`text-right text-xs tabular-nums ${row.flip != null && row.flip > 0 ? 'text-success' : 'text-ink-dim'}`} title={row.traderBuy != null ? `Buy at ${traderName(row.traderBuyId)} for ${formatRoubles(row.traderBuy)}` : ''}>{row.flip != null ? formatRoubles(row.flip) : '—'}</div>
+      </div>
+      {open && (
+        <div className="grid gap-4 border-b border-line bg-surface px-4 py-3 text-xs md:grid-cols-3" style={{ minHeight: EXPANDED_HEIGHT - 44 }}>
+          <div>
+            <h4 className="mb-1 font-semibold uppercase tracking-wide text-ink-muted">7-day price</h4>
+            {history.isPending && !changes ? <span className="text-ink-dim">Loading history…</span> : history.isError && !changes ? <span className="text-danger">History unavailable.</span> : <Sparkline points={changes?.points ?? []} />}
+            {changes?.points.length ? <div className="mt-1 text-ink-dim">Last point {formatRoubles(changes.points[changes.points.length - 1].p)} · {formatTimeAgo(changes.points[changes.points.length - 1].t)}</div> : null}
+          </div>
+          <div>
+            <h4 className="mb-1 font-semibold uppercase tracking-wide text-ink-muted">Trader sell prices</h4>
+            {row.item.sellToTrader.length === 0 ? <span className="text-ink-dim">No trader buys this.</span> : (
+              <ul className="space-y-0.5">
+                {row.item.sellToTrader.map((s) => (
+                  <li key={s.traderId} className="flex justify-between gap-2"><span>{traderName(s.traderId)}</span><span className="tabular-nums">{formatRoubles(s.priceRUB)}</span></li>
+                ))}
+              </ul>
+            )}
+            {row.traderBuy != null && <div className="mt-1 text-ink-dim">Buy from {traderName(row.traderBuyId)}: {formatRoubles(row.traderBuy)}</div>}
+          </div>
+          <div>
+            <h4 className="mb-1 font-semibold uppercase tracking-wide text-ink-muted">Why keep it</h4>
+            {!needed ? (
+              <span className="text-ink-dim">Nothing you track needs this: sell it.</span>
+            ) : (
+              <>
+                <div className={`mb-1 inline-flex rounded border px-1.5 py-0.5 font-semibold ${remaining > 0 ? 'border-accent/60 bg-accent/15 text-accent' : 'border-success/60 bg-success/15 text-success'}`}>{remaining > 0 ? `Keep it (${remaining} more needed)` : 'Sell it (you have enough)'}</div>
+                <ul className="space-y-0.5">
+                  {needed.sources.slice(0, 6).map((s, i) => (
+                    <li key={i} className="flex gap-2"><span className="w-12 shrink-0 uppercase text-ink-dim">{s.kind}</span><span className="min-w-0 flex-1 truncate">{s.name}</span><span className="tabular-nums text-ink-muted">×{s.count}{'fir' in s && s.fir ? ' FIR' : ''}</span></li>
+                  ))}
+                  {needed.sources.length > 6 && <li className="text-ink-dim">…and {needed.sources.length - 6} more</li>}
+                </ul>
+              </>
+            )}
+          </div>
+        </div>
       )}
-      {item.wikiLink && <a href={item.wikiLink} target="_blank" rel="noreferrer" className="ml-auto text-accent underline">Wiki</a>}
     </div>
   )
-}
+})
 
 export function FleaMarketPage() {
   const items = useItems(true, TEN_MINUTES)
   const gameData = useGameData()
-  const { needs } = useNeeds()
-
-  const [search, setSearch] = useState('')
-  const [type, setType] = useState('all')
-  const [minPrice, setMinPrice] = useState('')
-  const [maxPrice, setMaxPrice] = useState('')
-  const [minPerSlot, setMinPerSlot] = useState('')
-  const [neededOnly, setNeededOnly] = useState(false)
-  const [risingOnly, setRisingOnly] = useState(false)
-  const [flipOnly, setFlipOnly] = useState(false)
-  const [sort, setSort] = useState<{ key: SortKey; dir: 'asc' | 'desc' }>({ key: 'flea', dir: 'desc' })
+  const { needs, inventory } = useNeeds()
+  const filters = useFleaStore((s) => s.filters)
+  const setFilters = useFleaStore((s) => s.setFilters)
+  const resetFilters = useFleaStore((s) => s.resetFilters)
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [, setChangeVersion] = useState(0)
+  const changesRef = useRef(new Map<string, Changes>())
+  const bumpTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const onChanges = useMemo(
+    () => (id: string, c: Changes) => {
+      changesRef.current.set(id, c)
+      // Re-sort at most a few times a second while histories stream in.
+      if (!bumpTimer.current) bumpTimer.current = setTimeout(() => { bumpTimer.current = null; setChangeVersion((v) => v + 1) }, 300)
+    },
+    [],
+  )
+  const [tick, setTick] = useState(0)
+  useEffect(() => {
+    const id = setInterval(() => setTick((t) => t + 1), 30_000)
+    return () => clearInterval(id)
+  }, [])
 
   const rows = useMemo(() => (items.data ? Object.values(items.data.items).map(buildRow) : []), [items.data])
   const types = useMemo(() => {
@@ -175,143 +232,155 @@ export function FleaMarketPage() {
   }, [rows])
 
   const filtered = useMemo(() => {
-    const needle = search.trim().toLowerCase()
-    const min = Number(minPrice) || 0
-    const max = Number(maxPrice) || Infinity
-    const minSlot = Number(minPerSlot) || 0
+    const needle = filters.search.trim().toLowerCase()
+    const min = Number(filters.minPrice) || 0
+    const max = Number(filters.maxPrice) || Infinity
+    const minSlot = Number(filters.minPerSlot) || 0
+    const ch = changesRef.current
     const list = rows.filter((r) => {
-      if (type !== 'all' && !r.item.types.includes(type)) return false
-      if (needle && !`${r.item.name} ${r.item.shortName}`.toLowerCase().includes(needle)) return false
+      if (filters.type !== 'all' && !r.item.types.includes(filters.type)) return false
+      if (filters.fleaBan === 'banned' && !r.banned) return false
+      if (filters.fleaBan === 'allowed' && r.banned) return false
+      if (needle && !r.item.name.toLowerCase().includes(needle) && !r.item.shortName.toLowerCase().includes(needle)) return false
       const price = r.flea ?? r.traderSell
       if (price < min || price > max) return false
       if (minSlot > 0 && (r.perSlot ?? 0) < minSlot) return false
-      if (neededOnly && !needs.has(r.item.id)) return false
-      if (risingOnly && !(r.change != null && r.change >= 10)) return false
-      if (flipOnly && !(r.flip != null && r.flip > 0)) return false
+      if (filters.neededOnly && !needs.has(r.item.id)) return false
+      if (filters.risingOnly) {
+        const c24 = ch.get(r.item.id)?.c24 ?? r.item.changeLast48hPercent
+        if (!(c24 != null && c24 >= filters.risingPct)) return false
+      }
+      if (filters.flipOnly && !(r.flip != null && r.flip > 0)) return false
       return true
     })
-    const dir = sort.dir === 'asc' ? 1 : -1
-    const get = NUMERIC[sort.key]
+    const dir = filters.sort.dir === 'asc' ? 1 : -1
+    const val = (r: Row): number | null => {
+      switch (filters.sort.key) {
+        case 'flea': return r.flea
+        case 'low': return r.banned ? null : r.item.low24hPrice
+        case 'high': return r.banned ? null : r.item.high24hPrice
+        case 'change24': return ch.get(r.item.id)?.c24 ?? null
+        case 'change7d': return ch.get(r.item.id)?.c7 ?? null
+        case 'perSlot': return r.perSlot
+        case 'traderSell': return r.traderSell
+        case 'flip': return r.flip
+        default: return null
+      }
+    }
     list.sort((a, b) => {
-      if (sort.key === 'name') return a.item.name.localeCompare(b.item.name) * dir
-      const va = get(a)
-      const vb = get(b)
+      if (filters.sort.key === 'name') return a.item.name.localeCompare(b.item.name) * dir
+      const va = val(a)
+      const vb = val(b)
       if (va == null && vb == null) return a.item.name.localeCompare(b.item.name)
       if (va == null) return 1
       if (vb == null) return -1
       return (va - vb) * dir || a.item.name.localeCompare(b.item.name)
     })
     return list
-  }, [rows, search, type, minPrice, maxPrice, minPerSlot, neededOnly, risingOnly, flipOnly, sort, needs])
+    // changeVersion (via setChangeVersion) re-runs this when histories arrive
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, filters, needs, tick, changesRef.current.size])
 
-  // --- virtualised list -----------------------------------------------------
   const scrollRef = useRef<HTMLDivElement>(null)
-  const [scrollTop, setScrollTop] = useState(0)
-  const [viewport, setViewport] = useState(600)
+  const virtualizer = useVirtualizer({
+    count: filtered.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: (i) => (filtered[i]?.item.id === expandedId ? ROW_HEIGHT + EXPANDED_HEIGHT : ROW_HEIGHT),
+    getItemKey: (i) => filtered[i]?.item.id ?? i,
+    overscan: 6,
+  })
   useEffect(() => {
-    const el = scrollRef.current
-    if (!el) return
-    const update = () => setViewport(el.clientHeight)
-    update()
-    const ro = new ResizeObserver(update)
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [])
-  const total = filtered.length
-  const expandedIndex = expandedId ? filtered.findIndex((r) => r.item.id === expandedId) : -1
-  const extra = expandedIndex >= 0 ? 72 : 0
-  const first = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN)
-  const last = Math.min(total, Math.ceil((scrollTop + viewport) / ROW_HEIGHT) + OVERSCAN)
-  const visible = filtered.slice(first, last)
+    virtualizer.measure()
+  }, [expandedId, virtualizer])
 
   const traderName = (id: string | null) => (id ? (gameData.data?.traders.find((t) => t.id === id)?.name ?? 'Trader') : '—')
-  const onSort = (key: SortKey) =>
-    setSort((s) => (s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: key === 'name' ? 'asc' : 'desc' }))
+  const onSort = (key: FleaSortKey) =>
+    setFilters({ sort: filters.sort.key === key ? { key, dir: filters.sort.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: key === 'name' ? 'asc' : 'desc' } })
 
-  if (items.isPending) return <LoadingPanel label="flea market prices" />
-  if (items.isError && !items.data) return <ErrorPanel error={items.error} onRetry={() => void items.refetch()} />
-
-  const grid = 'grid grid-cols-[minmax(220px,2fr)_110px_100px_100px_80px_100px_150px_110px] items-center gap-2 px-3'
+  if (items.isPending) return <div className="p-6"><LoadingPanel label="flea market prices" /></div>
+  if (items.isError && !items.data) return <div className="p-6"><ErrorPanel error={items.error} onRetry={() => void items.refetch()} /></div>
 
   return (
-    <div className="flex h-full min-h-0 flex-col px-4 py-4 md:px-8 md:py-6">
+    <div className="flex h-full min-h-0 flex-col gap-3 px-4 py-4 md:px-8 md:py-6">
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
           <h1 className="text-2xl font-semibold">Flea Market</h1>
           <p className="text-sm text-ink-muted">
-            {rows.length.toLocaleString()} items · prices refresh every 10 minutes while this tab is open
-            {items.dataUpdatedAt ? ` · updated ${formatTimeAgo(items.dataUpdatedAt)}` : ''}
-            {items.isFetching ? ' · refreshing…' : ''}
+            {rows.length.toLocaleString()} items{items.dataUpdatedAt ? ` · prices updated ${formatTimeAgo(items.dataUpdatedAt)}` : ''} · refreshes every 10 min while this tab is visible
           </p>
+          <p className="text-[11px] text-ink-dim">{FEE_NOTE}</p>
         </div>
-        <span className="text-xs text-ink-dim">{total.toLocaleString()} shown</span>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-ink-dim">{filtered.length.toLocaleString()} shown</span>
+          <button type="button" onClick={() => void items.refetch()} disabled={items.isFetching} className="btn !py-1 !text-xs"><RefreshCw className={`h-3.5 w-3.5 ${items.isFetching ? 'animate-spin' : ''}`} /> Refresh prices</button>
+        </div>
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center gap-2">
+      <TradersPanel />
+
+      <div className="flex flex-wrap items-center gap-2">
         <label className="relative">
           <Search className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-dim" />
-          <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search items…" aria-label="Search items" className={`${selectClass} w-56 pl-8`} />
+          <input type="search" value={filters.search} onChange={(e) => setFilters({ search: e.target.value })} placeholder="Search name or short name…" aria-label="Search items" className={`${selectClass} w-60 pl-8`} />
         </label>
-        <select value={type} onChange={(e) => setType(e.target.value)} aria-label="Category" className={selectClass}>
+        <select value={filters.type} onChange={(e) => setFilters({ type: e.target.value })} aria-label="Category" className={selectClass}>
           <option value="all">All categories</option>
           {types.map(([t, n]) => (
             <option key={t} value={t}>{TYPE_LABEL[t] ?? t} ({n})</option>
           ))}
         </select>
-        <input type="number" value={minPrice} onChange={(e) => setMinPrice(e.target.value)} placeholder="Min ₽" aria-label="Minimum price" className={`${selectClass} w-24`} />
-        <input type="number" value={maxPrice} onChange={(e) => setMaxPrice(e.target.value)} placeholder="Max ₽" aria-label="Maximum price" className={`${selectClass} w-24`} />
-        <input type="number" value={minPerSlot} onChange={(e) => setMinPerSlot(e.target.value)} placeholder="Min ₽/slot" aria-label="Minimum price per slot" className={`${selectClass} w-28`} />
-        <label className="flex items-center gap-1.5 text-sm"><input type="checkbox" checked={neededOnly} onChange={(e) => setNeededOnly(e.target.checked)} /> Needed by me</label>
-        <label className="flex items-center gap-1.5 text-sm" title="48h change of +10% or more"><input type="checkbox" checked={risingOnly} onChange={(e) => setRisingOnly(e.target.checked)} /> Rising fast</label>
-        <label className="flex items-center gap-1.5 text-sm" title="Cheaper at a trader than it sells for on the flea after the fee"><input type="checkbox" checked={flipOnly} onChange={(e) => setFlipOnly(e.target.checked)} /> Trader flip</label>
+        <select value={filters.fleaBan} onChange={(e) => setFilters({ fleaBan: e.target.value as typeof filters.fleaBan })} aria-label="Flea ban filter" className={selectClass}>
+          <option value="all">Flea + banned</option>
+          <option value="allowed">Flea-tradeable only</option>
+          <option value="banned">Banned from flea</option>
+        </select>
+        <input type="number" value={filters.minPrice} onChange={(e) => setFilters({ minPrice: e.target.value })} placeholder="Min ₽" aria-label="Minimum price" className={`${selectClass} w-24`} />
+        <input type="number" value={filters.maxPrice} onChange={(e) => setFilters({ maxPrice: e.target.value })} placeholder="Max ₽" aria-label="Maximum price" className={`${selectClass} w-24`} />
+        <input type="number" value={filters.minPerSlot} onChange={(e) => setFilters({ minPerSlot: e.target.value })} placeholder="Min ₽/slot" aria-label="Minimum price per slot" className={`${selectClass} w-28`} />
+        <label className="flex items-center gap-1.5 text-sm"><input type="checkbox" checked={filters.neededOnly} onChange={(e) => setFilters({ neededOnly: e.target.checked })} /> Needed by me</label>
+        <label className="flex items-center gap-1.5 text-sm" title="24h change at or above the threshold (falls back to the 48h figure until history loads)">
+          <input type="checkbox" checked={filters.risingOnly} onChange={(e) => setFilters({ risingOnly: e.target.checked })} /> Rising ≥
+          <input type="number" value={filters.risingPct} onChange={(e) => setFilters({ risingPct: Number(e.target.value) || 0 })} aria-label="Rising threshold percent" className={`${selectClass} w-16 !py-0.5`} />%
+        </label>
+        <label className="flex items-center gap-1.5 text-sm" title="Cheaper at a trader than it sells for on the flea after the fee"><input type="checkbox" checked={filters.flipOnly} onChange={(e) => setFilters({ flipOnly: e.target.checked })} /> Trader flip</label>
+        <button type="button" onClick={resetFilters} className="btn !py-1 !text-xs" title="Reset filters"><RotateCcw className="h-3.5 w-3.5" /> Reset</button>
       </div>
 
-      <div className="mt-3 flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-line bg-surface-2">
-        <div className={`${grid} h-9 border-b border-line bg-surface-3 text-xs uppercase tracking-wide text-ink-muted`}>
-          <Head sort={sort} onSort={onSort} label="Item" k="name" />
-          <Head sort={sort} onSort={onSort} label="Flea avg" k="flea" className="justify-end" />
-          <Head sort={sort} onSort={onSort} label="Low 24h" k="low" className="justify-end" />
-          <Head sort={sort} onSort={onSort} label="High 24h" k="high" className="justify-end" />
-          <Head sort={sort} onSort={onSort} label="48h" k="change" className="justify-end" />
-          <Head sort={sort} onSort={onSort} label="₽ / slot" k="perSlot" className="justify-end" />
-          <Head sort={sort} onSort={onSort} label="Trader sell" k="traderSell" className="justify-end" />
-          <Head sort={sort} onSort={onSort} label="Flip" k="flip" className="justify-end" />
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-line bg-surface-2">
+        <div className={`${GRID} h-9 border-b border-line bg-surface-3 text-xs uppercase tracking-wide text-ink-muted`}>
+          <Head sort={filters.sort} onSort={onSort} label="Item" k="name" />
+          <Head sort={filters.sort} onSort={onSort} label="Flea avg" k="flea" className="justify-end" />
+          <Head sort={filters.sort} onSort={onSort} label="Low 24h" k="low" className="justify-end" />
+          <Head sort={filters.sort} onSort={onSort} label="High 24h" k="high" className="justify-end" />
+          <Head sort={filters.sort} onSort={onSort} label="24h" k="change24" className="justify-end" />
+          <Head sort={filters.sort} onSort={onSort} label="7d" k="change7d" className="justify-end" />
+          <Head sort={filters.sort} onSort={onSort} label="₽ / slot" k="perSlot" className="justify-end" />
+          <Head sort={filters.sort} onSort={onSort} label="Trader sell" k="traderSell" className="justify-end" />
+          <Head sort={filters.sort} onSort={onSort} label="Flip" k="flip" className="justify-end" />
         </div>
-        <div ref={scrollRef} onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)} className="min-h-0 flex-1 overflow-y-auto">
-          <div style={{ height: total * ROW_HEIGHT + extra, position: 'relative' }}>
-            {visible.map((r, i) => {
-              const index = first + i
-              const top = index * ROW_HEIGHT + (expandedIndex >= 0 && index > expandedIndex ? extra : 0)
-              const open = r.item.id === expandedId
+        <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
+          <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
+            {virtualizer.getVirtualItems().map((v) => {
+              const r = filtered[v.index]
+              if (!r) return null
               return (
-                <div key={r.item.id} style={{ position: 'absolute', top, left: 0, right: 0 }}>
-                  <div
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => setExpandedId(open ? null : r.item.id)}
-                    onKeyDown={(e) => e.key === 'Enter' && setExpandedId(open ? null : r.item.id)}
-                    className={`${grid} h-11 cursor-pointer border-b border-line text-sm hover:bg-surface-3 ${open ? 'bg-surface-3' : ''}`}
-                  >
-                    <div className="flex min-w-0 items-center gap-2">
-                      {r.item.iconLink && <img src={r.item.iconLink} alt="" className="h-8 w-8 shrink-0 object-contain" loading="lazy" />}
-                      <span className="min-w-0 truncate">{r.item.name}</span>
-                      {needs.has(r.item.id) && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" title="Needed for your quests/hideout" />}
-                    </div>
-                    <div className="text-right tabular-nums">{r.flea != null ? formatRoubles(r.flea) : <span className="text-ink-dim">no flea</span>}</div>
-                    <div className="text-right text-xs tabular-nums text-ink-muted">{formatRoubles(r.item.low24hPrice)}</div>
-                    <div className="text-right text-xs tabular-nums text-ink-muted">{formatRoubles(r.item.high24hPrice)}</div>
-                    <div className={`text-right text-xs tabular-nums ${r.change != null && r.change > 0 ? 'text-success' : r.change != null && r.change < 0 ? 'text-danger' : 'text-ink-dim'}`}>{r.change != null ? `${r.change > 0 ? '+' : ''}${r.change.toFixed(1)}%` : '—'}</div>
-                    <div className="text-right text-xs tabular-nums">{r.perSlot != null ? formatRoubles(r.perSlot) : '—'}</div>
-                    <div className="truncate text-right text-xs tabular-nums">{r.traderSell ? `${traderName(r.traderSellId)} ${formatRoubles(r.traderSell)}` : '—'}</div>
-                    <div className={`text-right text-xs tabular-nums ${r.flip != null && r.flip > 0 ? 'text-success' : 'text-ink-dim'}`} title={r.traderBuy != null ? `Buy at ${traderName(r.traderBuyId)} for ${formatRoubles(r.traderBuy)}` : ''}>{r.flip != null ? formatRoubles(r.flip) : '—'}</div>
-                  </div>
-                  {open && <HistoryPanel item={r.item} />}
+                <div key={v.key} data-index={v.index} ref={virtualizer.measureElement} style={{ position: 'absolute', top: 0, left: 0, right: 0, transform: `translateY(${v.start}px)` }}>
+                  <FleaRow
+                    row={r}
+                    open={r.item.id === expandedId}
+                    needed={needs.get(r.item.id)}
+                    collected={inventory.collected[r.item.id] ?? 0}
+                    traderName={traderName}
+                    changes={changesRef.current.get(r.item.id)}
+                    onChanges={onChanges}
+                    onToggle={() => setExpandedId(r.item.id === expandedId ? null : r.item.id)}
+                  />
                 </div>
               )
             })}
           </div>
         </div>
-        {total === 0 && <p className="px-4 py-10 text-center text-sm text-ink-muted">No items match these filters.</p>}
+        {filtered.length === 0 && <p className="px-4 py-10 text-center text-sm text-ink-muted">No items match these filters.</p>}
       </div>
     </div>
   )

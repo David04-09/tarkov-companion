@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Search, Star } from 'lucide-react'
 import { useCrafts, useHideout, useItems } from '../api/hooks'
 import { ErrorPanel, LoadingPanel } from '../components/DataState'
-import { craftEconomics, formatDuration, type CraftEconomics } from '../lib/economy'
+import { FEE_NOTE, craftEconomics, formatDuration, type CraftEconomics } from '../lib/economy'
 import { formatRoubles } from '../lib/format'
 import { useInventoryStore, useModeInventory } from '../store/inventory'
 
@@ -65,6 +65,7 @@ export function CraftsPage() {
           <p className="text-sm text-ink-muted">
             Profit = best sale of the output (flea minus the listing fee, or trader) minus the cheapest way to buy the inputs. Tools are not counted. Star a craft to add its inputs to Item Collection.
           </p>
+          <p className="text-[11px] text-ink-dim">{FEE_NOTE}</p>
         </div>
         <span className="text-xs text-ink-dim">{filtered.length} of {rows.length} crafts</span>
       </div>

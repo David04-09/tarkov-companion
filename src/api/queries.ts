@@ -35,11 +35,15 @@ import type {
 // ---------------------------------------------------------------------------
 
 function adaptTrader(raw: RawTrader, t: Translator): Trader {
+  const reset = raw.resetTime ? Date.parse(raw.resetTime) : NaN
   return {
     id: raw.id,
     name: t(raw.name, raw.normalizedName),
     normalizedName: raw.normalizedName,
     imageLink: raw.imageLink ?? null,
+    currency: raw.currency ?? 'RUB',
+    resetTime: Number.isFinite(reset) ? reset : null,
+    maxLevel: Math.max(1, raw.levels?.length ?? 1),
   }
 }
 
@@ -198,6 +202,9 @@ function adaptTask(
     name: 'Unknown trader',
     normalizedName: 'unknown',
     imageLink: null,
+    currency: 'RUB',
+    resetTime: null,
+    maxLevel: 1,
   }
   return {
     id: raw.id,

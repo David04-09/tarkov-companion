@@ -14,7 +14,7 @@ src/api        JSON API client (client.ts), types.ts (Raw* = wire shape, app typ
 src/store      progress.ts (quest progress), ui.ts (map prefs), mapOverlay.ts (checked tasks/layers), align.ts (dev tool pairs)
 src/lib        taskStatus.ts (available/locked/completed rules), levelEstimate.ts, format.ts
 src/config/nav.tsx   sidebar tabs = routes; add a tab by adding one line (fullBleed: true for edge-to-edge pages)
-src/pages      DashboardPage, QuestsPage, MapsPage, AlignPage (/dev/align, dev builds only), stubs.tsx (Item Collection, Crafts, Flea)
+src/pages      Dashboard, Quests, Maps, ItemCollection, Keys, Hideout, Crafts, FleaMarket, Overlay (/overlay, desktop), AlignPage (/dev/align, dev only)
 src/maps       projection.ts (affine + Leaflet CRS), mapConfig.ts (base layers), MapViewer.tsx, overlay/* (quest markers, panel, layers)
 src/desktop    renderer side of Electron bridge (useDesktop.ts, DesktopSettings.tsx, WatcherStatus.tsx)
 src/shared/desktop-api.ts   IPC types shared by main, preload and renderer (no runtime imports)
@@ -49,6 +49,12 @@ src/data/mapConfig.json      vendored tarkov.dev map config (records source comm
 - The Claude browser pane is often hidden: screenshots time out and animation frames/transitions don't run (map size caching, sidebar width). Verify with JS probes, set `resize_window` 1280×800 before measuring, reload after resizing. The HMR-cached `useMemo` results persist across module hot updates; reload to verify logic changes.
 - npm 11 blocks install scripts for new packages; `npm install-scripts approve <pkg>` or run `node node_modules/electron/install.js` if the Electron binary is missing.
 
+## Milestone 5 additions (2026-10-03)
+- Item Collection (`lib/needs.ts` + `hooks/useNeeds.ts`: quests hand-in objectives, unbuilt hideout levels, favourite crafts; money excluded), Ctrl+K item lookup (`components/ItemLookup.tsx`, state in `store/lookup.ts`), Keys tab, Hideout tab (`lib/hideoutPlan.ts`), Crafts tab (`lib/economy.ts`: flea fee formula, acquire/sell valuation), Flea Market tab (TanStack Virtual; lazy per-row price history for 24h/7d; filters persisted in `store/flea.ts`; `components/TradersPanel.tsx` with loyalty levels in `store/inventory.ts` and restock countdown from the traders doc's `resetTime`, which is real ISO data).
+- Maps: loot layer with grid clustering (`overlay/LootLayer.tsx`, groups in `lootGroups.ts`), Geoman drawings persisted per `${gameMode}:${mapKey}` in `store/drawings.ts` (also in progress export), Briefing tab + route planner (`overlay/Briefing.tsx`, `store/routePlan.ts`).
+- Desktop: timers (`desktop/timers.ts`, raid start from log, manual scav cooldown), overlay window (`/overlay` route, frameless always-on-top, global hotkey in settings, broadcast to all windows, overlay rehydrates shared localStorage on `storage` events), wipe detection (`desktop/wipe.ts`, archives in `store/archives.ts`).
+- Dashboard: Kappa/Lightkeeper progress, items summary, buildable hideout levels, top crafts, "Tonight's raid".
+
 ## Status
-Done: Dashboard, Quests tab, Maps (viewer, base layers, Lighthouse render, quest overlay with panel/legend/extra layers, dev alignment tool), desktop app with tray, log watcher (parser + 10 tests, backfill, status light, settings), level estimate, README.
-Next candidates: owner refines Lighthouse alignment in `/dev/align`; Phase 3 drawing tools (geoman, per-map/per-mode persistence, export/import, route length in metres); Item Collection / Crafts / Flea tabs (hideout, crafts, barters, prices endpoints exist); auto-update for the desktop build; manual "story stage" setting if the Available filter stays too generous. There is no Tarkov Tracker sync in this repo (the owner once mentioned one; it was never built).
+Done: everything above plus Dashboard, Quests, Maps (viewer, base layers, Lighthouse render, overlay, dev alignment tool), desktop app with tray and log watcher (parser + 10 tests, backfill, status light), level estimate, README.
+Next candidates: owner refines Lighthouse alignment in `/dev/align`; auto-update for the desktop build; `npm run dist:desktop` has not been run end to end yet (only `vite build --mode desktop`); hands-on test of overlay hotkey/timers during a live raid; manual "story stage" setting if the Available filter stays too generous. There is no Tarkov Tracker sync in this repo (the owner once mentioned one; it was never built).

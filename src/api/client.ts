@@ -37,7 +37,10 @@ export async function fetchJson<T>(path: string, signal?: AbortSignal): Promise<
   const url = `${JSON_API_BASE}${path}`
   let res: Response
   try {
-    res = await fetch(url, { headers: { Accept: 'application/json' }, signal })
+    // The API sends an 8-day Cache-Control; without no-cache the browser would keep
+    // serving stale prices and trader reset times. no-cache revalidates via ETag,
+    // so unchanged documents cost a 304, not a re-download.
+    res = await fetch(url, { headers: { Accept: 'application/json' }, signal, cache: 'no-cache' })
   } catch (err) {
     if (err instanceof DOMException && err.name === 'AbortError') throw err
     throw new TarkovApiError(

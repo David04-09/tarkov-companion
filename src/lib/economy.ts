@@ -1,5 +1,9 @@
 import type { Craft, HideoutStation, Item, ItemsById } from '../api/types'
 
+/** Shown wherever a flea fee is used. */
+export const FEE_NOTE =
+  'Flea fees are an estimate from the community formula (5% base, no Intelligence Center discount, one offer per stack); the game may charge slightly differently.'
+
 /**
  * Flea market listing fee, as the game computes it (community-documented formula):
  *   fee = VO·Ti·4^PO·Q + VR·Tr·4^PR·Q
