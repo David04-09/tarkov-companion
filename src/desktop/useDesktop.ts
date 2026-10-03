@@ -10,6 +10,7 @@ import { useGameData } from '../api/hooks'
 import type { BackfillProgress, BackfillResult, DesktopSettings, GameEvent, SessionMode, UpdateStatus, WatcherState } from '../shared/desktop-api'
 import { useProgressStore } from '../store/progress'
 import { useUiStore } from '../store/ui'
+import { useLocalFlags } from './localFlags'
 import { beep, useTimersStore } from './timers'
 import { useWipeBannerStore } from './wipe'
 
@@ -110,6 +111,7 @@ export async function runBackfill(): Promise<BackfillSummary | null> {
   try {
     const result = await api.readPastLogs()
     const summary = applyBackfillResult(result)
+    useLocalFlags.getState().setBackfillDone(true)
     useDesktopStore.getState().setBackfill({ running: false, progress: null, last: summary })
     useDesktopStore.getState().setSettings(await api.getSettings())
     return summary
@@ -185,11 +187,12 @@ export function DesktopBridge() {
   // First connection to a logs folder: read past logs once, automatically (main window only,
   // and only after the first-run screen, which offers the same thing explicitly).
   const logsPath = useDesktopStore((s) => s.state?.logsPath ?? null)
-  const settings = useDesktopStore((s) => s.settings)
+  const setupDone = useLocalFlags((s) => s.setupDone)
+  const backfillDone = useLocalFlags((s) => s.backfillDone)
   useEffect(() => {
-    if (!window.desktop || isOverlayWindow() || !logsPath || !settings || !settings.setupDone || settings.initialBackfillDone) return
+    if (!window.desktop || isOverlayWindow() || !logsPath || !setupDone || backfillDone) return
     void runBackfill()
-  }, [logsPath, settings])
+  }, [logsPath, setupDone, backfillDone])
 
   return null
 }

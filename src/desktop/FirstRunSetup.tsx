@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { CheckCircle2, FolderSearch, History, Loader2, ShieldCheck, XCircle } from 'lucide-react'
 import { APP_NAME } from '../lib/app-info'
 import { type Faction, useProfile, useProgressStore } from '../store/progress'
+import { useLocalFlags } from './localFlags'
 import { runBackfill, updateDesktopSettings, useDesktopStore } from './useDesktop'
 
 const FACTIONS: Faction[] = ['USEC', 'BEAR']
@@ -19,7 +20,7 @@ function Step({ n, title, children }: { n: number; title: string; children: Reac
 }
 
 /**
- * Shown once in the desktop app (until `setupDone`). Everything here can be
+ * Shown once per progress store in the desktop app (see localFlags.ts). Everything here can be
  * changed later in Settings; nothing is required except pressing Done.
  */
 export function FirstRunSetup() {
@@ -35,6 +36,8 @@ export function FirstRunSetup() {
   const finish = async () => {
     setFinishing(true)
     // If the user skipped "Read past logs", don't run it behind their back later either.
+    useLocalFlags.getState().setBackfillDone(true)
+    useLocalFlags.getState().setSetupDone(true)
     await updateDesktopSettings({ setupDone: true, initialBackfillDone: true })
   }
 

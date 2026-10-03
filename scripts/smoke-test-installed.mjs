@@ -8,6 +8,11 @@ import path from 'node:path'
 const [exe, userData] = process.argv.slice(2)
 const PORT = 9333
 fs.rmSync(userData, { recursive: true, force: true })
+// Optional: start from an existing settings.json (e.g. one left by an older version).
+if (process.env.TC_SEED_SETTINGS) {
+  fs.mkdirSync(userData, { recursive: true })
+  fs.copyFileSync(process.env.TC_SEED_SETTINGS, path.join(userData, 'settings.json'))
+}
 const child = spawn(exe, [`--user-data-dir=${userData}`, `--remote-debugging-port=${PORT}`], { detached: true, stdio: 'ignore' })
 child.unref()
 
@@ -59,9 +64,21 @@ out.setupText = await evalJs('(document.querySelector("[aria-labelledby=setup-ti
 out.logsFolderFound = await evalJs('/Logs folder found/.test(document.body.innerText)')
 out.logsPath = await evalJs('(document.querySelector("[aria-labelledby=setup-title] code")||{}).textContent')
 
+// Read past logs from the setup screen when it is shown, then count completed quests.
+if (out.setupScreen) {
+  await evalJs('(() => { const b=[...document.querySelectorAll("[aria-labelledby=setup-title] button")].find(x=>/Read past logs/.test(x.textContent)); b && !b.disabled && b.click(); return !!b })()')
+  for (let i = 0; i < 60; i++) {
+    await sleep(1000)
+    if (await evalJs('/Done: [0-9]+ PvE/.test(document.body.innerText)')) break
+  }
+  out.backfillLine = await evalJs('(document.body.innerText.match(/Done: [0-9]+ PvE[^.]*/)||[""])[0]')
+  out.doneButton = await evalJs('(() => { const b=[...document.querySelectorAll("[aria-labelledby=setup-title] button")].find(x=>x.textContent.trim()==="Done"); return b ? { disabled: b.disabled } : "missing" })()')
+}
+
 // Finish setup, then open Lighthouse (bundled tiles) and Customs (remote tiles).
-await evalJs('(() => { const b=[...document.querySelectorAll("button")].find(x=>x.textContent.trim()==="Done"); b && b.click(); return !!b })()')
+out.doneClicked = await evalJs('(() => { const b=[...document.querySelectorAll("[aria-labelledby=setup-title] button")].find(x=>x.textContent.trim()==="Done"); b && b.click(); return !!b })()')
 await sleep(1500)
+out.setupStillShown = await evalJs('!!document.querySelector("[aria-labelledby=setup-title]")')
 await evalJs('location.hash = "#/maps"')
 await sleep(1500)
 await evalJs('(() => { const s=document.querySelector("select[aria-label=\\"Select map\\"]"); if(!s) return false; const setter=Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,"value").set; setter.call(s,"lighthouse"); s.dispatchEvent(new Event("change",{bubbles:true})); return true })()')
@@ -72,6 +89,8 @@ await sleep(8000)
 out.customs = await evalJs('(() => { const t=[...document.querySelectorAll("img.leaflet-tile")]; return { tiles: t.length, loaded: t.filter(i=>i.complete&&i.naturalWidth>0).length, markers: document.querySelectorAll(".leaflet-marker-icon").length } })()')
 out.updateStatus = await evalJs('window.desktop.getUpdateStatus()')
 out.watcher = await evalJs('window.desktop.getState().then(s => ({status: s.status, logsPath: s.logsPath, detected: s.detectedPath, mode: s.sessionMode}))')
+out.completed = await evalJs('(() => { const p = JSON.parse(localStorage.getItem("tarkov-companion-progress")||"{}").state?.profiles; return p ? { pve: p.pve.completedTaskIds.values.length, pvp: p.regular.completedTaskIds.values.length } : null })()')
+out.flags = await evalJs('localStorage.getItem("tarkov-companion-desktop-flags")')
 out.settingsFile = fs.existsSync(path.join(userData, 'settings.json')) ? JSON.parse(fs.readFileSync(path.join(userData, 'settings.json'), 'utf8')) : null
 console.log(JSON.stringify(out, null, 2))
 ws.close()
