@@ -171,6 +171,19 @@ interface ModeChange {
   mode: SessionMode
 }
 
+interface ProfileChange {
+  at: number
+  profileId: string
+}
+
+/** The second word of a quest message's templateId, per message type. Anything else is ignored. */
+const TASK_TEMPLATE_SUFFIX: Record<number, string> = {
+  10: 'description',
+  11: 'failMessageText',
+  12: 'successMessageText',
+}
+const OBJECT_ID_RE = /^[0-9a-f]{24}$/
+
 /**
  * Stateful interpreter for one game session (one log folder). Feed it entries
  * from the application log and the notifications log; it tracks the session
@@ -179,6 +192,7 @@ interface ModeChange {
  */
 export class GameLogInterpreter {
   private modeTimeline: ModeChange[] = []
+  private profileTimeline: ProfileChange[] = []
   profileId: string | null = null
   /** Numeric BSG account id (the id tarkov.dev's player pages use). */
   accountId: string | null = null
@@ -200,6 +214,17 @@ export class GameLogInterpreter {
     // still belongs to that session's first mode.
     if (mode === 'unknown' && this.modeTimeline.length) return this.modeTimeline[0].mode
     return mode
+  }
+
+  /** Profile selected at a given time (notifications arrive in another file). */
+  profileAt(at: number): string | null {
+    let id: string | null = null
+    for (const c of this.profileTimeline) {
+      if (c.at <= at) id = c.profileId
+      else break
+    }
+    if (id === null && this.profileTimeline.length) return this.profileTimeline[0].profileId
+    return id
   }
 
   interpret(entry: LogEntry, file: string, historical: boolean): GameEvent[] {
@@ -225,6 +250,8 @@ export class GameLogInterpreter {
     const prof = PROFILE_RE.exec(rest)
     if (prof) {
       if (prof[1] !== this.profileId) {
+        this.profileTimeline.push({ at: entry.at, profileId: prof[1] })
+        this.profileTimeline.sort((a, b) => a.at - b.at)
         this.profileId = prof[1]
         this.accountId = prof[2]
         out.push({ ...base(), kind: 'profile', profileId: prof[1], accountId: prof[2] })
@@ -286,10 +313,12 @@ export class GameLogInterpreter {
       if (!msg || typeof msg.type !== 'number') return out
       const templateId = typeof msg.templateId === 'string' ? msg.templateId : ''
       if (msg.type === MSG_TASK_STARTED || msg.type === MSG_TASK_FAILED || msg.type === MSG_TASK_FINISHED) {
-        const taskId = templateId.split(' ')[0]
-        if (!taskId) return out
+        // Strict shape: "<24-hex quest id> <suffix for this message type>". Hand-in messages
+        // (type 12) are only sent when the quest is turned in, never for single objectives.
+        const [taskId, suffix] = templateId.split(' ')
+        if (!taskId || !OBJECT_ID_RE.test(taskId) || suffix !== TASK_TEMPLATE_SUFFIX[msg.type]) return out
         const kind = msg.type === MSG_TASK_STARTED ? 'taskStarted' : msg.type === MSG_TASK_FAILED ? 'taskFailed' : 'taskFinished'
-        out.push({ ...base(), kind, taskId })
+        out.push({ ...base(), kind, taskId, profileId: this.profileAt(entry.at), traderId: typeof msg.uid === 'string' ? msg.uid : null })
         return out
       }
       if (msg.type === MSG_FLEA) {
@@ -311,6 +340,7 @@ interface ChatNotification {
   message?: {
     type?: number
     templateId?: string
+    uid?: string
     systemData?: { buyerNickname?: string; soldItem?: string; itemCount?: number }
     items?: { data?: { _tpl?: string }[] }
   }

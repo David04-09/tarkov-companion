@@ -28,6 +28,7 @@ import type {
   Task,
   TaskObjective,
   Trader,
+  WeaponBuild,
 } from './types'
 
 // ---------------------------------------------------------------------------
@@ -177,7 +178,20 @@ function adaptObjective(
     locations: adaptObjectiveLocations(raw),
     requiredKeys: (raw.requiredKeys ?? []).map((g) => (Array.isArray(g) ? g : [g]).filter(Boolean)),
     exitName: raw.exitName ? t(raw.exitName, raw.exitName) : null,
+    build: adaptBuild(raw),
   }
+}
+
+function adaptBuild(raw: RawTaskObjective): WeaponBuild | null {
+  if (raw.type !== 'buildWeapon') return null
+  const limits: WeaponBuild['limits'] = []
+  for (const [stat, v] of Object.entries(raw.buildAttributes ?? {})) {
+    if (!v || typeof v.value !== 'number') continue
+    const compare = v.compareMethod === '<=' ? '<=' : v.compareMethod === '=' || v.compareMethod === '==' ? '=' : '>='
+    if (compare === '>=' && v.value === 0) continue // "at least 0" means no limit
+    limits.push({ stat, compare, value: v.value })
+  }
+  return { weaponId: raw.item ?? null, partIds: raw.containsAll ?? [], categoryIds: raw.containsCategory ?? [], limits }
 }
 
 function toFaction(name: string): FactionName {
@@ -354,7 +368,11 @@ export async function fetchItems(gameMode: GameMode, signal?: AbortSignal): Prom
     }
     out[item.id] = item
   }
-  return { items: out, playerLevels }
+  const categoryNames: Record<string, string> = {}
+  for (const [id, c] of Object.entries(doc.data.itemCategories ?? {})) {
+    if (c?.name) categoryNames[c.id ?? id] = t(c.name, c.normalizedName ?? id)
+  }
+  return { items: out, playerLevels, categoryNames }
 }
 
 /** Flea-market price history for one item (cached for 5 minutes by the hook). */

@@ -13,6 +13,8 @@ import {
 import { useGameData, useItems } from '../api/hooks'
 import type { GameData, ItemsById, Task, TaskObjective } from '../api/types'
 import { KappaBadge, LightkeeperBadge, StatusPill } from '../components/Badges'
+import { AutoTickBadge } from '../desktop/SyncReview'
+import { QuestGuide } from '../components/QuestGuide'
 import { ErrorPanel, LoadingPanel, RefreshErrorBanner } from '../components/DataState'
 import { formatNumber, formatObjectiveType, formatTimeAgo } from '../lib/format'
 import {
@@ -169,6 +171,9 @@ function TaskDetail({
       <div>
         <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">Objectives</h3>
         <ObjectiveList task={task} items={items} itemsLoading={itemsLoading} />
+        <div className="mt-4">
+          <QuestGuide task={task} />
+        </div>
       </div>
 
       <div className="space-y-4 text-sm">
@@ -305,6 +310,7 @@ function QuestTable({
 }) {
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const setTaskCompleted = useProgressStore((s) => s.setTaskCompleted)
+  const gameMode = useProgressStore((s) => s.gameMode)
 
   return (
     <div className="overflow-hidden rounded-lg border border-line bg-surface-2">
@@ -355,6 +361,7 @@ function QuestTable({
                         </span>
                         {task.kappaRequired && <KappaBadge />}
                         {task.lightkeeperRequired && <LightkeeperBadge />}
+                        {status === 'completed' && <AutoTickBadge mode={gameMode} taskId={task.id} />}
                       </div>
                     </td>
                     <td className="px-3 py-2 whitespace-nowrap">{task.trader.name}</td>

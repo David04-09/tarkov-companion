@@ -98,7 +98,7 @@ export function FirstRunSetup() {
           </Step>
 
           <Step n={3} title="Catch up on what you have already done">
-            <p className="text-xs text-ink-muted">Reads every old game session once and marks the quests it finds as completed. Takes a few seconds.</p>
+            <p className="text-xs text-ink-muted">Reads your old game sessions and lists every quest you handed in to a trader. You check the list before anything is ticked.</p>
             <div className="flex flex-wrap items-center gap-2">
               <button type="button" onClick={() => void runBackfill()} disabled={!hasLogs || backfill.running} className="btn">
                 {backfill.running ? <Loader2 className="h-4 w-4 animate-spin" /> : <History className="h-4 w-4" />} Read past logs

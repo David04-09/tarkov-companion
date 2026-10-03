@@ -7,6 +7,7 @@ import { useArchivesStore } from '../store/archives'
 import { useProgressStore } from '../store/progress'
 import { useTimersStore } from './timers'
 import { isDesktop, runBackfill, updateDesktopSettings, useDesktopStore } from './useDesktop'
+import { SyncHistorySection } from './SyncReview'
 import { archiveAndReset } from './wipe'
 
 function TimersSettings() {
@@ -226,7 +227,7 @@ export function DesktopSettingsSection() {
               {backfill.running ? <Loader2 className="h-4 w-4 animate-spin" /> : <History className="h-4 w-4" />}
               Read past logs
             </button>
-            <span className="text-ink-muted">Scans every old session once and adds the quests it finds as completed.</span>
+            <span className="text-ink-muted">Scans every old session and lists the quests you handed in, for you to confirm before anything is ticked.</span>
           </div>
           {backfill.running && backfill.progress && (
             <div className="mt-2">
@@ -306,6 +307,7 @@ export function DesktopSettingsSection() {
         <p className="text-[11px] text-ink-dim">Hotkey format: Electron accelerator, e.g. Control+Shift+T or Alt+F2. Position and size are remembered.</p>
       </section>
 
+      <SyncHistorySection />
       <TimersSettings />
       <ArchivesSettings />
 

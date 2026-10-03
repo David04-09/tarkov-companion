@@ -1,6 +1,8 @@
+import { useState } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import { NAV_ITEMS } from '../config/nav'
 import { FirstRunSetup } from '../desktop/FirstRunSetup'
+import { SyncReviewDialog, SyncToast } from '../desktop/SyncReview'
 import { UpdateBanner } from '../desktop/UpdateBanner'
 import { hasAnyProgress, useLocalFlags } from '../desktop/localFlags'
 import { isDesktop, useDesktopStore } from '../desktop/useDesktop'
@@ -15,7 +17,11 @@ export function Layout() {
   const localSetupDone = useLocalFlags((s) => s.setupDone)
   const hasProgress = useProgressStore((s) => hasAnyProgress(s.profiles))
   // Set up here before (this progress store), or set up in an earlier version and already has quests ticked.
-  const showSetup = isDesktop() && settings !== null && !localSetupDone && !(settings.setupDone && hasProgress)
+  const needsSetup = isDesktop() && settings !== null && !localSetupDone && !(settings.setupDone && hasProgress)
+  // Once shown, keep the setup open until Done (ticking quests mid-way must not close it).
+  const [setupShown, setSetupShown] = useState(false)
+  if (needsSetup && !setupShown) setSetupShown(true)
+  const showSetup = isDesktop() && !localSetupDone && (needsSetup || setupShown)
   const fullBleed =
     pathname.startsWith('/dev/') || NAV_ITEMS.some((i) => i.fullBleed && i.path === pathname)
 
@@ -23,6 +29,8 @@ export function Layout() {
     <div className="flex h-full bg-surface text-ink">
       <ItemLookup />
       {showSetup && <FirstRunSetup />}
+      {isDesktop() && <SyncReviewDialog />}
+      {isDesktop() && <SyncToast />}
       <Sidebar />
       <main className={`min-w-0 flex-1 ${fullBleed ? 'flex min-h-0 flex-col overflow-hidden' : 'overflow-y-auto'}`}>
         <UpdateBanner />

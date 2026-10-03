@@ -10,6 +10,7 @@ import { KeyBadge } from './KeyBadge'
 import type { LootGroup } from './lootGroups'
 import type { MapTask } from './mapTasks'
 import { OBJECTIVE_TYPE_LABEL } from './objectiveIcons'
+import { QuestGuide } from '../../components/QuestGuide'
 import type { SpawnModel } from './spawns'
 import { SpawnsSection } from './SpawnsSection'
 
@@ -79,6 +80,7 @@ function TaskRow({ mt, status, color, checked, items, hasFloors }: { mt: MapTask
               )
             })}
           </ol>
+          <QuestGuide task={task} compact />
           <label className="flex items-center gap-2 pt-1 text-ink"><input type="checkbox" checked={status === 'completed'} onChange={(e) => setTaskCompleted(task.id, e.target.checked)} className="h-4 w-4" /> Mark complete</label>
         </div>
       )}

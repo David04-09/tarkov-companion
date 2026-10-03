@@ -187,6 +187,45 @@ describe('GameLogInterpreter', () => {
   })
 })
 
+describe('quest message safety', () => {
+  const chat = (at: string, type: number, templateId: string) =>
+    [`2026-09-11 ${at}|1.1.5.0.47242|Info|push-notifications|Got notification | ChatMessageReceived`, JSON.stringify({ message: { type, uid: '54cb57776803fa99248b456e', templateId } })].join('\n')
+
+  it('only accepts the exact quest message shapes', () => {
+    const it_ = new GameLogInterpreter()
+    for (const e of parseAll(APPLICATION_LOG)) it_.interpret(e, 'application_000.log', true)
+    const text = [
+      chat('18:50:00.000', 12, '5ae449c386f7744bde357697 successMessageText'), // real hand-in
+      chat('18:50:01.000', 12, '5ae449c386f7744bde357697 description'), // wrong suffix for a hand-in
+      chat('18:50:02.000', 10, '68fa00bda5ef093c440fb0ba 0'), // odd system message
+      chat('18:50:03.000', 12, 'notanid successMessageText'), // not an object id
+      chat('18:50:04.000', 12, ''), // empty
+      '',
+    ].join('\n')
+    const events = parseAll(text).flatMap((e) => it_.interpret(e, 'n.log', false))
+    expect(events).toHaveLength(1)
+    expect(events[0]).toMatchObject({ kind: 'taskFinished', taskId: '5ae449c386f7744bde357697', profileId: 'aaaaaaaaaaaaaaaaaaaaaaaa', traderId: '54cb57776803fa99248b456e' })
+  })
+
+  it('tags quest events with the profile selected at that time', () => {
+    const it_ = new GameLogInterpreter()
+    const text = [
+      '2026-09-11 17:00:00.000|1.1.5.0.47242|Info|application|Session mode: Regular',
+      '2026-09-11 17:00:01.000|1.1.5.0.47242|Info|application|CompleteSelectedProfile ProfileId:111111111111111111111111 AccountId:1',
+      '2026-09-11 18:00:00.000|1.1.5.0.47242|Info|application|Session mode: Pve',
+      '2026-09-11 18:00:01.000|1.1.5.0.47242|Info|application|CompleteSelectedProfile ProfileId:222222222222222222222222 AccountId:1',
+      '',
+    ].join('\n')
+    for (const e of parseAll(text)) it_.interpret(e, 'application_000.log', true)
+    const quests = [chat('17:30:00.000', 12, '5ae449c386f7744bde357697 successMessageText'), chat('18:30:00.000', 12, '596a0e1686f7741ddf17dbee successMessageText'), ''].join('\n')
+    const events = parseAll(quests).flatMap((e) => it_.interpret(e, 'n.log', true))
+    expect(events.map((e) => [e.mode, 'profileId' in e ? e.profileId : null])).toEqual([
+      ['regular', '111111111111111111111111'],
+      ['pve', '222222222222222222222222'],
+    ])
+  })
+})
+
 describe('helpers', () => {
   it('normalises session modes', () => {
     expect(normalizeSessionMode('Pve')).toBe('pve')

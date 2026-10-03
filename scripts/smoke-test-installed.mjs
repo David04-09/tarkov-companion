@@ -67,10 +67,15 @@ out.logsPath = await evalJs('(document.querySelector("[aria-labelledby=setup-tit
 // Read past logs from the setup screen when it is shown, then count completed quests.
 if (out.setupScreen) {
   await evalJs('(() => { const b=[...document.querySelectorAll("[aria-labelledby=setup-title] button")].find(x=>/Read past logs/.test(x.textContent)); b && !b.disabled && b.click(); return !!b })()')
-  for (let i = 0; i < 60; i++) {
+  // The catch-up now opens a review list; read it, then confirm the default selection.
+  for (let i = 0; i < 90; i++) {
     await sleep(1000)
-    if (await evalJs('/Done: [0-9]+ PvE/.test(document.body.innerText)')) break
+    if (await evalJs('!!document.querySelector("[aria-labelledby=review-title]")')) break
   }
+  out.review = await evalJs('(() => { const d=document.querySelector("[aria-labelledby=review-title]"); if(!d) return null; return { summary: d.querySelector("p")?.innerText, rows: d.querySelectorAll("li input[type=checkbox]").length, checked: d.querySelectorAll("li input[type=checkbox]:checked").length, sample: [...d.querySelectorAll("li")].slice(0,5).map(li=>li.innerText.replace(/\\s+/g," ")) } })()')
+  out.reviewApplied = await evalJs('(() => { const b=[...document.querySelectorAll("[aria-labelledby=review-title] button")].find(x=>/^Tick [0-9]+ quests/.test(x.textContent.trim())); b && b.click(); return b ? b.textContent.trim() : null })()')
+  await sleep(1500)
+  out.syncHistory = await evalJs('(() => { const h = JSON.parse(localStorage.getItem("tarkov-companion-sync-history")||"{}").state; return h ? { entries: h.entries.length, sources: [...new Set(h.entries.map(e=>e.source))] } : null })()')
   out.backfillLine = await evalJs('(document.body.innerText.match(/Done: [0-9]+ PvE[^.]*/)||[""])[0]')
   out.doneButton = await evalJs('(() => { const b=[...document.querySelectorAll("[aria-labelledby=setup-title] button")].find(x=>x.textContent.trim()==="Done"); return b ? { disabled: b.disabled } : "missing" })()')
 }

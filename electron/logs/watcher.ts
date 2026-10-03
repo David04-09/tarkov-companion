@@ -189,10 +189,11 @@ export class LogWatcher extends EventEmitter {
       files: 0,
       events: [],
       finishedByMode: { regular: [], pve: [], seasonal: [], unknown: [] },
+      currentProfileByMode: { regular: null, pve: null, seasonal: null, unknown: null },
+      skippedOtherProfile: 0,
     }
     if (!this.logsPath) return result
     const folders = listSessionFolders(this.logsPath)
-    const finished: Record<SessionMode, Set<string>> = { regular: new Set(), pve: new Set(), seasonal: new Set(), unknown: new Set() }
     folders.forEach((folder, i) => {
       onProgress?.({ done: i, total: folders.length, folder: folder.name })
       const interpreter = new GameLogInterpreter()
@@ -213,13 +214,29 @@ export class LogWatcher extends EventEmitter {
         for (const e of p.entries) {
           for (const ev of interpreter.interpret(e, p.fileName, true)) {
             result.events.push(ev)
-            if (ev.kind === 'taskFinished') finished[ev.mode].add(ev.taskId)
           }
         }
       }
       result.folders += 1
     })
     onProgress?.({ done: folders.length, total: folders.length, folder: '' })
+    // "You" per mode = the profile selected most recently in that mode. Older profiles
+    // (before a wipe/reset, or a second account on this PC) must not tick quests.
+    const ordered = [...result.events].sort((a, b) => a.at - b.at)
+    const profilesSeen: Record<SessionMode, Set<string>> = { regular: new Set(), pve: new Set(), seasonal: new Set(), unknown: new Set() }
+    for (const ev of ordered) {
+      if (ev.kind !== 'profile') continue
+      result.currentProfileByMode[ev.mode] = ev.profileId
+      profilesSeen[ev.mode].add(ev.profileId)
+    }
+    const finished: Record<SessionMode, Set<string>> = { regular: new Set(), pve: new Set(), seasonal: new Set(), unknown: new Set() }
+    for (const ev of ordered) {
+      if (ev.kind !== 'taskFinished') continue
+      const current = result.currentProfileByMode[ev.mode]
+      const mine = ev.profileId ? ev.profileId === current : profilesSeen[ev.mode].size <= 1
+      if (mine) finished[ev.mode].add(ev.taskId)
+      else result.skippedOtherProfile += 1
+    }
     for (const mode of Object.keys(finished) as SessionMode[]) result.finishedByMode[mode] = [...finished[mode]]
     return result
   }

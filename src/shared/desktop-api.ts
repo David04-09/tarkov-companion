@@ -39,7 +39,14 @@ export type GameEvent = GameEventBase &
     | { kind: 'sessionMode'; raw: string }
     | { kind: 'profile'; profileId: string; accountId: string }
     | { kind: 'gameVersion'; version: string }
-    | { kind: 'taskStarted' | 'taskFinished' | 'taskFailed'; taskId: string }
+    | {
+        kind: 'taskStarted' | 'taskFinished' | 'taskFailed'
+        taskId: string
+        /** Game profile that was selected when the message arrived (PvP and PvE profiles differ). */
+        profileId: string | null
+        /** Trader who sent the message. */
+        traderId: string | null
+      }
     | { kind: 'mapLoading'; scenePath: string }
     | { kind: 'raidMatched'; location: string; raidId: string; online: boolean; gameMode: string }
     | { kind: 'raidStarting' }
@@ -116,8 +123,12 @@ export interface BackfillResult {
   folders: number
   files: number
   events: GameEvent[]
-  /** Distinct finished task ids per mode. */
+  /** Distinct finished task ids per mode, current profile only. */
   finishedByMode: Record<SessionMode, string[]>
+  /** The profile treated as "you" per mode (the most recently selected one). */
+  currentProfileByMode: Record<SessionMode, string | null>
+  /** Completions ignored because they belong to another profile (older wipe, second account). */
+  skippedOtherProfile: number
 }
 
 export interface DesktopApi {

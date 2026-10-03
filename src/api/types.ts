@@ -135,6 +135,11 @@ export interface RawTaskObjective {
   maxDurability?: number
   // Quest-item objectives reference data.questItems
   questItem?: string
+  // buildWeapon objectives (Gunsmith): base weapon in `item`, parts that must be fitted,
+  // part categories that must be present, and stat limits.
+  containsAll?: string[]
+  containsCategory?: string[]
+  buildAttributes?: Record<string, { value: number; compareMethod: string }>
   // Shoot objectives
   targetNames?: string[]
   shotType?: string
@@ -358,7 +363,7 @@ export interface RawItem {
 
 export interface RawItemsData {
   items: Record<string, RawItem>
-  itemCategories?: Record<string, unknown>
+  itemCategories?: Record<string, { id?: string; name?: string; normalizedName?: string }>
   fleaMarket?: Record<string, unknown>
   /** 79 rows: { level, exp (total XP), levelBadgeImageLink }. */
   playerLevels?: { level: number; exp: number; levelBadgeImageLink?: string }[]
@@ -568,6 +573,18 @@ export interface TaskObjective {
   requiredKeys: string[][]
   /** Extract objectives: English extract name (matches MapExtract.name). */
   exitName: string | null
+  /** Gunsmith-style build requirements; null for other objective types. */
+  build: WeaponBuild | null
+}
+
+export interface WeaponBuild {
+  weaponId: string | null
+  /** Parts that must be on the weapon (item ids). */
+  partIds: string[]
+  /** Part categories that must be present (category ids; names in ItemsBundle.categoryNames). */
+  categoryIds: string[]
+  /** Stat limits that matter (zero ">=" limits are dropped). */
+  limits: { stat: string; compare: '>=' | '<=' | '=' ; value: number }[]
 }
 
 export interface MapExtract {
@@ -694,4 +711,6 @@ export interface PlayerLevel {
 export interface ItemsBundle {
   items: ItemsById
   playerLevels: PlayerLevel[]
+  /** Item category id -> English name (e.g. weapon part types). */
+  categoryNames: Record<string, string>
 }
