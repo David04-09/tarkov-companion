@@ -13,9 +13,6 @@ function ComingSoon({ title, blurb }: { title: string; blurb: string }) {
   )
 }
 
-export const ItemCollectionPage = () => (
-  <ComingSoon title="Item Collection" blurb="Track the quest and hideout items you still need to find." />
-)
 export const CraftsPage = () => (
   <ComingSoon title="Crafts" blurb="Hideout crafts with profit calculations from live flea prices." />
 )

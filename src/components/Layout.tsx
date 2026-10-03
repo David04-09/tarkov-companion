@@ -1,5 +1,6 @@
 import { Outlet, useLocation } from 'react-router-dom'
 import { NAV_ITEMS } from '../config/nav'
+import { ItemLookup } from './ItemLookup'
 import { Sidebar } from './Sidebar'
 
 export function Layout() {
@@ -9,6 +10,7 @@ export function Layout() {
 
   return (
     <div className="flex h-full bg-surface text-ink">
+      <ItemLookup />
       <Sidebar />
       <main className={`min-w-0 flex-1 ${fullBleed ? 'flex min-h-0 flex-col overflow-hidden' : 'overflow-y-auto'}`}>
         {fullBleed ? (

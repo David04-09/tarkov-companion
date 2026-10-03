@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, Settings, Shield } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Search, Settings, Shield } from 'lucide-react'
+import { useLookupStore } from '../store/lookup'
 import { NAV_ITEMS } from '../config/nav'
 import { GAME_MODES } from '../api/client'
 import { useProgressStore } from '../store/progress'
@@ -77,6 +78,18 @@ export function Sidebar() {
         </button>
       </div>
 
+      <div className="px-2 pt-2">
+        <button
+          type="button"
+          onClick={() => useLookupStore.getState().setOpen(true)}
+          title="Item lookup (Ctrl+K)"
+          className="flex w-full items-center gap-3 rounded border border-line bg-surface px-2.5 py-1.5 text-sm text-ink-muted hover:border-accent hover:text-ink"
+        >
+          <Search className="h-4 w-4 shrink-0" aria-hidden />
+          <span className={`flex-1 truncate text-left ${labelClass}`}>Item lookup</span>
+          <kbd className={`rounded border border-line px-1 text-[10px] text-ink-dim ${labelClass}`}>Ctrl K</kbd>
+        </button>
+      </div>
       <nav className="flex-1 overflow-y-auto py-2" aria-label="Main">
         <ul className="space-y-0.5 px-2">
           {NAV_ITEMS.map((item) => (

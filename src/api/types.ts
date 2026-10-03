@@ -341,6 +341,8 @@ export interface RawItem {
   height: number
   weight: number
   categories?: string[]
+  sellToTrader?: { trader: string; priceRUB: number }[]
+  buyFromTrader?: { trader: string; priceRUB: number; minTraderLevel?: number }[]
 }
 
 export interface RawItemsData {
@@ -414,6 +416,12 @@ export interface QuestItem {
   iconLink: string | null
 }
 
+export interface TraderPrice {
+  traderId: string
+  priceRUB: number
+  minTraderLevel?: number
+}
+
 export interface Item {
   id: string
   name: string
@@ -422,10 +430,93 @@ export interface Item {
   iconLink: string | null
   wikiLink: string | null
   avg24hPrice: number | null
-  basePrice: number
   lastLowPrice: number | null
+  low24hPrice: number | null
+  high24hPrice: number | null
+  changeLast48hPercent: number | null
+  basePrice: number
+  width: number
+  height: number
   types: string[]
+  categories: string[]
+  /** Trader buy-back offers (what a trader pays you), best first. */
+  sellToTrader: TraderPrice[]
+  /** Trader sale offers (what you pay), cheapest first. */
+  buyFromTrader: TraderPrice[]
   updated: string | null
+}
+
+// ---------------------------------------------------------------------------
+// Hideout: GET /{gameMode}/hideout  -> data keyed by station id; names via _en
+// ---------------------------------------------------------------------------
+
+export interface RawHideoutLevel {
+  id: string
+  level: number
+  constructionTime: number
+  traderRequirements: { trader: string; value: number; requirementType?: string }[]
+  stationLevelRequirements: { station: string; level: number }[]
+  itemRequirements: { id: string; item: string; count: number; attributes?: { foundInRaid?: boolean } }[]
+  skillRequirements: { skill: string; level: number }[]
+  bonuses: { type: string; name: string; value?: number; passive?: boolean; skill?: string }[]
+  description: string
+}
+
+export interface RawHideoutStation {
+  id: string
+  name: string
+  normalizedName: string
+  areaType?: number
+  imageLink?: string | null
+  levels: RawHideoutLevel[]
+}
+
+export type RawHideoutDoc = TranslatedBaseDoc<Record<string, RawHideoutStation>>
+
+export interface HideoutLevel {
+  id: string
+  level: number
+  constructionTime: number
+  traderRequirements: { traderId: string; level: number }[]
+  stationLevelRequirements: { stationId: string; level: number }[]
+  itemRequirements: { itemId: string; count: number; foundInRaid: boolean }[]
+  skillRequirements: { skill: string; level: number }[]
+  bonuses: { type: string; name: string; value: number | null; skill: string | null }[]
+  description: string
+}
+
+export interface HideoutStation {
+  id: string
+  name: string
+  normalizedName: string
+  imageLink: string | null
+  levels: HideoutLevel[]
+}
+
+// ---------------------------------------------------------------------------
+// Crafts: GET /{gameMode}/crafts  -> data is an array
+// ---------------------------------------------------------------------------
+
+export interface RawCraft {
+  id: string
+  requiredItems: { item: string; count: number; attributes?: { tool?: boolean } }[]
+  requiredQuestItems?: { id: string }[]
+  station: string
+  level: number
+  duration: number
+  productItem: { item: string; count: number }
+}
+
+export type RawCraftsDoc = TranslatedBaseDoc<RawCraft[] | Record<string, RawCraft>>
+
+export interface Craft {
+  id: string
+  stationId: string
+  level: number
+  /** Seconds. */
+  duration: number
+  inputs: { itemId: string; count: number; tool: boolean }[]
+  output: { itemId: string; count: number }
 }
 
 export interface TaskRequirement {

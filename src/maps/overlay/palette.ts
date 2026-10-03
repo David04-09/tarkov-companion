@@ -20,6 +20,8 @@ export const LAYER_COLORS = {
   extractShared: '#43aa8b',
   transit: '#b5179e',
   lock: '#f9c74f',
+  lockOwned: '#7ea86a',
+  lockMissing: '#c0634f',
   spawnPmc: '#4cc9f0',
   spawnScav: '#f8961e',
   boss: '#f94144',

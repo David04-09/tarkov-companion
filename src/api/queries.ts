@@ -2,8 +2,12 @@ import { assertCatalogSupports, getEndpointCatalog } from './catalog'
 import { fetchJson, type GameMode } from './client'
 import { fetchTranslated, type Translator } from './translate'
 import type {
+  Craft,
   FactionName,
   GameData,
+  HideoutStation,
+  RawCraftsDoc,
+  RawHideoutStation,
   GameMap,
   Item,
   ItemsBundle,
@@ -290,9 +294,23 @@ export async function fetchItems(gameMode: GameMode, signal?: AbortSignal): Prom
       iconLink: raw.iconLink ?? null,
       wikiLink: raw.wikiLink ?? null,
       avg24hPrice: raw.avg24hPrice ?? null,
-      basePrice: raw.basePrice ?? 0,
       lastLowPrice: raw.lastLowPrice ?? null,
+      low24hPrice: raw.low24hPrice ?? null,
+      high24hPrice: raw.high24hPrice ?? null,
+      changeLast48hPercent: raw.changeLast48hPercent ?? null,
+      basePrice: raw.basePrice ?? 0,
+      width: raw.width || 1,
+      height: raw.height || 1,
       types: raw.types ?? [],
+      categories: raw.categories ?? [],
+      sellToTrader: (raw.sellToTrader ?? [])
+        .filter((s) => s && typeof s.priceRUB === 'number')
+        .map((s) => ({ traderId: s.trader, priceRUB: s.priceRUB }))
+        .sort((a, b) => b.priceRUB - a.priceRUB),
+      buyFromTrader: (raw.buyFromTrader ?? [])
+        .filter((s) => s && typeof s.priceRUB === 'number')
+        .map((s) => ({ traderId: s.trader, priceRUB: s.priceRUB, minTraderLevel: s.minTraderLevel }))
+        .sort((a, b) => a.priceRUB - b.priceRUB),
       updated: raw.updated ?? null,
     }
     out[item.id] = item
@@ -308,6 +326,58 @@ export async function fetchPriceHistory(
 ): Promise<PricePoint[]> {
   const doc = await fetchJson<RawPriceHistoryDoc>(`/${gameMode}/prices/${itemId}`, signal)
   return doc.data ?? []
+}
+
+/** Hideout stations with every level's requirements and bonuses (names in English). */
+export async function fetchHideout(gameMode: GameMode, signal?: AbortSignal): Promise<HideoutStation[]> {
+  const { doc, t } = await fetchTranslated<Record<string, RawHideoutStation>>(gameMode, 'hideout', signal)
+  return Object.values(doc.data)
+    .filter((s) => s && Array.isArray(s.levels))
+    .map((s) => ({
+      id: s.id,
+      name: t(s.name, s.normalizedName),
+      normalizedName: s.normalizedName,
+      imageLink: s.imageLink ?? null,
+      levels: s.levels
+        .map((l) => ({
+          id: l.id,
+          level: l.level,
+          constructionTime: l.constructionTime ?? 0,
+          traderRequirements: (l.traderRequirements ?? []).map((r) => ({ traderId: r.trader, level: r.value })),
+          stationLevelRequirements: (l.stationLevelRequirements ?? []).map((r) => ({ stationId: r.station, level: r.level })),
+          itemRequirements: (l.itemRequirements ?? [])
+            .filter((r) => r && r.item)
+            .map((r) => ({ itemId: r.item, count: r.count ?? 1, foundInRaid: Boolean(r.attributes?.foundInRaid) })),
+          skillRequirements: (l.skillRequirements ?? []).map((r) => ({ skill: t(r.skill, r.skill), level: r.level })),
+          bonuses: (l.bonuses ?? []).map((b) => ({
+            type: b.type,
+            name: t(b.name, b.type),
+            value: typeof b.value === 'number' ? b.value : null,
+            skill: b.skill ? t(b.skill, b.skill) : null,
+          })),
+          description: t(l.description, ''),
+        }))
+        .sort((a, b) => a.level - b.level),
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name))
+}
+
+/** Hideout crafts (no translations needed; item/station names come from other documents). */
+export async function fetchCrafts(gameMode: GameMode, signal?: AbortSignal): Promise<Craft[]> {
+  const doc = await fetchJson<RawCraftsDoc>(`/${gameMode}/crafts`, signal)
+  const list = Array.isArray(doc.data) ? doc.data : Object.values(doc.data ?? {})
+  return list
+    .filter((c) => c && c.productItem?.item)
+    .map((c) => ({
+      id: c.id,
+      stationId: c.station,
+      level: c.level ?? 1,
+      duration: c.duration ?? 0,
+      inputs: (c.requiredItems ?? [])
+        .filter((r) => r && r.item)
+        .map((r) => ({ itemId: r.item, count: r.count ?? 1, tool: Boolean(r.attributes?.tool) })),
+      output: { itemId: c.productItem.item, count: c.productItem.count ?? 1 },
+    }))
 }
 
 /** EFT server status. */

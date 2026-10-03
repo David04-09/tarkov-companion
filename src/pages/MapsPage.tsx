@@ -14,6 +14,7 @@ import { layerHasFloorHeights } from '../maps/overlay/floors'
 import { buildMapTasks, type MapTask } from '../maps/overlay/mapTasks'
 import { useMapOptions } from '../maps/useMapOptions'
 import { computeTaskStatuses, isFactionEligible } from '../lib/taskStatus'
+import { useModeInventory } from '../store/inventory'
 import { taskColor, useMapOverlayStore } from '../store/mapOverlay'
 import { useProfile } from '../store/progress'
 import { useUiStore } from '../store/ui'
@@ -27,6 +28,8 @@ export function MapsPage() {
   // Items are only needed for key names/prices and popup item names; load in the background.
   const itemsQuery = useItems()
   const profile = useProfile()
+  const inventory = useModeInventory()
+  const ownedKeyIds = useMemo(() => new Set(inventory.ownedKeyIds), [inventory.ownedKeyIds])
   const lastMapKey = useUiStore((s) => s.lastMapKey)
   const setLastMapKey = useUiStore((s) => s.setLastMapKey)
   const baseLayerByMap = useUiStore((s) => s.baseLayerByMap)
@@ -139,6 +142,7 @@ export function MapsPage() {
                 activeFloor={activeFloor}
                 toggles={layerToggles}
                 items={itemsQuery.data?.items}
+                ownedKeyIds={ownedKeyIds}
               />
             )}
             {shown.map(({ mapTask, color }) => (

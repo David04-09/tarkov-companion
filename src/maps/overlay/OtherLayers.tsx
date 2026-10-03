@@ -82,20 +82,27 @@ const Transits = memo(function Transits({ details, layer, activeFloor, maps }: C
   )
 })
 
-const Locks = memo(function Locks({ details, layer, activeFloor, items }: CommonProps & { items: ItemsById | undefined }) {
+const Locks = memo(function Locks({
+  details,
+  layer,
+  activeFloor,
+  items,
+  ownedKeyIds,
+}: CommonProps & { items: ItemsById | undefined; ownedKeyIds: ReadonlySet<string> }) {
   const hasFloors = layerHasFloorHeights(layer)
   return (
     <>
       {details.locks.map((l) => {
         const key = items?.[l.keyId]
+        const owned = ownedKeyIds.has(l.keyId)
         const dim = hasFloors && floorForPosition(layer, l.position) !== activeFloor
         return (
-          <Marker key={l.id} position={ll(l.position)} icon={layerIcon('lock', LAYER_COLORS.lock, dim)} zIndexOffset={-300}>
+          <Marker key={l.id} position={ll(l.position)} icon={layerIcon('lock', owned ? LAYER_COLORS.lockOwned : LAYER_COLORS.lockMissing, dim)} zIndexOffset={-300}>
             <Tooltip direction="top" offset={[0, -10]}>
               <span className="flex items-center gap-1.5">
                 {key?.iconLink && <img src={key.iconLink} alt="" className="h-5 w-5 object-contain" />}
                 <span>
-                  {key?.name ?? (items ? 'Unknown key' : 'Key…')} · locked {l.lockType}
+                  {key?.name ?? (items ? 'Unknown key' : 'Key…')} · {owned ? 'owned' : 'missing'} · locked {l.lockType}
                   {l.needsPower ? ' (needs power)' : ''}
                   {hasFloors ? ` · ${floorForPosition(layer, l.position) ?? 'Ground'}` : ''}
                 </span>
@@ -190,10 +197,12 @@ export interface OtherLayersProps {
   activeFloor: string | null
   toggles: Record<OverlayLayerId, boolean>
   items: ItemsById | undefined
+  /** Keys the player owns (locked doors turn green). */
+  ownedKeyIds: ReadonlySet<string>
 }
 
 /** Non-quest layers, each memoised separately so a toggle only mounts/unmounts its own layer. */
-export function OtherLayers({ data, mapId, layer, activeFloor, toggles, items }: OtherLayersProps) {
+export function OtherLayers({ data, mapId, layer, activeFloor, toggles, items, ownedKeyIds }: OtherLayersProps) {
   const details = data.mapDetails[mapId]
   if (!details) return null
   return (
@@ -202,7 +211,7 @@ export function OtherLayers({ data, mapId, layer, activeFloor, toggles, items }:
         <Extracts details={details} layer={layer} activeFloor={activeFloor} pmc={toggles.extractsPmc} scav={toggles.extractsScav} />
       )}
       {toggles.transits && <Transits details={details} layer={layer} activeFloor={activeFloor} maps={data.maps} />}
-      {toggles.locks && <Locks details={details} layer={layer} activeFloor={activeFloor} items={items} />}
+      {toggles.locks && <Locks details={details} layer={layer} activeFloor={activeFloor} items={items} ownedKeyIds={ownedKeyIds} />}
       {toggles.spawns && <Spawns details={details} />}
       {toggles.bosses && <Bosses details={details} mobNames={data.mobNames} />}
       {toggles.caches && <Containers details={details} names={data.lootContainerNames} cachesOnly />}

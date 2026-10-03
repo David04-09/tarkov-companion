@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { catalogKeys, fetchEndpointCatalog } from './catalog'
 import type { GameMode } from './client'
-import { fetchGameData, fetchItems, fetchPriceHistory, fetchServerStatus } from './queries'
+import { fetchCrafts, fetchGameData, fetchHideout, fetchItems, fetchPriceHistory, fetchServerStatus } from './queries'
 import { FIVE_MINUTES, ONE_HOUR, ONE_MINUTE } from './queryClient'
 import { useProgressStore } from '../store/progress'
 
@@ -45,6 +45,24 @@ export function useItems(enabled = true) {
     queryKey: itemKeys.mode(gameMode),
     queryFn: ({ signal }) => fetchItems(gameMode, signal),
     enabled,
+    refetchInterval: (query) => hourlyOrRetry(query.state.status),
+  })
+}
+
+export function useHideout() {
+  const gameMode = useProgressStore((s) => s.gameMode)
+  return useQuery({
+    queryKey: ['hideout', gameMode] as const,
+    queryFn: ({ signal }) => fetchHideout(gameMode, signal),
+    refetchInterval: (query) => hourlyOrRetry(query.state.status),
+  })
+}
+
+export function useCrafts() {
+  const gameMode = useProgressStore((s) => s.gameMode)
+  return useQuery({
+    queryKey: ['crafts', gameMode] as const,
+    queryFn: ({ signal }) => fetchCrafts(gameMode, signal),
     refetchInterval: (query) => hourlyOrRetry(query.state.status),
   })
 }
