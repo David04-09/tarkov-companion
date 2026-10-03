@@ -79,8 +79,8 @@
     ],
     "publish": {
       "provider": "github",
-      "owner": "OWNER",
-      "repo": "REPO",
+      "owner": "David04-09",
+      "repo": "tarkov-companion",
       "releaseType": "release"
     },
     "win": {
@@ -108,9 +108,9 @@
       "artifactName": "TarkovCompanion-${version}-portable.exe"
     }
   },
-  "homepage": "https://github.com/OWNER/REPO",
+  "homepage": "https://github.com/David04-09/tarkov-companion",
   "repository": {
     "type": "git",
-    "url": "https://github.com/OWNER/REPO.git"
+    "url": "https://github.com/David04-09/tarkov-companion.git"
   }
 }

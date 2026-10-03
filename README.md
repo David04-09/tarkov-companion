@@ -4,7 +4,7 @@ A free Windows app (and web app) for Escape from Tarkov players: quest tracking 
 
 ## For friends: install it
 
-1. Download **TarkovCompanion-Setup-x.y.z.exe** from the [latest release](https://github.com/OWNER/REPO/releases/latest) (or the `-portable.exe` if you prefer no installer).
+1. Download **TarkovCompanion-Setup-x.y.z.exe** from the [latest release](https://github.com/David04-09/tarkov-companion/releases/latest) (or the `-portable.exe` if you prefer no installer).
 2. Run it. **Windows SmartScreen will say "Windows protected your PC"**: click **More info**, then **Run anyway**. This appears because the app is not code-signed (certificates cost money); it is a one-time thing. Updates install from inside the app and do not trigger it again.
 3. The installer needs no admin rights: it installs for your user only, with a desktop and Start-menu shortcut.
 4. On first start a short setup screen finds your EFT logs folder (or lets you pick it), asks PvP/PvE and faction, and offers to read your old logs so quests you have already finished are ticked.
