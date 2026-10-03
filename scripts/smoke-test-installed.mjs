@@ -1,6 +1,6 @@
 // Headless smoke test for an installed desktop build (Chrome DevTools Protocol): first-run screen,
 // logs detection, bundled Lighthouse tiles, remote Customs tiles, watcher state, settings file.
-// Usage: node scripts/smoke-test-installed.mjs "%LOCALAPPDATA%ProgramsTarkov CompanionTarkov Companion.exe" %TEMP%	c-clean-test
+// Usage: node scripts/smoke-test-installed.mjs "<path to Tarkov Companion.exe>" "<empty folder to use as user data>"
 import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
