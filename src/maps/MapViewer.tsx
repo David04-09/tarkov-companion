@@ -74,6 +74,7 @@ function Imagery({ layer, floor, onState }: ImageryProps) {
     let tileErrors = 0
     let tileLoads = 0
     let settled = false
+    let errorTimer: ReturnType<typeof setTimeout> | null = null
     const settle = (state: ImageryState, message?: string) => {
       if (settled) return
       settled = true
@@ -92,20 +93,33 @@ function Imagery({ layer, floor, onState }: ImageryProps) {
         errorTileUrl: BLANK_TILE,
         className: 'tc-base-tiles',
       })
+      // Edge tiles outside tarkov.dev's pyramid return 404 and often arrive before the
+      // first real tile, so errors alone mean nothing. Only report a failure when no
+      // tile at all has loaded a few seconds after the errors started, and clear it
+      // as soon as any tile does load (e.g. after a network blip).
+      let showingError = false
       tile.on('tileload', () => {
         tileLoads += 1
+        if (showingError) {
+          showingError = false
+          onState('ready')
+        }
         settle('ready')
       })
       tile.on('tileerror', () => {
         tileErrors += 1
-        if (tileLoads === 0 && tileErrors >= 4) {
-          settle(
+        if (tileLoads > 0 || tileErrors !== 4) return
+        errorTimer = setTimeout(() => {
+          if (tileLoads > 0 || controller.signal.aborted) return
+          showingError = true
+          settled = true
+          onState(
             'error',
             !/^https?:/i.test(layer.tilePath ?? '')
               ? 'The map tiles are missing. Generate them with "npm run tiles:lighthouse" (see README).'
-              : 'The map tiles could not be downloaded from the imagery host.',
+              : 'The map tiles could not be downloaded from the imagery host. Check your internet connection.',
           )
-        }
+        }, 4000)
       })
       tile.addTo(map)
       tileRef.current = tile
@@ -134,6 +148,7 @@ function Imagery({ layer, floor, onState }: ImageryProps) {
 
     return () => {
       controller.abort()
+      if (errorTimer) clearTimeout(errorTimer)
       tileRef.current?.remove()
       tileRef.current = null
       svgOverlayRef.current?.remove()
