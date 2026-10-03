@@ -13,9 +13,6 @@ function ComingSoon({ title, blurb }: { title: string; blurb: string }) {
   )
 }
 
-export const CraftsPage = () => (
-  <ComingSoon title="Crafts" blurb="Hideout crafts with profit calculations from live flea prices." />
-)
 export const FleaMarketPage = () => (
   <ComingSoon title="Flea Market" blurb="Search items and see current flea market prices and trends." />
 )
