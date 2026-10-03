@@ -9,17 +9,29 @@ export interface Profile {
   playerLevel: number
   faction: Faction
   completedTaskIds: Set<string>
+  /** Tasks the game log reported as started (accepted) and not yet finished/failed. */
+  activeTaskIds: Set<string>
+  /** Tasks the game log reported as failed. */
+  failedTaskIds: Set<string>
 }
 
 export const MIN_LEVEL = 1
 export const MAX_LEVEL = 79
+
+interface SerializedProfile {
+  playerLevel: number
+  faction: Faction
+  completedTaskIds: string[]
+  activeTaskIds?: string[]
+  failedTaskIds?: string[]
+}
 
 export interface ProgressExport {
   app: 'tarkov-companion'
   version: 1
   exportedAt: string
   gameMode: GameMode
-  profiles: Record<GameMode, { playerLevel: number; faction: Faction; completedTaskIds: string[] }>
+  profiles: Record<GameMode, SerializedProfile>
 }
 
 export interface ProgressState {
@@ -28,8 +40,15 @@ export interface ProgressState {
   setGameMode: (mode: GameMode) => void
   setPlayerLevel: (level: number) => void
   setFaction: (faction: Faction) => void
+  /** Active-mode helpers used by the UI. */
   setTaskCompleted: (taskId: string, completed: boolean) => void
   toggleTask: (taskId: string) => void
+  /** Explicit-mode helpers used by the desktop log watcher. */
+  setTaskCompletedFor: (mode: GameMode, taskId: string, completed: boolean) => void
+  markTaskStartedFor: (mode: GameMode, taskId: string) => void
+  markTaskFailedFor: (mode: GameMode, taskId: string) => void
+  /** Adds many completed tasks at once (backfill); returns how many were new. */
+  addCompletedFor: (mode: GameMode, taskIds: string[]) => number
   resetProgress: () => void
   exportProgress: () => ProgressExport
   /** Replaces all progress with the given export. Throws if the shape is invalid. */
@@ -40,6 +59,8 @@ const emptyProfile = (): Profile => ({
   playerLevel: 1,
   faction: 'USEC',
   completedTaskIds: new Set(),
+  activeTaskIds: new Set(),
+  failedTaskIds: new Set(),
 })
 
 const clampLevel = (n: number) =>
@@ -68,18 +89,20 @@ const reviver = (_key: string, value: unknown): unknown =>
 
 const isFaction = (v: unknown): v is Faction => v === 'USEC' || v === 'BEAR'
 const isGameMode = (v: unknown): v is GameMode => v === 'regular' || v === 'pve'
+const isStringArray = (v: unknown): v is string[] => Array.isArray(v) && v.every((x) => typeof x === 'string')
 
 function parseProfile(raw: unknown, label: string): Profile {
   if (typeof raw !== 'object' || raw === null) throw new Error(`Missing "${label}" profile.`)
   const p = raw as Record<string, unknown>
   if (typeof p.playerLevel !== 'number') throw new Error(`"${label}.playerLevel" must be a number.`)
   if (!isFaction(p.faction)) throw new Error(`"${label}.faction" must be USEC or BEAR.`)
-  if (!Array.isArray(p.completedTaskIds) || !p.completedTaskIds.every((x) => typeof x === 'string'))
-    throw new Error(`"${label}.completedTaskIds" must be a list of task ids.`)
+  if (!isStringArray(p.completedTaskIds)) throw new Error(`"${label}.completedTaskIds" must be a list of task ids.`)
   return {
     playerLevel: clampLevel(p.playerLevel),
     faction: p.faction,
-    completedTaskIds: new Set(p.completedTaskIds as string[]),
+    completedTaskIds: new Set(p.completedTaskIds),
+    activeTaskIds: new Set(isStringArray(p.activeTaskIds) ? p.activeTaskIds : []),
+    failedTaskIds: new Set(isStringArray(p.failedTaskIds) ? p.failedTaskIds : []),
   }
 }
 
@@ -100,13 +123,31 @@ export function parseProgressExport(data: unknown): { gameMode: GameMode; profil
 
 // --- Store ----------------------------------------------------------------------
 
+function withCompleted(p: Profile, taskId: string, completed: boolean): Profile {
+  if (p.completedTaskIds.has(taskId) === completed && !(completed && (p.activeTaskIds.has(taskId) || p.failedTaskIds.has(taskId)))) return p
+  const next = new Set(p.completedTaskIds)
+  const active = new Set(p.activeTaskIds)
+  const failed = new Set(p.failedTaskIds)
+  if (completed) {
+    next.add(taskId)
+    active.delete(taskId)
+    failed.delete(taskId)
+  } else {
+    next.delete(taskId)
+  }
+  return { ...p, completedTaskIds: next, activeTaskIds: active, failedTaskIds: failed }
+}
+
 export const useProgressStore = create<ProgressState>()(
   persist(
     (set, get) => {
-      const updateProfile = (fn: (p: Profile) => Profile) =>
-        set((s) => ({
-          profiles: { ...s.profiles, [s.gameMode]: fn(s.profiles[s.gameMode]) },
-        }))
+      const updateProfileFor = (mode: GameMode, fn: (p: Profile) => Profile) =>
+        set((s) => {
+          const nextProfile = fn(s.profiles[mode])
+          if (nextProfile === s.profiles[mode]) return s
+          return { profiles: { ...s.profiles, [mode]: nextProfile } }
+        })
+      const updateProfile = (fn: (p: Profile) => Profile) => updateProfileFor(get().gameMode, fn)
 
       return {
         gameMode: 'regular',
@@ -115,26 +156,58 @@ export const useProgressStore = create<ProgressState>()(
         setGameMode: (gameMode) => set({ gameMode }),
         setPlayerLevel: (level) => updateProfile((p) => ({ ...p, playerLevel: clampLevel(level) })),
         setFaction: (faction) => updateProfile((p) => ({ ...p, faction })),
-        setTaskCompleted: (taskId, completed) =>
-          updateProfile((p) => {
-            if (p.completedTaskIds.has(taskId) === completed) return p
-            const next = new Set(p.completedTaskIds)
-            if (completed) next.add(taskId)
-            else next.delete(taskId)
-            return { ...p, completedTaskIds: next }
-          }),
+        setTaskCompleted: (taskId, completed) => updateProfile((p) => withCompleted(p, taskId, completed)),
         toggleTask: (taskId) => {
           const s = get()
           s.setTaskCompleted(taskId, !s.profiles[s.gameMode].completedTaskIds.has(taskId))
+        },
+        setTaskCompletedFor: (mode, taskId, completed) => updateProfileFor(mode, (p) => withCompleted(p, taskId, completed)),
+        markTaskStartedFor: (mode, taskId) =>
+          updateProfileFor(mode, (p) => {
+            if (p.activeTaskIds.has(taskId) && !p.failedTaskIds.has(taskId)) return p
+            const active = new Set(p.activeTaskIds)
+            const failed = new Set(p.failedTaskIds)
+            active.add(taskId)
+            failed.delete(taskId)
+            return { ...p, activeTaskIds: active, failedTaskIds: failed }
+          }),
+        markTaskFailedFor: (mode, taskId) =>
+          updateProfileFor(mode, (p) => {
+            if (p.failedTaskIds.has(taskId) && !p.activeTaskIds.has(taskId)) return p
+            const active = new Set(p.activeTaskIds)
+            const failed = new Set(p.failedTaskIds)
+            active.delete(taskId)
+            failed.add(taskId)
+            return { ...p, activeTaskIds: active, failedTaskIds: failed }
+          }),
+        addCompletedFor: (mode, taskIds) => {
+          let added = 0
+          updateProfileFor(mode, (p) => {
+            const fresh = taskIds.filter((id) => !p.completedTaskIds.has(id))
+            added = fresh.length
+            if (fresh.length === 0) return p
+            const next = new Set(p.completedTaskIds)
+            const active = new Set(p.activeTaskIds)
+            const failed = new Set(p.failedTaskIds)
+            for (const id of fresh) {
+              next.add(id)
+              active.delete(id)
+              failed.delete(id)
+            }
+            return { ...p, completedTaskIds: next, activeTaskIds: active, failedTaskIds: failed }
+          })
+          return added
         },
         resetProgress: () => updateProfile(() => emptyProfile()),
 
         exportProgress: () => {
           const s = get()
-          const serialize = (p: Profile) => ({
+          const serialize = (p: Profile): SerializedProfile => ({
             playerLevel: p.playerLevel,
             faction: p.faction,
             completedTaskIds: Array.from(p.completedTaskIds),
+            activeTaskIds: Array.from(p.activeTaskIds),
+            failedTaskIds: Array.from(p.failedTaskIds),
           })
           return {
             app: 'tarkov-companion',
@@ -152,16 +225,23 @@ export const useProgressStore = create<ProgressState>()(
     },
     {
       name: 'tarkov-companion-progress',
-      version: 1,
+      version: 2,
       storage: createJSONStorage(() => localStorage, { replacer, reviver }),
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<ProgressState>
+        const mergeProfile = (base: Profile, stored?: Partial<Profile>): Profile => ({
+          ...base,
+          ...(stored ?? {}),
+          completedTaskIds: stored?.completedTaskIds instanceof Set ? stored.completedTaskIds : base.completedTaskIds,
+          activeTaskIds: stored?.activeTaskIds instanceof Set ? stored.activeTaskIds : new Set(),
+          failedTaskIds: stored?.failedTaskIds instanceof Set ? stored.failedTaskIds : new Set(),
+        })
         return {
           ...current,
           gameMode: isGameMode(p.gameMode) ? p.gameMode : current.gameMode,
           profiles: {
-            regular: { ...current.profiles.regular, ...(p.profiles?.regular ?? {}) },
-            pve: { ...current.profiles.pve, ...(p.profiles?.pve ?? {}) },
+            regular: mergeProfile(current.profiles.regular, p.profiles?.regular),
+            pve: mergeProfile(current.profiles.pve, p.profiles?.pve),
           },
         }
       },

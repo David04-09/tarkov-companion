@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useEndpointCatalog } from '../api/hooks'
 import { JSON_API_BASE } from '../api/client'
 import { useProgressStore } from '../store/progress'
+import { DesktopSettingsSection } from '../desktop/DesktopSettings'
 
 function downloadJson(filename: string, data: unknown) {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
@@ -82,7 +83,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
         aria-modal="true"
         aria-labelledby="settings-title"
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-md rounded-lg border border-line bg-surface-2 shadow-xl"
+        className="flex max-h-[90vh] w-full max-w-lg flex-col rounded-lg border border-line bg-surface-2 shadow-xl"
       >
         <div className="flex items-center justify-between border-b border-line px-5 py-3">
           <h2 id="settings-title" className="text-base font-semibold">
@@ -98,7 +99,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
           </button>
         </div>
 
-        <div className="space-y-6 px-5 py-4 text-sm">
+        <div className="min-h-0 space-y-6 overflow-y-auto px-5 py-4 text-sm">
           <section className="space-y-2">
             <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Progress</h3>
             <p className="text-xs text-ink-muted">
@@ -153,6 +154,8 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
               <RefreshCw className="h-4 w-4" /> Refresh game data now
             </button>
           </section>
+
+          <DesktopSettingsSection />
 
           {message && (
             <p

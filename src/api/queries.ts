@@ -43,6 +43,8 @@ function adaptMaps(data: RawMapsData, t: Translator): GameMap[] {
     id: m.id,
     name: t(m.name, m.normalizedName),
     normalizedName: m.normalizedName,
+    scenePath: m.scenePath ?? null,
+    nameId: m.nameId,
   }))
 }
 

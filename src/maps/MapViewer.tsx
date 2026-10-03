@@ -98,7 +98,7 @@ function Imagery({ layer, floor, onState }: ImageryProps) {
         if (tileLoads === 0 && tileErrors >= 4) {
           settle(
             'error',
-            layer.tilePath?.startsWith('/')
+            !/^https?:/i.test(layer.tilePath ?? '')
               ? 'The map tiles are missing. Generate them with "npm run tiles:lighthouse" (see README).'
               : 'The map tiles could not be downloaded from the imagery host.',
           )

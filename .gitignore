@@ -26,3 +26,7 @@ dist-ssr
 # Large map imagery (regenerate with npm run tiles:lighthouse)
 assets-src/
 public/tiles/
+
+# Desktop build outputs
+dist-electron/
+release/

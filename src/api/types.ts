@@ -289,6 +289,8 @@ export interface RawMap {
   name: string
   normalizedName: string
   nameId: string
+  /** Unity scene bundle, e.g. "maps/shopping_mall.bundle"; appears in the game log when a raid loads. */
+  scenePath?: string
   players: string
   raidDuration: number
   wiki?: string | null
@@ -398,6 +400,10 @@ export interface GameMap {
   id: string
   name: string
   normalizedName: string
+  /** Matches the "scene preset path" line in the game log. */
+  scenePath: string | null
+  /** Matches the "Location:" value in the game log's raid lines. */
+  nameId: string
 }
 
 export interface QuestItem {

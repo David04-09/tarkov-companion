@@ -52,6 +52,34 @@ The base documents do not contain readable English. Names are translation keys s
 
 Data is cached for one hour and refreshed in the background. If tarkov.dev is unreachable the app shows the error on screen and retries every minute.
 
+## Desktop app (Windows) with automatic quest tracking
+
+The same code also runs as a desktop app (Electron). On the desktop it watches Escape from Tarkov's own log files and marks quests complete as you finish them, so no other tracker software is needed. The web build is unchanged; desktop-only features appear only when running in the desktop app.
+
+### Run it in development
+
+```bash
+npm run dev:desktop
+```
+
+This starts the Vite dev server and opens the desktop window with hot reload. The Settings dialog (sidebar footer) shows the detected logs folder and the watcher status.
+
+### Build the installer
+
+```bash
+npm run dist:desktop
+```
+
+Produces `release/Tarkov Companion-<version>-x64.exe` (NSIS installer) and `release/Tarkov Companion-<version>-portable.exe`. Both need no other software.
+
+### How the log watching works
+
+- The game writes a folder per session under `<EFT install>\build\Logs\log_<date>_<version>\`. The app finds the install via the BSG launcher's settings file (`%APPDATA%\Battlestate Games\BsgLauncher\settings`, only the install path fields are read), the Steam library list, the Windows uninstall registry entries and a few default paths. You can also pick the folder by hand in Settings.
+- It tails the newest session's `application` and `push-notifications` logs and reacts to quest started / finished / failed, game mode (PvP/PvE), profile selection, raid matching / start / end, map loading and flea market sales.
+- Completions go into the PvP or PvE profile according to the game mode the log reports. "Read past logs" in Settings scans every old session once (it runs automatically the first time) to backfill completed quests.
+- **Safety**: the watcher only *reads* log files. It never touches the game process, its memory or its network traffic, and never writes anything into the game folder.
+- The log line meanings were learned from the open-source [TarkovMonitor](https://github.com/the-hideout/TarkovMonitor) project (GPL-3.0). The parser in `electron/logs/parser.ts` is an independent TypeScript implementation tested against real log samples (`npm test`). `npm run scan:logs` prints what a backfill would find without starting the app.
+
 ## Map imagery
 
 Each map can have several base images ("layers"), each with its own transform from game coordinates to pixels. The tarkov.dev layers come from the vendored config. Extra layers are declared in `src/maps/mapConfig.ts` under `EXTRA_BASE_LAYERS`.

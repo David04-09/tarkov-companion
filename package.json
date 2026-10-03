@@ -1,14 +1,19 @@
 {
-  "name": "tarkov-companion-project",
+  "name": "tarkov-companion",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.3.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "tiles:lighthouse": "node scripts/tile-lighthouse.mjs"
+    "tiles:lighthouse": "node scripts/tile-lighthouse.mjs",
+    "dev:desktop": "vite --mode desktop",
+    "build:desktop": "tsc -b && vite build --mode desktop",
+    "dist:desktop": "npm run build:desktop && electron-builder --win nsis portable",
+    "test": "vitest run",
+    "scan:logs": "tsx scripts/scan-logs.ts"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.104.1",
@@ -27,10 +32,58 @@
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",
     "@vitejs/plugin-react": "^6.1.1",
+    "electron": "^44.5.1",
+    "electron-builder": "^26.15.3",
     "oxlint": "^1.81.0",
     "sharp": "^0.35.5",
     "tailwindcss": "^4.3.3",
+    "tsx": "^4.23.15",
     "typescript": "~6.0.2",
-    "vite": "^8.3.0"
+    "vite": "^8.3.0",
+    "vite-plugin-electron": "^1.1.2",
+    "vitest": "^5.0.3"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true,
+    "electron-winstaller@5.4.0": true
+  },
+  "productName": "Tarkov Companion",
+  "description": "Escape from Tarkov quest and map companion with built-in game log watching",
+  "author": "David",
+  "main": "dist-electron/main.cjs",
+  "build": {
+    "appId": "io.github.david04-09.tarkov-companion",
+    "productName": "Tarkov Companion",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**",
+      "dist-electron/**",
+      "build/icon.png",
+      "build/tray.png",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "build/**"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "build/icon.png",
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false,
+      "shortcutName": "Tarkov Companion"
+    },
+    "portable": {
+      "artifactName": "${productName}-${version}-portable.exe"
+    }
   }
 }

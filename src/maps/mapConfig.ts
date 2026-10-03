@@ -214,7 +214,8 @@ export const EXTRA_BASE_LAYERS: Record<string, ExtraLayers> = {
         id: 're3mr',
         label: 'RE3MR render',
         kind: 'tiles',
-        tilePath: '/tiles/lighthouse-re3mr/{z}/{x}/{y}.png',
+        // BASE_URL is "/" on the web and "./" in the packaged desktop app (file://).
+        tilePath: `${import.meta.env.BASE_URL}tiles/lighthouse-re3mr/{z}/{x}/{y}.png`,
         tileSize: 256,
         minZoom: 1,
         maxZoom: 6,

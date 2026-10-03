@@ -1,14 +1,18 @@
 import { QueryClientProvider } from '@tanstack/react-query'
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, HashRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { queryClient } from './api/queryClient'
 import { Layout } from './components/Layout'
 import { NAV_ITEMS } from './config/nav'
+import { DesktopBridge, isDesktop } from './desktop/useDesktop'
 import { AlignPage } from './pages/AlignPage'
 
 export default function App() {
+  // The packaged desktop app loads from file://, where only hash routing works.
+  const Router = isDesktop() ? HashRouter : BrowserRouter
   return (
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
+      <Router>
+        {isDesktop() && <DesktopBridge />}
         <Routes>
           <Route element={<Layout />}>
             {NAV_ITEMS.map((item) => {
@@ -20,7 +24,7 @@ export default function App() {
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Routes>
-      </BrowserRouter>
+      </Router>
     </QueryClientProvider>
   )
 }

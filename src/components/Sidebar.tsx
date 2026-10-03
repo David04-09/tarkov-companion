@@ -5,6 +5,7 @@ import { NAV_ITEMS } from '../config/nav'
 import { GAME_MODES } from '../api/client'
 import { useProgressStore } from '../store/progress'
 import { SettingsDialog } from './SettingsDialog'
+import { WatcherStatus } from '../desktop/WatcherStatus'
 
 function GameModeToggle({ compact }: { compact: boolean }) {
   const gameMode = useProgressStore((s) => s.gameMode)
@@ -106,6 +107,12 @@ export function Sidebar() {
         </div>
         <div className={collapsed ? 'block' : 'block md:hidden'}>
           <GameModeToggle compact />
+        </div>
+        <div className={collapsed ? 'block' : 'hidden md:block'}>
+          <WatcherStatus compact={collapsed} onClick={() => setSettingsOpen(true)} />
+        </div>
+        <div className={collapsed ? 'hidden' : 'block md:hidden'}>
+          <WatcherStatus compact onClick={() => setSettingsOpen(true)} />
         </div>
         <button
           type="button"
