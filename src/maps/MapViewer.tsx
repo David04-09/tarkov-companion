@@ -8,9 +8,12 @@ import { createMapCRS, gameBoundsToLatLngBounds } from './projection'
 
 /** Extra zoom beyond the native tiles, like tarkov.dev (max(7, maxZoom)). */
 const OVERZOOM = 7
-/** 1x1 transparent PNG so missing tiles never show a broken-image icon. */
-const BLANK_TILE =
-  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
+/**
+ * 1x1 fully transparent GIF so tiles outside an image never show a broken-image
+ * icon. (A previous PNG here was actually a half-opaque blue pixel, which drew
+ * blue bands around map edges.)
+ */
+const BLANK_TILE = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
 
 type ImageryState = 'loading' | 'ready' | 'error'
 
