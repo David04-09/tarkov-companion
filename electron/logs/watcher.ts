@@ -92,6 +92,7 @@ export class LogWatcher extends EventEmitter {
       lastEventAt: this.lastEventAt,
       sessionMode: this.current?.interpreter.currentMode ?? 'unknown',
       profileId: this.current?.interpreter.profileId ?? null,
+      accountId: this.current?.interpreter.accountId ?? null,
       message: this.message,
     }
   }

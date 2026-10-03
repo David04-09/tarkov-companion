@@ -1,19 +1,21 @@
 import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowRight, ExternalLink, Minus, Plus } from 'lucide-react'
-import { useGameData } from '../api/hooks'
+import { ArrowRight, ExternalLink, Gauge, Minus, Plus } from 'lucide-react'
+import { useGameData, useItems } from '../api/hooks'
 import type { Task } from '../api/types'
 import { ErrorPanel, LoadingPanel, RefreshErrorBanner } from '../components/DataState'
 import { KappaBadge } from '../components/Badges'
-import { formatTimeAgo } from '../lib/format'
+import { formatNumber, formatTimeAgo } from '../lib/format'
+import { estimateLevelFromQuests, type LevelEstimate } from '../lib/levelEstimate'
 import { computeTaskStatuses, countStatuses, isFactionEligible } from '../lib/taskStatus'
 import { MAX_LEVEL, MIN_LEVEL, useProfile, useProgressStore, type Faction } from '../store/progress'
 
 const FACTIONS: Faction[] = ['USEC', 'BEAR']
 
-function LevelCard() {
+function LevelCard({ estimate }: { estimate: LevelEstimate | null }) {
   const profile = useProfile()
   const setPlayerLevel = useProgressStore((s) => s.setPlayerLevel)
+  const below = estimate !== null && profile.playerLevel < estimate.minLevel
   return (
     <div className="card">
       <h2 className="card-title">Player level</h2>
@@ -47,6 +49,26 @@ function LevelCard() {
         </button>
       </div>
       <p className="mt-2 text-xs text-ink-muted">Quests unlock as your level rises.</p>
+      {estimate && (
+        <div className={`mt-2 rounded border px-2 py-1.5 text-xs ${below ? 'border-accent/50 bg-accent/10' : 'border-line bg-surface'}`}>
+          <div className="flex items-center gap-1.5 text-ink-muted">
+            <Gauge className="h-3.5 w-3.5 text-accent" aria-hidden />
+            <span>
+              Level estimate: <span className="font-semibold text-ink">at least {estimate.minLevel}</span>
+            </span>
+          </div>
+          <p className="mt-0.5 text-ink-dim">
+            {formatNumber(estimate.questXp)} XP from {estimate.completedCount} completed quests
+            {estimate.xpToNext != null ? ` · ${formatNumber(estimate.xpToNext)} XP to level ${estimate.minLevel + 1}` : ''}. Raids, kills and
+            crafting add more, so your real level is higher. The game doesn't log your level and the public profile needs a browser check we can't pass.
+          </p>
+          {below && (
+            <button type="button" onClick={() => setPlayerLevel(estimate.minLevel)} className="btn mt-1.5 !px-2 !py-0.5 !text-[11px]">
+              Set level to {estimate.minLevel}
+            </button>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -131,6 +153,15 @@ export function DashboardPage() {
   const profile = useProfile()
   const gameMode = useProgressStore((s) => s.gameMode)
   const query = useGameData()
+  const itemsQuery = useItems()
+
+  const estimate = useMemo(
+    () =>
+      query.data && itemsQuery.data
+        ? estimateLevelFromQuests(query.data.tasks, profile.completedTaskIds, itemsQuery.data.playerLevels)
+        : null,
+    [query.data, itemsQuery.data, profile.completedTaskIds],
+  )
 
   const derived = useMemo(() => {
     if (!query.data) return null
@@ -159,7 +190,7 @@ export function DashboardPage() {
       </div>
 
       <div className="mt-6 grid gap-4 md:grid-cols-3">
-        <LevelCard />
+        <LevelCard estimate={estimate} />
         <FactionCard />
         <div className="card">
           <h2 className="card-title">Quests</h2>

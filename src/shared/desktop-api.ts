@@ -64,6 +64,8 @@ export interface WatcherState {
   /** Current session mode / profile as last seen in the logs. */
   sessionMode: SessionMode
   profileId: string | null
+  /** Numeric BSG account id from the logs (what tarkov.dev's player pages key on). */
+  accountId: string | null
   message?: string
 }
 

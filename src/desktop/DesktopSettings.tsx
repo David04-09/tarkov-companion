@@ -125,6 +125,24 @@ export function DesktopSettingsSection() {
               Current session: <code>{state.currentFolder}</code>
             </div>
           )}
+          {(state?.accountId || state?.profileId) && (
+            <div className="text-ink-dim">
+              Account id <code>{state.accountId ?? '?'}</code> · profile <code>{state.profileId ?? '?'}</code>
+              {state.accountId && (
+                <>
+                  {' '}
+                  ·{' '}
+                  <button
+                    type="button"
+                    onClick={() => void window.desktop?.openExternal(`https://tarkov.dev/players/${state.sessionMode === 'pve' ? 'pve' : 'regular'}/${state.accountId}`)}
+                    className="underline hover:text-accent"
+                  >
+                    view public profile on tarkov.dev
+                  </button>
+                </>
+              )}
+            </div>
+          )}
           <div className="mt-2 flex flex-wrap gap-2">
             <button type="button" onClick={() => void window.desktop?.pickLogsFolder()} className="btn">
               <FolderSearch className="h-4 w-4" /> Change folder

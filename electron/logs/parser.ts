@@ -180,6 +180,8 @@ interface ModeChange {
 export class GameLogInterpreter {
   private modeTimeline: ModeChange[] = []
   profileId: string | null = null
+  /** Numeric BSG account id (the id tarkov.dev's player pages use). */
+  accountId: string | null = null
   gameVersion: string | null = null
   private seq = 0
 
@@ -224,6 +226,7 @@ export class GameLogInterpreter {
     if (prof) {
       if (prof[1] !== this.profileId) {
         this.profileId = prof[1]
+        this.accountId = prof[2]
         out.push({ ...base(), kind: 'profile', profileId: prof[1], accountId: prof[2] })
       }
       return out

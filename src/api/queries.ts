@@ -6,6 +6,7 @@ import type {
   GameData,
   GameMap,
   Item,
+  ItemsBundle,
   ItemsById,
   MapDetails,
   ObjectiveLocation,
@@ -272,9 +273,13 @@ export async function fetchGameData(gameMode: GameMode, signal?: AbortSignal): P
   }
 }
 
-/** All items (name, short name, icon, prices) for one game mode. ~1.4 MB compressed. */
-export async function fetchItems(gameMode: GameMode, signal?: AbortSignal): Promise<ItemsById> {
+/** All items (name, short name, icon, prices) plus the level XP table, for one game mode. ~1.4 MB compressed. */
+export async function fetchItems(gameMode: GameMode, signal?: AbortSignal): Promise<ItemsBundle> {
   const { doc, t } = await fetchTranslated<RawItemsData>(gameMode, 'items', signal)
+  const playerLevels = (doc.data.playerLevels ?? [])
+    .filter((l) => typeof l.level === 'number' && typeof l.exp === 'number')
+    .map((l) => ({ level: l.level, exp: l.exp }))
+    .sort((a, b) => a.level - b.level)
   const out: ItemsById = {}
   for (const raw of Object.values(doc.data.items)) {
     const item: Item = {
@@ -292,7 +297,7 @@ export async function fetchItems(gameMode: GameMode, signal?: AbortSignal): Prom
     }
     out[item.id] = item
   }
-  return out
+  return { items: out, playerLevels }
 }
 
 /** Flea-market price history for one item (cached for 5 minutes by the hook). */

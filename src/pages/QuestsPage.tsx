@@ -547,7 +547,7 @@ export function QuestsPage() {
             statuses={derived.statuses}
             sort={sort}
             onSort={onSort}
-            items={itemsQuery.data}
+            items={itemsQuery.data?.items}
             itemsLoading={itemsQuery.isPending}
           />
         )}

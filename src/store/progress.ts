@@ -227,6 +227,9 @@ export const useProgressStore = create<ProgressState>()(
       name: 'tarkov-companion-progress',
       version: 2,
       storage: createJSONStorage(() => localStorage, { replacer, reviver }),
+      // v1 -> v2 only added activeTaskIds/failedTaskIds, which `merge` fills in.
+      // Without a migrate function zustand would throw the old state away.
+      migrate: (persisted) => persisted as ProgressState,
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<ProgressState>
         const mergeProfile = (base: Profile, stored?: Partial<Profile>): Profile => ({

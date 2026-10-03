@@ -21,7 +21,7 @@ export function ObjectivePopup({
 }) {
   const items = useItems()
   const o = mo.objective
-  const firstItem = o.itemIds.length > 0 ? items.data?.[o.itemIds[0]] : null
+  const firstItem = o.itemIds.length > 0 ? items.data?.items[o.itemIds[0]] : null
 
   return (
     <div className="min-w-[220px] max-w-[300px] text-xs">
@@ -58,7 +58,7 @@ export function ObjectivePopup({
 
       {mo.keyIds.length > 0 && (
         <div className="mt-1.5">
-          <KeyBadge keyIds={mo.keyIds} items={items.data} approximate={mo.keySource === 'nearby'} />
+          <KeyBadge keyIds={mo.keyIds} items={items.data?.items} approximate={mo.keySource === 'nearby'} />
         </div>
       )}
 

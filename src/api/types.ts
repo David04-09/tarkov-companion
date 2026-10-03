@@ -347,7 +347,8 @@ export interface RawItemsData {
   items: Record<string, RawItem>
   itemCategories?: Record<string, unknown>
   fleaMarket?: Record<string, unknown>
-  playerLevels?: unknown[]
+  /** 79 rows: { level, exp (total XP), levelBadgeImageLink }. */
+  playerLevels?: { level: number; exp: number; levelBadgeImageLink?: string }[]
 }
 
 export type RawItemsDoc = TranslatedBaseDoc<RawItemsData>
@@ -559,3 +560,15 @@ export interface GameData {
 }
 
 export type ItemsById = Record<string, Item>
+
+/** One row of the game's level table: total XP needed to reach `level`. */
+export interface PlayerLevel {
+  level: number
+  exp: number
+}
+
+/** Result of the items document: the item catalogue plus the level table it ships with. */
+export interface ItemsBundle {
+  items: ItemsById
+  playerLevels: PlayerLevel[]
+}

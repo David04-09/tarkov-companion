@@ -138,7 +138,7 @@ export function MapsPage() {
                 layer={layer}
                 activeFloor={activeFloor}
                 toggles={layerToggles}
-                items={itemsQuery.data}
+                items={itemsQuery.data?.items}
               />
             )}
             {shown.map(({ mapTask, color }) => (
@@ -161,7 +161,7 @@ export function MapsPage() {
           mapTasks={mapTasks}
           statuses={statuses}
           traders={gameData.data?.traders ?? []}
-          items={itemsQuery.data}
+          items={itemsQuery.data?.items}
           hasFloors={hasFloors}
         />
       </div>
