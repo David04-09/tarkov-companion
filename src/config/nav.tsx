@@ -7,7 +7,7 @@ import { ItemCollectionPage } from '../pages/ItemCollectionPage'
 import { KeysPage } from '../pages/KeysPage'
 import { MapsPage } from '../pages/MapsPage'
 import { QuestsPage } from '../pages/QuestsPage'
-import { FleaMarketPage } from '../pages/stubs'
+import { FleaMarketPage } from '../pages/FleaMarketPage'
 
 export interface NavItem {
   path: string
@@ -30,5 +30,5 @@ export const NAV_ITEMS: NavItem[] = [
   { path: '/keys', label: 'Keys', icon: KeyRound, component: KeysPage },
   { path: '/hideout', label: 'Hideout', icon: House, component: HideoutPage },
   { path: '/crafts', label: 'Crafts', icon: Hammer, component: CraftsPage },
-  { path: '/flea', label: 'Flea Market', icon: Store, component: FleaMarketPage },
+  { path: '/flea', label: 'Flea Market', icon: Store, component: FleaMarketPage, fullBleed: true },
 ]

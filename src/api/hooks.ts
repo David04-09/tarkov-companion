@@ -38,14 +38,19 @@ export function useGameData() {
   })
 }
 
-/** Item catalogue (large download); pass enabled=false to defer loading. */
-export function useItems(enabled = true) {
+/**
+ * Item catalogue (large download); pass enabled=false to defer loading.
+ * `refetchMs` lets a screen (the Flea tab) ask for fresher prices while mounted;
+ * TanStack uses the smallest interval among active observers.
+ */
+export function useItems(enabled = true, refetchMs?: number) {
   const gameMode = useProgressStore((s) => s.gameMode)
   return useQuery({
     queryKey: itemKeys.mode(gameMode),
     queryFn: ({ signal }) => fetchItems(gameMode, signal),
     enabled,
-    refetchInterval: (query) => hourlyOrRetry(query.state.status),
+    staleTime: refetchMs ? Math.min(refetchMs, ONE_HOUR) : ONE_HOUR,
+    refetchInterval: (query) => (query.state.status === 'error' ? ONE_MINUTE : (refetchMs ?? ONE_HOUR)),
   })
 }
 
