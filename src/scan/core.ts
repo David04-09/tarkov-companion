@@ -280,10 +280,65 @@ export function refineGrid(img: Rgba, grid: Grid, candidates: Map<string, Candid
  * real items line up with it: the grid where the sampled cells look most like
  * actual item pictures wins.
  */
-export function chooseGrid(img: Rgba, candidates: Map<string, Candidate[]>): Grid {
+/** Cell pitch ÷ height of the printed item names (measured on real screenshots: 8.4). */
+const PITCH_PER_NAME_HEIGHT = 8.4
+
+/**
+ * Cell size from the item names read by OCR: names are printed at a fixed size relative
+ * to the slot (pitch ≈ 8.4 × letter height) and sit flush with each slot's right edge
+ * and top, so their right edges and tops repeat exactly every pitch. The letter height
+ * gives a rough size (±25%, which rules out half/double grids); the repeat gives the
+ * exact one. Null when there are too few readable names.
+ */
+export function pitchFromWords(words: OcrWord[] | undefined): { pitch: number; strength: number; estimate: number } | null {
+  // Two readable names already fix the size: their gap is a whole number of cells and the
+  // letter height says which number.
+  const names = (words ?? []).filter((w) => w.conf >= 45 && normName(w.text).length >= 3 && /[a-z]{2}/i.test(w.text))
+  if (names.length < 2) return null
+  // Height from the confident reads when there are enough of them (noise reads are often oddly sized).
+  const sure = names.filter((w) => w.conf >= 70)
+  const heights = (sure.length >= 2 ? sure : names).map((w) => w.y1 - w.y0).sort((a, b) => a - b)
+  const est = PITCH_PER_NAME_HEIGHT * heights[heights.length >> 1]
+  // Repeat strength: how tightly right edges (and tops) line up for a given pitch.
+  const strength = (q: number) => {
+    let cx = 0
+    let sx = 0
+    let cy = 0
+    let sy = 0
+    for (const w of names) {
+      const ax = (2 * Math.PI * w.x1) / q
+      const ay = (2 * Math.PI * w.y0) / q
+      cx += Math.cos(ax)
+      sx += Math.sin(ax)
+      cy += Math.cos(ay)
+      sy += Math.sin(ay)
+    }
+    return (Math.hypot(cx, sx) + Math.hypot(cy, sy)) / (2 * names.length)
+  }
+  let best = { pitch: est, strength: -1, estimate: est }
+  for (let q = est * 0.75; q <= est * 1.25; q += 0.05) {
+    const sc = strength(q)
+    if (sc > best.strength) best = { pitch: q, strength: sc, estimate: est }
+  }
+  return best.strength >= 0.6 ? best : null
+}
+
+/**
+ * @param preferred cell size from the previous confident scan. Snips differ in size but the
+ *   game's cell size only changes with resolution/UI scale, so the remembered size is tried
+ *   too and kept whenever it fits this image about as well as the freshly detected one.
+ */
+/** How much worse the remembered cell size may fit when no item names could be read. */
+const NAMELESS_TOLERANCE = 1.5
+
+export function chooseGrid(img: Rgba, candidates: Map<string, Candidate[]>, words?: OcrWord[], preferred?: number): Grid & { fit: number } {
   // No game resolution draws cells smaller than ~36 px (64 px at 1080p scales with the screen).
-  const minP = Math.max(36, Math.min(img.width, img.height) / 40)
-  const maxP = Math.min(200, Math.max(img.width, img.height) / 3)
+  const fromWords = pitchFromWords(words)
+  // Names set the allowed range (rules out half / two-thirds / double grids); lines and item
+  // fit still pick the exact size inside it.
+  const minP = fromWords ? fromWords.pitch * 0.97 : Math.max(36, Math.min(img.width, img.height) / 40)
+  // Without names, a snip must hold a few cells; with names even a one-slot snip works.
+  const maxP = fromWords ? fromWords.pitch * 1.03 : Math.min(200, Math.max(img.width, img.height) / 3)
   const pitches: number[] = []
   for (let q = minP; q <= maxP; q += 0.1) pitches.push(q)
   const px = edgeProfile(img, 'x')
@@ -302,6 +357,7 @@ export function chooseGrid(img: Rgba, candidates: Map<string, Candidate[]>): Gri
     if (proposals.some((o) => Math.abs(o - q) / q < 0.015)) return
     proposals.push(q)
   }
+  if (fromWords) addProposal(fromWords.pitch)
   for (const peak of peaks.slice(0, 6)) {
     addProposal(peak.pitch)
     addProposal(peak.pitch / 2)
@@ -313,7 +369,7 @@ export function chooseGrid(img: Rgba, candidates: Map<string, Candidate[]>): Gri
   const scoreGrid = (pitch: number, ox: number, oy: number): number => {
     const cols = Math.floor((img.width - ox) / pitch)
     const rows = Math.floor((img.height - oy) / pitch)
-    if (cols < 2 || rows < 2) return Infinity
+    if (cols < 1 || rows < 1) return Infinity
     // Up to ~36 cells spread over the whole grid.
     const step = Math.max(1, Math.floor((cols * rows) / 36))
     const errs: number[] = []
@@ -338,7 +394,7 @@ export function chooseGrid(img: Rgba, candidates: Map<string, Candidate[]>): Gri
       }
       errs.push(best)
     }
-    if (errs.length < 4) return Infinity
+    if (errs.length < Math.min(4, cols * rows)) return Infinity
     errs.sort((a, b) => a - b)
     // Better half: big items never match 1x1 pictures whatever the grid.
     const half = errs.slice(0, Math.ceil(errs.length / 2))
@@ -356,6 +412,7 @@ export function chooseGrid(img: Rgba, candidates: Map<string, Candidate[]>): Gri
   }
   // Precision: which items do the sampled slots resemble under the rough grid? Then nudge
   // pitch and offsets in sub-pixel steps, re-checking only those shortlisted items.
+  const refine = (best: { pitch: number; ox: number; oy: number; score: number }, pitchScale = 1) => {
   const roughCols = Math.floor((img.width - best.ox) / best.pitch)
   const roughRows = Math.floor((img.height - best.oy) / best.pitch)
   const cells: { r: number; c: number; shortlist: Candidate[] }[] = []
@@ -388,7 +445,7 @@ export function chooseGrid(img: Rgba, candidates: Map<string, Candidate[]>): Gri
   let fine = { pitch: best.pitch, ox: best.ox, oy: best.oy, score: cells.length >= 4 ? fitScore(best.pitch, best.ox, best.oy) : Infinity }
   if (Number.isFinite(fine.score)) {
     // Coordinate descent: pitch, then x, then y, a few rounds with shrinking steps.
-    for (const [pRange, pStep, oRange, oStep] of [[0.012, 0.02, 4, 0.5], [0.003, 0.005, 1, 0.125]]) {
+    for (const [pRange, pStep, oRange, oStep] of [[0.012 * pitchScale, 0.02, 4, 0.5], [0.003 * pitchScale, 0.005, 1, 0.125]]) {
       for (let round = 0; round < 2; round++) {
         const center = { ...fine }
         for (let q = center.pitch * (1 - pRange); q <= center.pitch * (1 + pRange); q += pStep) {
@@ -406,11 +463,42 @@ export function chooseGrid(img: Rgba, candidates: Map<string, Candidate[]>): Gri
       }
     }
   }
-  const usePitch = fine.pitch
-  const ox = fine.ox
-  const oy = fine.oy
-  return { pitch: usePitch, ox, oy, cols: Math.floor((img.width - ox) / usePitch), rows: Math.floor((img.height - oy) / usePitch) }
+  return fine
+  }
+
+  let result = refine(best)
+  let fit = scoreGrid(result.pitch, result.ox, result.oy)
+  if (preferred && Math.abs(preferred - result.pitch) / preferred > 0.015) {
+    let start = { pitch: preferred, ox: 0, oy: 0, score: Infinity }
+    // Only offsets that leave room for a whole cell (a one-column strip barely holds one).
+    const fits = (offs: number[], size: number) => {
+      const ok = offs.filter((o) => o + preferred <= size + 1)
+      return ok.length ? ok : [Math.max(0, (size - preferred) / 2)]
+    }
+    for (const ox of fits(offsetCandidates(px, preferred, 6), img.width)) {
+      for (const oy of fits(offsetCandidates(py, preferred, 6), img.height)) {
+        const sc = scoreGrid(preferred, ox, oy)
+        if (sc < start.score) start = { pitch: preferred, ox, oy, score: sc }
+      }
+    }
+    if (Number.isFinite(start.score)) {
+      // Refining can slide a one-cell strip off the image; then keep the unrefined start.
+      const refined = refine(start, 0.4)
+      const alt = Number.isFinite(scoreGrid(refined.pitch, refined.ox, refined.oy)) ? refined : start
+      const altFit = scoreGrid(alt.pitch, alt.ox, alt.oy)
+      // A wrong grid only wins on a fresh image by luck; on the same screen the remembered
+      // size fits at least as well (checked on random snips), so it is kept on a tie or better.
+      // Without readable names a half-size grid can fit narrow snips by chance (half an item
+      // looks like a small item), so then the remembered size gets some slack.
+      if (altFit <= fit * (fromWords ? 1 : NAMELESS_TOLERANCE)) {
+        result = alt
+        fit = altFit
+      }
+    }
+  }
+  return { pitch: result.pitch, ox: result.ox, oy: result.oy, cols: Math.floor((img.width - result.ox) / result.pitch), rows: Math.floor((img.height - result.oy) / result.pitch), fit }
 }
+
 
 // ---------------------------------------------------------------------------
 // Matching

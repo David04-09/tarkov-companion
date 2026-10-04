@@ -10,6 +10,7 @@ import { useInventoryStore, useModeInventory } from '../store/inventory'
 import { useProgressStore } from '../store/progress'
 import type { Detection } from './core'
 import { scanImage, warmUpScanner, type ScanResult } from './scanner'
+import { rememberCellSize, rememberedCellSize } from './cellSize'
 import { learnedFingerprints, recordFromCorrection, recordFromSpot, useLearnedStore } from './learned'
 import { LearnedPanel } from './LearnedPanel'
 import { readWords, warmUpOcr } from './ocr'
@@ -180,7 +181,9 @@ export function ScanDialog() {
       setPhase('Matching items…')
       // A selection inside an already-scanned screenshot keeps its known cell size.
       const knownPitch = box && result ? result.grid.pitch : undefined
-      const r = await scanImage(img, box, setProgress, learnedFingerprints(useLearnedStore.getState().records), knownPitch, words)
+      const r = await scanImage(img, box, setProgress, learnedFingerprints(useLearnedStore.getState().records), knownPitch, words, rememberedCellSize())
+      const sure = r.detections.filter((d) => confidence(d.error, marginOf(d), Boolean(d.nameMatch)) === 'sure').length
+      rememberCellSize(r.grid.pitch, sure, r.detections.length)
       setNamesRead(words ? words.length : null)
       setResult(r)
       setRows(buildRows(r))

@@ -6,6 +6,7 @@ import { createWorker, OEM, PSM } from 'tesseract.js'
 import type { OcrWord } from '../src/scan/core'
 
 let worker: Awaited<ReturnType<typeof createWorker>> | null = null
+const PAD = 24
 
 export async function readWordsNode(file: string): Promise<OcrWord[]> {
   const meta = await sharp(file).metadata()
@@ -13,7 +14,8 @@ export async function readWordsNode(file: string): Promise<OcrWord[]> {
   const { data, info } = await sharp(file).greyscale().resize({ width: Math.round((meta.width ?? 0) * scale) }).raw().toBuffer({ resolveWithObject: true })
   const bw = Buffer.alloc(data.length)
   for (let i = 0; i < data.length; i++) bw[i] = data[i] > 150 ? 0 : 255
-  const png = await sharp(bw, { raw: { width: info.width, height: info.height, channels: 1 } }).png().toBuffer()
+  // A blank margin: Tesseract misses text that touches the image border (narrow snips).
+  const png = await sharp(bw, { raw: { width: info.width, height: info.height, channels: 1 } }).extend({ top: PAD, bottom: PAD, left: PAD, right: PAD, background: '#ffffff' }).png().toBuffer()
   if (!worker) {
     worker = await createWorker('eng', OEM.LSTM_ONLY, { langPath: path.resolve('public/ocr'), gzip: true, cacheMethod: 'none' })
     await worker.setParameters({ tessedit_pageseg_mode: PSM.SPARSE_TEXT })
@@ -21,7 +23,7 @@ export async function readWordsNode(file: string): Promise<OcrWord[]> {
   const { data: res } = await worker.recognize(png, {}, { blocks: true })
   const words: OcrWord[] = []
   for (const b of res.blocks ?? []) for (const p of b.paragraphs) for (const l of p.lines) for (const w of l.words) {
-    words.push({ text: w.text, conf: w.confidence, x0: w.bbox.x0 / scale, y0: w.bbox.y0 / scale, x1: w.bbox.x1 / scale, y1: w.bbox.y1 / scale })
+    words.push({ text: w.text, conf: w.confidence, x0: (w.bbox.x0 - PAD) / scale, y0: (w.bbox.y0 - PAD) / scale, x1: (w.bbox.x1 - PAD) / scale, y1: (w.bbox.y1 - PAD) / scale })
   }
   return words
 }

@@ -71,13 +71,15 @@ export async function scanImage(
   pitch?: number,
   /** Item names read from the screenshot (see ocr.ts). */
   words?: OcrWord[],
+  /** Cell size of the last good scan, tried first (see cellSize.ts). */
+  preferredPitch?: number,
 ): Promise<ScanResult> {
   await ensureWorker()
   const bitmap = await createImageBitmap(image)
   const id = nextId++
   return new Promise<ScanResult>((resolve, reject) => {
     pending.set(id, { resolve, reject, onProgress })
-    const msg: WorkerRequest = { type: 'scan', id, bitmap, crop, learned, pitch, words }
+    const msg: WorkerRequest = { type: 'scan', id, bitmap, crop, learned, pitch, preferredPitch, words }
     worker?.postMessage(msg, [bitmap])
   })
 }

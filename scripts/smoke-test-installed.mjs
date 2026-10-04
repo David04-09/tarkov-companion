@@ -93,16 +93,21 @@ await evalJs('(() => { const s=document.querySelector("select[aria-label=\\"Sele
 await sleep(8000)
 out.customs = await evalJs('(() => { const t=[...document.querySelectorAll("img.leaflet-tile")]; return { tiles: t.length, loaded: t.filter(i=>i.complete&&i.naturalWidth>0).length, markers: document.querySelectorAll(".leaflet-marker-icon").length } })()')
 // Optional: paste a stash screenshot into Item Collection and read the scan result.
+// Optional: paste screenshots into Item Collection one after another (comma-separated paths;
+// the page is reloaded between them, so later ones use the remembered cell size).
 if (process.env.TC_SCAN_IMAGE) {
-  const b64 = fs.readFileSync(process.env.TC_SCAN_IMAGE).toString('base64')
-  await evalJs('location.hash = "#/items"')
-  await sleep(2500)
-  await evalJs(`(async () => { const bin = atob('${b64}'); const u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); const dt = new DataTransfer(); dt.items.add(new File([u], 'shot.png', { type: 'image/png' })); window.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt })); return true })()`)
-  for (let i = 0; i < 40; i++) {
-    await sleep(1000)
-    if (await evalJs('/items · cell|Scanner data|error/i.test((document.querySelector("[aria-labelledby=scan-title]")||{}).innerText||"")')) break
+  out.scan = []
+  for (const file of process.env.TC_SCAN_IMAGE.split(',')) {
+    const b64 = fs.readFileSync(file).toString('base64')
+    await evalJs('location.hash = "#/items"; location.reload()')
+    await sleep(4000)
+    await evalJs(`(async () => { const bin = atob('${b64}'); const u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); const dt = new DataTransfer(); dt.items.add(new File([u], 'shot.png', { type: 'image/png' })); window.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt })); return true })()`)
+    for (let i = 0; i < 40; i++) {
+      await sleep(1000)
+      if (await evalJs('/items · cell|Scanner data|error/i.test((document.querySelector("[aria-labelledby=scan-title]")||{}).innerText||"")')) break
+    }
+    out.scan.push(await evalJs('(() => { const d = document.querySelector("[aria-labelledby=scan-title]"); if (!d) return "no dialog"; return { status: (d.innerText.match(/[0-9]+ items · cell [0-9]+ px[^\\n]*/) || [d.innerText.slice(0, 200)])[0], error: d.querySelector(".text-danger")?.innerText ?? null, rows: d.querySelectorAll("li input[type=number]").length, remembered: localStorage.getItem("tc-scan-cell-size") } })()'))
   }
-  out.scan = await evalJs('(() => { const d = document.querySelector("[aria-labelledby=scan-title]"); if (!d) return "no dialog"; return { status: d.innerText, error: d.querySelector(".text-danger")?.innerText ?? null, rows: d.querySelectorAll("li input[type=number]").length } })()')
 }
 out.updateStatus = await evalJs('window.desktop.getUpdateStatus()')
 out.watcher = await evalJs('window.desktop.getState().then(s => ({status: s.status, logsPath: s.logsPath, detected: s.detectedPath, mode: s.sessionMode}))')

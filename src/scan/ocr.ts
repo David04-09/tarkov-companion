@@ -15,6 +15,8 @@ function assetBase(): string {
 }
 
 let workerPromise: Promise<TessWorker> | null = null
+/** Blank margin around the image handed to the reader. */
+const PAD = 24
 
 function getWorker(): Promise<TessWorker> {
   if (!workerPromise) {
@@ -99,16 +101,19 @@ export async function readWords(image: Blob, crop: { x: number; y: number; w: nu
   const big = scale === 1 ? lum : bicubicResize(lum, area.w, area.h, area.w * scale, area.h * scale)
   const W = area.w * scale
   const H = area.h * scale
-  const canvas = new OffscreenCanvas(W, H)
+  // A blank margin: Tesseract misses text that touches the image border (narrow snips).
+  const canvas = new OffscreenCanvas(W + 2 * PAD, H + 2 * PAD)
   const ctx = canvas.getContext('2d')
   if (!ctx) return []
+  ctx.fillStyle = '#fff'
+  ctx.fillRect(0, 0, canvas.width, canvas.height)
   const out = ctx.createImageData(W, H)
   for (let i = 0; i < big.length; i++) {
     const v = big[i] > 150 ? 0 : 255 // white names -> black text on white
     out.data[i * 4] = out.data[i * 4 + 1] = out.data[i * 4 + 2] = v
     out.data[i * 4 + 3] = 255
   }
-  ctx.putImageData(out, 0, 0)
+  ctx.putImageData(out, PAD, PAD)
   const png = await canvas.convertToBlob({ type: 'image/png' })
   const worker = await getWorker()
   const { data } = await worker.recognize(png, {}, { blocks: true })
@@ -120,10 +125,10 @@ export async function readWords(image: Blob, crop: { x: number; y: number; w: nu
           words.push({
             text: w.text,
             conf: w.confidence,
-            x0: area.x + w.bbox.x0 / scale,
-            y0: area.y + w.bbox.y0 / scale,
-            x1: area.x + w.bbox.x1 / scale,
-            y1: area.y + w.bbox.y1 / scale,
+            x0: area.x + (w.bbox.x0 - PAD) / scale,
+            y0: area.y + (w.bbox.y0 - PAD) / scale,
+            x1: area.x + (w.bbox.x1 - PAD) / scale,
+            y1: area.y + (w.bbox.y1 - PAD) / scale,
           })
         }
       }
