@@ -107,6 +107,9 @@ export function ScanDialog() {
   const [hover, setHover] = useState<string | null>(null)
   const [mode, setMode] = useState<'add' | 'set'>('add')
   const [applied, setApplied] = useState<string | null>(null)
+  // One Apply per screenshot (re-scans and selections of it included), so counts are never added twice;
+  // a ref as well as state so a fast double-click cannot get through before the re-render.
+  const appliedRef = useRef(false)
   const [shots, setShots] = useState<{ name: string; modified: number }[]>([])
   const [changing, setChanging] = useState<string | null>(null)
   const [search, setSearch] = useState('')
@@ -152,6 +155,7 @@ export function ScanDialog() {
     setUrl(u)
     setCrop(null)
     setApplied(null)
+    appliedRef.current = false
     setLearnNote(null)
     const probe = new Image()
     probe.onload = () => setSize({ w: probe.naturalWidth, h: probe.naturalHeight })
@@ -255,6 +259,8 @@ export function ScanDialog() {
   }
 
   const apply = () => {
+    if (appliedRef.current) return
+    appliedRef.current = true
     void rememberConfirmations()
     let n = 0
     const totals = new Map<string, number>()
@@ -474,13 +480,15 @@ export function ScanDialog() {
                 <label className="flex items-center gap-1.5" title="Use when this screenshot shows every copy you own"><input type="radio" checked={mode === 'set'} onChange={() => setMode('set')} /> Replace my counts</label>
               </div>
               {applied ? (
-                <p className="flex items-center gap-1.5 text-success"><Check className="h-4 w-4" /> {applied}</p>
+                <p className="flex items-center gap-1.5 text-success"><Check className="h-4 w-4" /> {applied} To apply again, paste or open a new screenshot.</p>
               ) : (
                 <p className="text-ink-dim">Ticked items count toward Item Collection (alternatives a quest accepts count too). Scanning the same stash twice with "Add" counts items twice.</p>
               )}
               <div className="flex justify-end gap-2">
                 <button type="button" onClick={close} className="btn">Close</button>
-                <button type="button" onClick={apply} disabled={selectedCount === 0} className="btn border-accent bg-accent text-surface hover:bg-accent disabled:opacity-40">Apply {selectedCount} item{selectedCount === 1 ? '' : 's'} to Item Collection</button>
+                <button type="button" onClick={apply} disabled={selectedCount === 0 || Boolean(applied)} className="btn border-accent bg-accent text-surface hover:bg-accent disabled:opacity-40">
+                  {applied ? <><Check className="h-4 w-4" /> Applied</> : `Apply ${selectedCount} item${selectedCount === 1 ? '' : 's'} to Item Collection`}
+                </button>
               </div>
             </div>
           </div>
