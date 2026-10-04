@@ -261,7 +261,9 @@ export function MapViewer({ mapKey, layer, floorName, affineOverride, children }
   const remountKey = `${mapKey}:${layer.id}:${(affineOverride ?? layer.affine).join(',')}`
 
   return (
-    <div ref={containerRef} className="relative h-full w-full bg-[#0a0a09]">
+    // `isolate`: Leaflet's panes and controls use z-index 400–1000; keep them inside the map so
+    // the app's dialogs (Settings, scanner, first-run, …) always sit above it.
+    <div ref={containerRef} className="relative isolate h-full w-full bg-[#0a0a09]">
       <MapContainer
         key={remountKey}
         crs={crs}
