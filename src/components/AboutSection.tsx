@@ -92,7 +92,16 @@ export function AboutSection() {
           )}
         </p>
       )}
-      <p className="text-xs text-ink-muted">Free, for personal use. The log watcher only reads the game's log files; it never touches the game process. Built with help from these projects:</p>
+      <div className="rounded border border-success/40 bg-success/5 p-2 text-xs text-ink-muted">
+        <div className="mb-1 font-semibold text-success">Never touches the game</div>
+        <ul className="list-disc space-y-0.5 pl-4">
+          <li>No access to the game's process or memory, no injection, nothing drawn inside the game.</li>
+          <li>No keyboard or mouse input is sent and no network traffic is read; nothing is written to the game folder.</li>
+          <li>Quest tracking only reads the game's text log files (read-only, shared). The overlay is a separate normal window.</li>
+          <li>The stash scanner works on an ordinary Windows screenshot, like the Snipping Tool, Discord or OBS.</li>
+        </ul>
+      </div>
+      <p className="text-xs text-ink-muted">Free, for personal use. Built with help from these projects:</p>
       <ul className="space-y-1 text-xs">
         {CREDITS.map((c) => (
           <li key={c.name} className="rounded border border-line bg-surface px-2 py-1">

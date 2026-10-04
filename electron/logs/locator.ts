@@ -1,9 +1,8 @@
 /**
  * Finds the Escape from Tarkov logs folder without touching the game.
  * Read-only: we only look at the BSG launcher's settings file, Steam's
- * library list, the registry uninstall entries and a few default paths.
+ * library list and a few default paths. No other program is started.
  */
-import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { logFolderTime } from './parser'
@@ -81,35 +80,12 @@ function steamRoots(): string[] {
   return [...libraries].map((lib) => path.join(lib, 'steamapps', 'common', 'Escape from Tarkov'))
 }
 
-/** InstallLocation from the Windows uninstall registry entries (via reg.exe, read-only). */
-function registryRoots(): string[] {
-  if (process.platform !== 'win32') return []
-  const keys = [
-    'HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\EscapeFromTarkov',
-    'HKLM\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\EscapeFromTarkov',
-    'HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\EscapeFromTarkov',
-    'HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Steam App 3932890',
-    'HKLM\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Steam App 3932890',
-  ]
-  const out: string[] = []
-  for (const key of keys) {
-    try {
-      const text = execFileSync('reg', ['query', key, '/v', 'InstallLocation'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
-      const m = /InstallLocation\s+REG_\w+\s+(.+)$/m.exec(text)
-      if (m) out.push(m[1].trim())
-    } catch {
-      // key not present
-    }
-  }
-  return out
-}
-
 const DEFAULT_ROOTS = ['C:\\Battlestate Games\\EFT', 'C:\\Battlestate Games\\EFT (live)', 'C:\\Games\\EFT', 'D:\\Battlestate Games\\EFT']
 
 export function detectLogsFolder(): LogsDetection {
   const candidates: string[] = []
   const seen = new Set<string>()
-  for (const root of [...launcherRoots(), ...registryRoots(), ...steamRoots(), ...DEFAULT_ROOTS]) {
+  for (const root of [...launcherRoots(), ...steamRoots(), ...DEFAULT_ROOTS]) {
     const key = root.toLowerCase()
     if (seen.has(key)) continue
     seen.add(key)

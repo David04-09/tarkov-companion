@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Camera, Check, Crop, FolderOpen, ImageUp, Loader2, Minus, Plus, ScanSearch, Search, Trash2, X } from 'lucide-react'
+import { Camera, Check, Crop, Palette, FolderOpen, ImageUp, Loader2, Minus, Plus, ScanSearch, Search, Trash2, X } from 'lucide-react'
 import { useNeeds } from '../hooks/useNeeds'
-import { remainingFor } from '../lib/needs'
+import { remainingFor, type NeedSource } from '../lib/needs'
+import { sellValue } from '../lib/economy'
+import { formatRoubles } from '../lib/format'
+import { useGameData } from '../api/hooks'
 import { isDesktop } from '../desktop/useDesktop'
 import { useInventoryStore, useModeInventory } from '../store/inventory'
 import { useProgressStore } from '../store/progress'
@@ -20,11 +23,23 @@ interface Row {
   error: number
   /** Other likely items, best first. */
   alternatives: string[]
+  /** Smallest gap between the match and the runner-up (small = could easily be the other item). */
+  margin: number
 }
 
 type Box = { x: number; y: number; w: number; h: number }
 
-const confidence = (error: number) => (error < 12 ? 'sure' : error < 18 ? 'likely' : 'check')
+/** Sure only when the match is close AND clearly better than the next item (BEAR vs USEC tags etc.). */
+const confidence = (error: number, margin = Infinity) => (error < 12 && margin >= 1.5 ? 'sure' : error < 18 ? 'likely' : 'check')
+const marginOf = (d: Detection) => (d.alternatives.length ? d.alternatives[0].error - d.error : Infinity)
+const KEEP_FILL = 'rgba(34,197,94,0.30)'
+const SELL_FILL = 'rgba(239,68,68,0.30)'
+
+function sourceLabel(s: NeedSource): string {
+  if (s.kind === 'quest') return `${s.name} (${s.traderName})`
+  if (s.kind === 'hideout') return /level/i.test(s.name) ? s.name : `${s.name} level ${s.level}`
+  return `craft: ${s.name}`
+}
 const CONF_STYLE = {
   sure: { label: 'Sure', cls: 'border-success/50 text-success', stroke: '#4ade80' },
   likely: { label: 'Likely', cls: 'border-accent/60 text-accent', stroke: '#fbbf24' },
@@ -39,9 +54,10 @@ function buildRows(result: ScanResult): Row[] {
       row.count += 1
       row.spots.push(i)
       row.error = Math.min(row.error, d.error)
+      row.margin = Math.min(row.margin, marginOf(d))
       for (const a of d.alternatives) if (!row.alternatives.includes(a.itemId)) row.alternatives.push(a.itemId)
     } else {
-      byItem.set(d.itemId, { key: d.itemId, itemId: d.itemId, count: 1, selected: true, spots: [i], error: d.error, alternatives: d.alternatives.map((a) => a.itemId) })
+      byItem.set(d.itemId, { key: d.itemId, itemId: d.itemId, count: 1, selected: true, spots: [i], error: d.error, alternatives: d.alternatives.map((a) => a.itemId), margin: marginOf(d) })
     }
   })
   return [...byItem.values()]
@@ -58,6 +74,8 @@ export function ScanDialog() {
   const openWith = useScanStore((s) => s.openWith)
   const close = useScanStore((s) => s.close)
   const { needs, items: itemsQuery } = useNeeds()
+  const gameData = useGameData()
+  const [tint, setTint] = useState(true)
   const items = itemsQuery.data?.items
   const inventory = useModeInventory()
   const gameMode = useProgressStore((s) => s.gameMode)
@@ -84,9 +102,9 @@ export function ScanDialog() {
 
   // Item id (including accepted alternatives) -> the need it counts toward.
   const needFor = useMemo(() => {
-    const m = new Map<string, { needId: string; remaining: number; total: number }>()
+    const m = new Map<string, { needId: string; remaining: number; total: number; sources: NeedSource[] }>()
     for (const n of needs.values()) {
-      const entry = { needId: n.itemId, remaining: remainingFor(n, inventory.collected[n.itemId] ?? 0), total: n.total }
+      const entry = { needId: n.itemId, remaining: remainingFor(n, inventory.collected[n.itemId] ?? 0), total: n.total, sources: n.sources }
       m.set(n.itemId, entry)
       for (const alt of n.alternatives) if (!m.has(alt)) m.set(alt, entry)
     }
@@ -127,7 +145,8 @@ export function ScanDialog() {
 
   // Default selection: items that count toward something you still need.
   useEffect(() => {
-    setRows((rs) => rs.map((r) => ({ ...r, selected: (needFor.get(r.itemId)?.remaining ?? 0) > 0 })))
+    // Uncertain matches stay unticked so a wrong guess cannot slip into Item Collection.
+    setRows((rs) => rs.map((r) => ({ ...r, selected: (needFor.get(r.itemId)?.remaining ?? 0) > 0 && confidence(r.error, r.margin) !== 'check' })))
     // Only when a new result arrives.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [result])
@@ -163,7 +182,7 @@ export function ScanDialog() {
       if (!row) return rs
       const existing = rs.find((r) => r.itemId === itemId && r.key !== key)
       if (existing) return rs.filter((r) => r.key !== key).map((r) => (r === existing ? { ...r, count: r.count + row.count, spots: [...r.spots, ...row.spots] } : r))
-      return rs.map((r) => (r.key === key ? { ...r, itemId, error: 0, selected: (needFor.get(itemId)?.remaining ?? 0) > 0 } : r))
+      return rs.map((r) => (r.key === key ? { ...r, itemId, error: 0, margin: Infinity, selected: (needFor.get(itemId)?.remaining ?? 0) > 0 } : r))
     })
     setChanging(null)
     setSearch('')
@@ -192,6 +211,16 @@ export function ScanDialog() {
       .filter((i) => i.name.toLowerCase().includes(q) || i.shortName.toLowerCase().includes(q))
       .slice(0, 8)
   }, [items, search])
+
+  // Keep as many as you still need, sell the rest; first spots on the screenshot are the keepers.
+  const verdicts = new Map<string, { keep: number; sell: number }>()
+  const spotVerdict = new Map<number, 'keep' | 'sell'>()
+  for (const r of rows) {
+    const keep = Math.min(r.count, needFor.get(r.itemId)?.remaining ?? 0)
+    verdicts.set(r.key, { keep, sell: Math.max(0, r.count - keep) })
+    r.spots.forEach((spot, i) => spotVerdict.set(spot, i < keep ? 'keep' : 'sell'))
+  }
+  const traderName = (id: string) => gameData.data?.traders.find((t) => t.id === id)?.name ?? 'trader'
 
   if (!open) return null
   const selectedCount = rows.filter((r) => r.selected).reduce((n, r) => n + r.count, 0)
@@ -235,6 +264,11 @@ export function ScanDialog() {
                 </>
               )}
               {status === 'scanning' && <span className="flex items-center gap-1.5 text-ink-muted"><Loader2 className="h-4 w-4 animate-spin" /> Scanning… {Math.round(progress * 100)}%</span>}
+              {result && (
+                <button type="button" onClick={() => setTint((v) => !v)} className={`btn !py-1 ${tint ? 'border-accent text-accent' : ''}`} title="Green = keep (you still need it), red = sell">
+                  <Palette className="h-4 w-4" /> Keep/sell tint
+                </button>
+              )}
               {status === 'done' && result && <span className="text-ink-dim">{result.detections.length} items in {result.ms} ms · cell {result.grid.pitch.toFixed(0)} px</span>}
             </div>
             <div className="p-2 md:min-h-0 md:flex-1 md:overflow-auto">
@@ -267,14 +301,14 @@ export function ScanDialog() {
                       onPointerUp={() => { if (!cropping) return; setDragStart(null); setCropping(false); setCrop((c) => (c && c.w > 20 && c.h > 20 ? { x: Math.round(c.x), y: Math.round(c.y), w: Math.round(c.w), h: Math.round(c.h) } : null)) }}
                     >
                       {result?.detections.map((d, i) => {
-                        const conf = CONF_STYLE[confidence(d.error)]
+                        const conf = CONF_STYLE[confidence(d.error, marginOf(d))]
                         const x = result.grid.ox + d.col * result.grid.pitch
                         const y = result.grid.oy + d.row * result.grid.pitch
                         const row = rows.find((r) => r.spots.includes(i))
                         const off = row && !row.selected
                         return (
-                          <rect key={i} x={x + 2} y={y + 2} width={d.w * result.grid.pitch - 4} height={d.h * result.grid.pitch - 4} fill={hoveredSpots.has(i) ? 'rgba(255,255,255,0.15)' : 'none'} stroke={off ? '#888' : conf.stroke} strokeWidth={hoveredSpots.has(i) ? 5 : 3} strokeDasharray={off ? '6 4' : undefined} onMouseEnter={() => row && setHover(row.key)} onMouseLeave={() => setHover(null)}>
-                            <title>{name(row?.itemId ?? d.itemId)}</title>
+                          <rect key={i} x={x + 2} y={y + 2} width={d.w * result.grid.pitch - 4} height={d.h * result.grid.pitch - 4} fill={hoveredSpots.has(i) ? 'rgba(255,255,255,0.18)' : tint ? (spotVerdict.get(i) === 'keep' ? KEEP_FILL : SELL_FILL) : 'none'} stroke={off ? '#888' : conf.stroke} strokeWidth={hoveredSpots.has(i) ? 5 : tint ? 2 : 3} strokeDasharray={off ? '6 4' : undefined} onMouseEnter={() => row && setHover(row.key)} onMouseLeave={() => setHover(null)}>
+                            <title>{`${name(row?.itemId ?? d.itemId)} · ${spotVerdict.get(i) === 'keep' ? 'keep' : 'sell'}`}</title>
                           </rect>
                         )
                       })}
@@ -295,7 +329,9 @@ export function ScanDialog() {
                 {[...rows].sort((a, b) => Number(b.selected) - Number(a.selected) || a.error - b.error).map((r) => {
                   const item = items?.[r.itemId]
                   const need = needFor.get(r.itemId)
-                  const conf = CONF_STYLE[confidence(r.error)]
+                  const conf = CONF_STYLE[confidence(r.error, r.margin)]
+                  const v = verdicts.get(r.key) ?? { keep: 0, sell: r.count }
+                  const value = sellValue(item, 1)
                   const stack = (item?.types ?? []).includes('ammo') || (item?.types ?? []).includes('ammoBox')
                   return (
                     <li key={r.key} className={`px-3 py-2 ${hover === r.key ? 'bg-surface-3' : ''}`} onMouseEnter={() => setHover(r.key)} onMouseLeave={() => setHover(null)}>
@@ -312,6 +348,16 @@ export function ScanDialog() {
                               <span className="text-ink-dim">not needed for anything tracked</span>
                             )}
                             {stack && <span className="text-accent">stack: check amount</span>}
+                          </div>
+                          <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px]">
+                            {v.keep > 0 && <span className="rounded bg-success/20 px-1 font-semibold text-success">KEEP{v.sell > 0 ? ` ${v.keep}` : ''}</span>}
+                            {v.sell > 0 && <span className="rounded bg-danger/20 px-1 font-semibold text-danger">SELL{v.keep > 0 ? ` ${v.sell}` : ''}</span>}
+                            {v.keep > 0 && need && need.sources[0] && <span className="truncate text-ink-muted" title={need.sources.map(sourceLabel).join('\n')}>for {sourceLabel(need.sources[0])}{need.sources.length > 1 ? ` +${need.sources.length - 1} more` : ''}</span>}
+                            {v.sell > 0 && (value.via ? (
+                              <span className="text-ink-muted">{value.via === 'flea' ? 'flea' : traderName(item?.sellToTrader[0]?.traderId ?? '')} ~{formatRoubles(value.total)} each</span>
+                            ) : (
+                              <span className="text-ink-dim">no trader buys it</span>
+                            ))}
                           </div>
                         </div>
                         <div className="flex shrink-0 items-center">

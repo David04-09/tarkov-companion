@@ -19,6 +19,19 @@ Escape from Tarkov writes plain-text log files while you play. The app watches t
 
 Your data (progress, settings, map drawings) lives in `%APPDATA%Tarkov Companion` and survives updates and reinstalls. Export it from Settings to move it to another PC.
 
+### Safety: what the app does and never does
+
+Tarkov Companion is built so the game cannot tell it is running. It never touches the game process.
+
+- **Never:** opens, injects into or reads the memory of the game; hooks DirectX or draws inside the game; sends keyboard or mouse input; reads or changes network traffic; writes anything into the game folder; starts any other program.
+- **Log files:** it reads the text logs the game writes for itself, in read-only mode with full sharing, so the game can always keep writing them.
+- **Overlay window:** a normal separate window kept on top of other windows, like a sticky note or a browser window. Nothing is drawn into the game, so it needs borderless windowed mode.
+- **Stash scanner:** works on a picture. The hotkey takes an ordinary Windows screenshot of the monitor, the same way the Snipping Tool, Discord or OBS do, and the app recognises items from that picture.
+- **Hotkeys:** registered through the standard Windows hotkey function, the same one Discord and media players use. No keyboard hook.
+- **Internet:** only tarkov.dev (game data), assets.tarkov.dev (images), the EFT Wiki (guide pictures) and GitHub (updates).
+
+No third-party tool can be promised 100% safe, because Battlestate's anti-cheat rules are not public. This app only uses the same everyday Windows features as Discord, OBS and the Snipping Tool, and does none of the things anti-cheat looks for (memory access, injection, input automation, packet reading).
+
 ### Updates
 
 The app checks GitHub Releases on launch and every 6 hours, downloads the new version in the background and shows a small "restart to update" bar. Because the builds are unsigned, the updater cannot verify a publisher signature: the only guarantees are HTTPS and the GitHub account that owns this repository.
@@ -105,7 +118,7 @@ The GitHub Actions workflow (`.github/workflows/release.yml`) builds the tiles a
 
 ### How the log watching works
 
-- The game writes a folder per session under `<EFT install>\build\Logs\log_<date>_<version>\`. The app finds the install via the BSG launcher's settings file (`%APPDATA%\Battlestate Games\BsgLauncher\settings`, only the install path fields are read), the Steam library list, the Windows uninstall registry entries and a few default paths. You can also pick the folder by hand in Settings.
+- The game writes a folder per session under `<EFT install>\build\Logs\log_<date>_<version>\`. The app finds the install via the BSG launcher's settings file (`%APPDATA%\Battlestate Games\BsgLauncher\settings`, only the install path fields are read), the Steam library list and a few default paths. You can also pick the folder by hand in Settings.
 - It tails the newest session's `application` and `push-notifications` logs and reacts to quest started / finished / failed, game mode (PvP/PvE), profile selection, raid matching / start / end, map loading and flea market sales.
 - Completions go into the PvP or PvE profile according to the game mode the log reports. "Read past logs" in Settings scans every old session once (it runs automatically the first time) to backfill completed quests.
 - **Player level** is not written to the logs, and tarkov.dev's public profile API (`player.tarkov.dev`) requires a Cloudflare Turnstile browser check bound to tarkov.dev's own domain, so it cannot be called from this app. The level therefore stays a manual field; the Dashboard shows a "Level estimate" lower bound computed from the XP rewards of your completed quests and the game's level table, with a one-click "Set level" button. Settings shows your account id with a link to your public profile on tarkov.dev.

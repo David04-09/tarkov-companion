@@ -245,6 +245,46 @@ interface Candidate {
   rotated: boolean
   fp: Uint8Array | Float32Array
   mean: [number, number, number]
+  /** Pixels that belong to the item itself (icon + name), not its slot background; null if too few. */
+  iconMask: Uint8Array | null
+  iconMean: [number, number, number]
+}
+
+/** Extra error added to background-free matches, so a full match is preferred when both fit. */
+const ICON_PENALTY = 4
+
+/**
+ * The item's own pixels: everything that differs clearly from the slot background
+ * (estimated from the ring just inside the frame). Lets a match survive a tinted or
+ * highlighted slot (e.g. a grey "BrokenLCD" slot vs the dark-blue reference).
+ */
+function iconMaskFor(fp: Uint8Array | Float32Array, w: number, h: number, base: Uint8Array): Uint8Array | null {
+  const W = w * FP
+  const H = h * FP
+  const ring: number[][] = [[], [], []]
+  for (let y = 1; y < H - 1; y++) {
+    for (let x = 1; x < W - 1; x++) {
+      if (x !== 1 && y !== 1 && x !== W - 2 && y !== H - 2) continue
+      const i = (y * W + x) * 3
+      for (let c = 0; c < 3; c++) ring[c].push(fp[i + c])
+    }
+  }
+  const bg = ring.map((vals) => vals.sort((a, b) => a - b)[Math.floor(vals.length / 2)])
+  const mask = new Uint8Array(base.length)
+  let n = 0
+  let total = 0
+  for (let p = 0; p < base.length; p++) {
+    if (!base[p]) continue
+    total++
+    const i = p * 3
+    const d = Math.abs(fp[i] - bg[0]) + Math.abs(fp[i + 1] - bg[1]) + Math.abs(fp[i + 2] - bg[2])
+    if (d > 36) {
+      mask[p] = 1
+      n++
+    }
+  }
+  // Tiny icons would match random textures: only use this for substantial items.
+  return n >= Math.max(24, total * 0.4) ? mask : null
 }
 
 function meanColor(v: Uint8Array | Float32Array, mask: Uint8Array): [number, number, number] {
@@ -277,11 +317,14 @@ export function buildCandidates(index: FingerprintIndex, opts: ScanOptions = {})
     const h = index.heights[i]
     const len = w * FP * h * FP * 3
     const fp = index.pixels.subarray(index.offsets[i], index.offsets[i] + len)
-    push(w, h, { idx: i, rotated: false, fp, mean: meanColor(fp, compareMask(w, h, false)) })
-    if (w !== h) {
-      const rot = rotateCW(fp, w * FP, h * FP)
-      push(h, w, { idx: i, rotated: true, fp: rot, mean: meanColor(rot, compareMask(h, w, true)) })
+    const add = (cw: number, ch: number, rotated: boolean, f: Uint8Array | Float32Array) => {
+      const base = compareMask(cw, ch, rotated)
+      // Rotated thin items (stocks, barrels) match too much without their background.
+      const iconMask = rotated ? null : iconMaskFor(f, cw, ch, base)
+      push(cw, ch, { idx: i, rotated, fp: f, mean: meanColor(f, base), iconMask, iconMean: iconMask ? meanColor(f, iconMask) : [0, 0, 0] })
     }
+    add(w, h, false, fp)
+    if (w !== h) add(h, w, true, rotateCW(fp, w * FP, h * FP))
   }
   return groups
 }
@@ -354,8 +397,16 @@ export function scanGrid(img: Rgba, grid: Grid, candidates: Map<string, Candidat
           const rm = c.rotated ? regionMean.rot : regionMean.plain
           // Cheap reject: average colour far off means the full comparison cannot win.
           const md = (Math.abs(rm[0] - c.mean[0]) + Math.abs(rm[1] - c.mean[1]) + Math.abs(rm[2] - c.mean[2])) / 3
-          if (md > cutoff) continue
-          const err = distance(region, c.fp, maskFor(w, h, c.rotated), cutoff)
+          let err = md > cutoff ? Infinity : distance(region, c.fp, maskFor(w, h, c.rotated), cutoff)
+          // Second opinion on the item's own pixels only (slot background ignored).
+          if (c.iconMask) {
+            const im = meanColor(region, c.iconMask)
+            const imd = (Math.abs(im[0] - c.iconMean[0]) + Math.abs(im[1] - c.iconMean[1]) + Math.abs(im[2] - c.iconMean[2])) / 3
+            if (imd <= cutoff) {
+              const iconErr = distance(region, c.fp, c.iconMask, Math.min(err, cutoff)) + ICON_PENALTY
+              if (iconErr < err) err = iconErr
+            }
+          }
           if (err === Infinity) continue
           top.push({ idx: c.idx, rotated: c.rotated, error: err })
           top.sort((a, b) => a.error - b.error)
