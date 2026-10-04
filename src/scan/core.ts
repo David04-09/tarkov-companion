@@ -273,6 +273,145 @@ export function refineGrid(img: Rgba, grid: Grid, candidates: Map<string, Candid
   return best.grid
 }
 
+/**
+ * Robust grid finding. Grid lines alone can mislead (long items and highlighted
+ * slots hide lines, so a wrong period can score best), so the line analysis only
+ * proposes a few cell sizes and offsets; each proposal is then judged by how well
+ * real items line up with it: the grid where the sampled cells look most like
+ * actual item pictures wins.
+ */
+export function chooseGrid(img: Rgba, candidates: Map<string, Candidate[]>): Grid {
+  // No game resolution draws cells smaller than ~36 px (64 px at 1080p scales with the screen).
+  const minP = Math.max(36, Math.min(img.width, img.height) / 40)
+  const maxP = Math.min(200, Math.max(img.width, img.height) / 3)
+  const pitches: number[] = []
+  for (let q = minP; q <= maxP; q += 0.1) pitches.push(q)
+  const px = edgeProfile(img, 'x')
+  const py = edgeProfile(img, 'y')
+  const sx = periodScores(px, pitches)
+  const sy = periodScores(py, pitches)
+  const topX = Math.max(...sx.map((r) => (Number.isFinite(r.score) ? r.score : 0)), 1e-9)
+  const topY = Math.max(...sy.map((r) => (Number.isFinite(r.score) ? r.score : 0)), 1e-9)
+  const combined = pitches.map((q, i) => ({ pitch: q, score: (Number.isFinite(sx[i].score) ? sx[i].score / topX : 0) + (Number.isFinite(sy[i].score) ? sy[i].score / topY : 0) }))
+  // Local maxima of the line score, strongest first, plus their halves and thirds (a period
+  // two or three cells wide also scores well when lines are hidden).
+  const peaks = combined.filter((c, i) => c.score >= (combined[i - 1]?.score ?? -1) && c.score >= (combined[i + 1]?.score ?? -1)).sort((a, b) => b.score - a.score)
+  const proposals: number[] = []
+  const addProposal = (q: number) => {
+    if (q < minP || q > maxP) return
+    if (proposals.some((o) => Math.abs(o - q) / q < 0.015)) return
+    proposals.push(q)
+  }
+  for (const peak of peaks.slice(0, 6)) {
+    addProposal(peak.pitch)
+    addProposal(peak.pitch / 2)
+    addProposal(peak.pitch / 3)
+  }
+
+  const ones = (candidates.get('1x1') ?? []).filter((c) => !c.rotated && !c.negative)
+  const mask = compareMask(1, 1, false)
+  const scoreGrid = (pitch: number, ox: number, oy: number): number => {
+    const cols = Math.floor((img.width - ox) / pitch)
+    const rows = Math.floor((img.height - oy) / pitch)
+    if (cols < 2 || rows < 2) return Infinity
+    // Up to ~36 cells spread over the whole grid.
+    const step = Math.max(1, Math.floor((cols * rows) / 36))
+    const errs: number[] = []
+    for (let k = 0; k < cols * rows; k += step) {
+      const r = Math.floor(k / cols)
+      const c = k % cols
+      const region = sampleRegion(img, ox + c * pitch, oy + r * pitch, pitch + 1, pitch + 1, FP, FP)
+      // Empty slots say nothing about alignment.
+      let m = 0
+      for (let i = 0; i < region.length; i++) m += region[i]
+      m /= region.length
+      let v = 0
+      for (let i = 0; i < region.length; i++) v += (region[i] - m) ** 2
+      if (Math.sqrt(v / region.length) < 10) continue
+      const rm = meanColor(region, mask)
+      let best = 40
+      for (const cand of ones) {
+        const md = (Math.abs(rm[0] - cand.mean[0]) + Math.abs(rm[1] - cand.mean[1]) + Math.abs(rm[2] - cand.mean[2])) / 3
+        if (md >= best) continue
+        const d = distance(region, cand.fp, mask, best)
+        if (d < best) best = d
+      }
+      errs.push(best)
+    }
+    if (errs.length < 4) return Infinity
+    errs.sort((a, b) => a - b)
+    // Better half: big items never match 1x1 pictures whatever the grid.
+    const half = errs.slice(0, Math.ceil(errs.length / 2))
+    return half.reduce((a, b) => a + b, 0) / half.length
+  }
+
+  let best = { pitch: proposals[0] ?? 64, ox: 0, oy: 0, score: Infinity }
+  for (const q of proposals) {
+    for (const ox of offsetCandidates(px, q, 3)) {
+      for (const oy of offsetCandidates(py, q, 3)) {
+        const sc = scoreGrid(q, ox, oy)
+        if (sc < best.score) best = { pitch: q, ox, oy, score: sc }
+      }
+    }
+  }
+  // Precision: which items do the sampled slots resemble under the rough grid? Then nudge
+  // pitch and offsets in sub-pixel steps, re-checking only those shortlisted items.
+  const roughCols = Math.floor((img.width - best.ox) / best.pitch)
+  const roughRows = Math.floor((img.height - best.oy) / best.pitch)
+  const cells: { r: number; c: number; shortlist: Candidate[] }[] = []
+  const stride = Math.max(1, Math.floor((roughCols * roughRows) / 64))
+  for (let k = 0; k < roughCols * roughRows; k += stride) {
+    const r = Math.floor(k / roughCols)
+    const c = k % roughCols
+    const region = sampleRegion(img, best.ox + c * best.pitch, best.oy + r * best.pitch, best.pitch + 1, best.pitch + 1, FP, FP)
+    let m = 0
+    for (let i = 0; i < region.length; i++) m += region[i]
+    m /= region.length
+    let v = 0
+    for (let i = 0; i < region.length; i++) v += (region[i] - m) ** 2
+    if (Math.sqrt(v / region.length) < 10) continue
+    const scored = ones.map((cand) => ({ cand, d: distance(region, cand.fp, mask, 60) })).filter((x) => x.d < 60).sort((x, y) => x.d - y.d)
+    if (scored.length) cells.push({ r, c, shortlist: scored.slice(0, 6).map((x) => x.cand) })
+  }
+  const fitScore = (pitch: number, ox: number, oy: number) => {
+    const errs: number[] = []
+    for (const cell of cells) {
+      const region = sampleRegion(img, ox + cell.c * pitch, oy + cell.r * pitch, pitch + 1, pitch + 1, FP, FP)
+      let e = Infinity
+      for (const cand of cell.shortlist) e = Math.min(e, distance(region, cand.fp, mask, e))
+      errs.push(e)
+    }
+    errs.sort((x, y) => x - y)
+    const half = errs.slice(0, Math.max(1, Math.ceil(errs.length / 2)))
+    return half.reduce((x, y) => x + y, 0) / half.length
+  }
+  let fine = { pitch: best.pitch, ox: best.ox, oy: best.oy, score: cells.length >= 4 ? fitScore(best.pitch, best.ox, best.oy) : Infinity }
+  if (Number.isFinite(fine.score)) {
+    // Coordinate descent: pitch, then x, then y, a few rounds with shrinking steps.
+    for (const [pRange, pStep, oRange, oStep] of [[0.012, 0.02, 4, 0.5], [0.003, 0.005, 1, 0.125]]) {
+      for (let round = 0; round < 2; round++) {
+        const center = { ...fine }
+        for (let q = center.pitch * (1 - pRange); q <= center.pitch * (1 + pRange); q += pStep) {
+          const sc = fitScore(q, fine.ox, fine.oy)
+          if (sc < fine.score) fine = { ...fine, pitch: q, score: sc }
+        }
+        for (let ox = center.ox - oRange; ox <= center.ox + oRange; ox += oStep) {
+          const sc = fitScore(fine.pitch, ox, fine.oy)
+          if (sc < fine.score) fine = { ...fine, ox, score: sc }
+        }
+        for (let oy = center.oy - oRange; oy <= center.oy + oRange; oy += oStep) {
+          const sc = fitScore(fine.pitch, fine.ox, oy)
+          if (sc < fine.score) fine = { ...fine, oy, score: sc }
+        }
+      }
+    }
+  }
+  const usePitch = fine.pitch
+  const ox = fine.ox
+  const oy = fine.oy
+  return { pitch: usePitch, ox, oy, cols: Math.floor((img.width - ox) / usePitch), rows: Math.floor((img.height - oy) / usePitch) }
+}
+
 // ---------------------------------------------------------------------------
 // Matching
 // ---------------------------------------------------------------------------
@@ -287,6 +426,8 @@ export interface FingerprintIndex {
   pixels: Uint8Array
   /** 0 tarkov.dev picture, 1 shipped correction, 2 shipped confirmation, 3 shipped "not this item". */
   corrections?: Uint8Array
+  /** English short name per entry (what the game prints on the item), for the name check. */
+  names?: string[]
 }
 
 export interface Detection {
@@ -303,6 +444,10 @@ export interface Detection {
   alternatives: { itemId: string; error: number }[]
   /** Matched one of the user's own corrections rather than a tarkov.dev picture. */
   learned?: boolean
+  /** The printed short name read from the screenshot matches this item. */
+  nameMatch?: boolean
+  /** Only partly visible (cut off by the bottom of the screenshot); h is the visible part. */
+  clipped?: boolean
 }
 
 /** A reference taken from a real screenshot after the user corrected a match. */
@@ -335,6 +480,18 @@ export interface ScanOptions {
   maxError?: number
   /** Only these item ids (e.g. skip presets). */
   allow?: (id: string) => boolean
+  /** Words read from the screenshot (OCR), in the same pixel coordinates as the image. */
+  words?: OcrWord[]
+}
+
+export interface OcrWord {
+  text: string
+  /** 0..100 */
+  conf: number
+  x0: number
+  y0: number
+  x1: number
+  y1: number
 }
 
 interface Candidate {
@@ -345,6 +502,8 @@ interface Candidate {
   bonus: number
   /** A "this look is not itemId" memory: never a match itself, only a penalty. */
   negative?: boolean
+  /** Normalised short name (see normName), for the name check. */
+  name?: string
   rotated: boolean
   fp: Uint8Array | Float32Array
   mean: [number, number, number]
@@ -425,7 +584,8 @@ export function buildCandidates(index: FingerprintIndex, opts: ScanOptions = {})
       // Rotated thin items (stocks, barrels) match too much without their background.
       const iconMask = rotated ? null : iconMaskFor(f, cw, ch, base)
       const src = index.corrections?.[i] ?? 0
-      push(cw, ch, { idx: i, itemId: index.ids[i], learned: src === 1 || src === 2, negative: src === 3, bonus: src === 1 ? LEARNED_BONUS : src === 2 ? CONFIRMED_BONUS : 0, rotated, fp: f, mean: meanColor(f, base), iconMask, iconMean: iconMask ? meanColor(f, iconMask) : [0, 0, 0] })
+      const name = index.names?.[i] ? normName(index.names[i]) : undefined
+      push(cw, ch, { name, idx: i, itemId: index.ids[i], learned: src === 1 || src === 2, negative: src === 3, bonus: src === 1 ? LEARNED_BONUS : src === 2 ? CONFIRMED_BONUS : 0, rotated, fp: f, mean: meanColor(f, base), iconMask, iconMean: iconMask ? meanColor(f, iconMask) : [0, 0, 0] })
     }
     add(w, h, false, fp)
     // Shipped user memories are already in on-screen orientation.
@@ -438,7 +598,11 @@ export function buildCandidates(index: FingerprintIndex, opts: ScanOptions = {})
 export function withLearned(base: Map<string, Candidate[]>, learned: LearnedFingerprint[]): Map<string, Candidate[]> {
   if (learned.length === 0) return base
   const out = new Map<string, Candidate[]>()
-  for (const [k, v] of base) out.set(k, [...v])
+  const names = new Map<string, string>()
+  for (const [k, v] of base) {
+    out.set(k, [...v])
+    for (const c of v) if (c.name && !names.has(c.itemId)) names.set(c.itemId, c.name)
+  }
   for (const l of learned) {
     const key = `${l.w}x${l.h}`
     const mask = compareMask(l.w, l.h, false)
@@ -449,6 +613,7 @@ export function withLearned(base: Map<string, Candidate[]>, learned: LearnedFing
       learned: kind !== 'not',
       bonus: kind === 'confirmed' ? CONFIRMED_BONUS : kind === 'correct' ? LEARNED_BONUS : 0,
       negative: kind === 'not',
+      name: names.get(l.itemId),
       rotated: false,
       fp: l.fp,
       mean: meanColor(l.fp, mask),
@@ -463,6 +628,71 @@ export function withLearned(base: Map<string, Candidate[]>, learned: LearnedFing
 }
 
 const AREA_BONUS = 0.8
+/** The size bonus never exceeds this, so a big poor match cannot beat several good small ones. */
+const AREA_BONUS_MAX = 2
+/**
+ * Printed-name check. The game prints each item's short name in its top-right corner;
+ * names survive icon redraws, so a matching name is strong evidence.
+ */
+const NAME_MATCH = 0.75
+const NAME_BONUS = 10
+/** When some candidate's name matches a confidently read label, the others lose this much. */
+const NAME_PENALTY = 12
+
+/** Lowercase, letters that OCR confuses mapped together (0/o, 1/l/i/|, 5/s), punctuation dropped. */
+export function normName(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/0/g, 'o')
+    .replace(/[1i|!]/g, 'l')
+    .replace(/5/g, 's')
+    .replace(/[^a-z0-9]/g, '')
+}
+
+/** 1 = same, 0 = nothing in common (edit distance relative to the longer name). */
+export function nameSimilarity(a: string, b: string): number {
+  if (!a || !b) return 0
+  if (a === b) return 1
+  const m = a.length
+  const n = b.length
+  let prev = Array.from({ length: n + 1 }, (_, j) => j)
+  for (let i = 1; i <= m; i++) {
+    const cur = [i]
+    for (let j = 1; j <= n; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1))
+    prev = cur
+  }
+  return 1 - prev[n] / Math.max(m, n)
+}
+
+/** Words in the top-right corner of a slot, keyed "row,col" (the slot the name belongs to). */
+function nameLabels(words: OcrWord[] | undefined, grid: Grid): Map<string, { text: string; conf: number }> {
+  const out = new Map<string, { text: string; conf: number }>()
+  // Names with spaces ("F scdr") come back as separate words: join neighbours on one line.
+  const sorted = [...(words ?? [])].sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0)
+  const merged: OcrWord[] = []
+  for (const w of sorted) {
+    const prev = merged[merged.length - 1]
+    // Same line, a space apart, and inside the same slot (neighbouring slots' names often touch).
+    const slotOf = (x: number) => Math.floor((x - grid.ox) / grid.pitch - 0.02)
+    if (prev && Math.abs(prev.y0 - w.y0) < 0.15 * grid.pitch && w.x0 >= prev.x1 - 2 && w.x0 - prev.x1 < 0.1 * grid.pitch && slotOf(prev.x1) === slotOf(w.x1)) {
+      merged[merged.length - 1] = { text: prev.text + w.text, conf: Math.min(prev.conf, w.conf), x0: prev.x0, y0: Math.min(prev.y0, w.y0), x1: w.x1, y1: Math.max(prev.y1, w.y1) }
+    } else merged.push({ ...w })
+  }
+  for (const w of merged) {
+    const text = normName(w.text)
+    // Weak reads (junk around the letters) still count, but only for near-exact names (see below).
+    if (text.length < 2 || (w.conf < 40 && text.length < 3)) continue
+    const col = Math.floor((w.x1 - grid.ox) / grid.pitch - 0.02)
+    const row = Math.floor((w.y0 - grid.oy) / grid.pitch)
+    if (col < 0 || row < 0 || col >= grid.cols || row >= grid.rows) continue
+    if (grid.ox + (col + 1) * grid.pitch - w.x1 > 0.35 * grid.pitch) continue // not right-aligned
+    if (w.y0 - (grid.oy + row * grid.pitch) > 0.4 * grid.pitch) continue // not at the top (counts sit at the bottom)
+    const key = `${row},${col}`
+    const prev = out.get(key)
+    if (!prev || w.conf > prev.conf) out.set(key, { text, conf: w.conf })
+  }
+  return out
+}
 
 /**
  * Empty slots: the plainest cells of the screenshot (lowest contrast) form an
@@ -505,6 +735,7 @@ export function scanGrid(img: Rgba, grid: Grid, candidates: Map<string, Candidat
     return m
   }
   const empty = emptyCells(img, grid)
+  const labels = nameLabels(opts.words, grid)
   const total = grid.rows * grid.cols
   let done = 0
   for (let row = 0; row < grid.rows; row++) {
@@ -523,7 +754,7 @@ export function scanGrid(img: Rgba, grid: Grid, candidates: Map<string, Candidat
         const y0 = grid.oy + row * grid.pitch
         const region = sampleRegion(img, x0, y0, w * grid.pitch + 1, h * grid.pitch + 1, w * FP, h * FP)
         const list = candidates.get(`${w}x${h}`) ?? []
-        const top: { itemId: string; learned: boolean; rotated: boolean; error: number }[] = []
+        const top: { itemId: string; learned: boolean; rotated: boolean; error: number; name?: string; nameMatch?: boolean }[] = []
         let cutoff = maxError * 1.5
         const regionMean = { plain: meanColor(region, maskFor(w, h, false)), rot: meanColor(region, maskFor(w, h, true)) }
         // Rejected looks (nearest neighbour): if this spot is closer to a look the user said is NOT X
@@ -553,10 +784,39 @@ export function scanGrid(img: Rgba, grid: Grid, candidates: Map<string, Candidat
           const dNot = rejectedAt.get(c.itemId)
           if (dNot !== undefined && (dNot < NOT_RADIUS || dNot <= err)) continue
           if (c.bonus) err = Math.max(0, err - c.bonus)
-          top.push({ itemId: c.itemId, learned: c.learned, rotated: c.rotated, error: err })
+          top.push({ itemId: c.itemId, learned: c.learned, rotated: c.rotated, error: err, name: c.name })
           top.sort((a, b) => a.error - b.error)
-          if (top.length > 6) top.length = 6
-          if (top.length === 6) cutoff = Math.min(cutoff, top[5].error)
+          if (top.length > 12) top.length = 12
+          if (top.length === 12) cutoff = Math.min(cutoff, top[11].error)
+        }
+        // The printed name (top-right corner of the item, read by OCR). Items whose short name
+        // matches are considered even when their icon looks different (icons get redrawn).
+        const label = labels.get(`${row},${col + w - 1}`)
+        // A weakly read label must match a name almost exactly.
+        const matchAt = label && label.conf < 40 ? 0.9 : NAME_MATCH
+        if (label) {
+          for (const c of list) {
+            if (c.negative || !c.name || rejectedAt.has(c.itemId)) continue
+            if (top.some((t) => t.itemId === c.itemId && t.rotated === c.rotated)) continue
+            if (nameSimilarity(label.text, c.name) < matchAt) continue
+            let err = distance(region, c.fp, maskFor(w, h, c.rotated))
+            if (c.iconMask) err = Math.min(err, distance(region, c.fp, c.iconMask) + ICON_PENALTY)
+            if (c.bonus) err = Math.max(0, err - c.bonus)
+            top.push({ itemId: c.itemId, learned: c.learned, rotated: c.rotated, error: err, name: c.name })
+          }
+          // Exact names score fully, near misses ("Scdr." vs "F scdr.") less.
+          const sims = top.map((t) => (t.name ? nameSimilarity(label.text, t.name) : 0))
+          const someoneMatches = sims.some((x) => x >= matchAt)
+          top.forEach((t, i) => {
+            const sim = sims[i]
+            if (sim >= matchAt) {
+              t.error = Math.max(0, t.error - NAME_BONUS * (sim - 0.5) * 2)
+              t.nameMatch = true
+            } else if (someoneMatches && label.conf >= 50 && label.text.length >= 3) {
+              t.error += NAME_PENALTY
+            }
+          })
+          top.sort((x, y) => x.error - y.error)
         }
         if (top.length && top[0].error <= maxError) {
           const best = top[0]
@@ -568,24 +828,53 @@ export function scanGrid(img: Rgba, grid: Grid, candidates: Map<string, Candidat
             seen.add(id)
             alternatives.push({ itemId: id, error: t.error })
           }
-          raw.push({ itemId: best.itemId, col, row, w, h, rotated: best.rotated, error: best.error, alternatives, learned: best.learned || undefined })
+          raw.push({ itemId: best.itemId, col, row, w, h, rotated: best.rotated, error: best.error, alternatives, learned: best.learned || undefined, nameMatch: best.nameMatch || undefined })
         }
       }
       done++
       if (onProgress && done % 8 === 0) onProgress(done, total)
     }
   }
+  // Items cut off by the bottom edge of the screenshot: their name (top-right) is still
+  // visible, so when it matches, compare just the visible rows of that item.
+  for (const [key, label] of labels) {
+    const [row, rightCol] = key.split(',').map(Number)
+    for (const [w, h] of footprints) {
+      const col = rightCol - w + 1
+      const visible = grid.rows - row
+      if (col < 0 || row + h <= grid.rows || visible < 1) continue
+      let covers = false
+      for (let y = row; y < grid.rows && !covers; y++) for (let x = col; x < col + w; x++) if (empty[y][x]) covers = true
+      if (covers) continue
+      const region = sampleRegion(img, grid.ox + col * grid.pitch, grid.oy + row * grid.pitch, w * grid.pitch + 1, visible * grid.pitch, w * FP, visible * FP)
+      const mask = compareMask(w, visible, false)
+      for (const c of candidates.get(`${w}x${h}`) ?? []) {
+        if (c.negative || c.rotated || !c.name) continue
+        const sim = nameSimilarity(label.text, c.name)
+        if (sim < 0.85) continue
+        const err = distance(region, c.fp.subarray(0, w * FP * visible * FP * 3), mask)
+        if (err > maxError * 1.5) continue
+        raw.push({ itemId: c.itemId, col, row, w, h: visible, rotated: false, error: Math.max(0, err + 2 - NAME_BONUS * (sim - 0.5) * 2), alternatives: [], nameMatch: true, clipped: true })
+      }
+    }
+  }
+
   // Greedy, best first, no overlaps. A whole item fits slightly worse than one of its own
   // corners does (more pixels, more chance of a highlight), so larger footprints get a
   // small bonus per extra cell: the 400 ml WD-40 must beat "100 ml WD-40 + something".
-  const rank = (d: Detection) => d.error - AREA_BONUS * (d.w * d.h - 1)
+  const rank = (d: Detection) => d.error - Math.min(AREA_BONUS_MAX, AREA_BONUS * (d.w * d.h - 1))
   raw.sort((a, b) => rank(a) - rank(b))
+  // A big uncertain match must not swallow slots that already hold confident smaller items.
+  const confident = raw.filter((d) => d.error < 12)
+  const coversConfident = (d: Detection) =>
+    confident.some((c) => c !== d && c.w * c.h < d.w * d.h && c.col >= d.col && c.row >= d.row && c.col + c.w <= d.col + d.w && c.row + c.h <= d.row + d.h)
   const taken = new Set<string>()
   const out: Detection[] = []
   for (const d of raw) {
     let free = true
     for (let y = d.row; y < d.row + d.h && free; y++) for (let x = d.col; x < d.col + d.w; x++) if (taken.has(`${x},${y}`)) free = false
     if (!free) continue
+    if (d.w * d.h > 1 && d.error >= 15 && coversConfident(d)) continue
     for (let y = d.row; y < d.row + d.h; y++) for (let x = d.col; x < d.col + d.w; x++) taken.add(`${x},${y}`)
     out.push(d)
   }
@@ -599,7 +888,7 @@ export interface FingerprintHeader {
   fp: number
   generated: string
   /** src = user memories shipped with the app (see scan-corrections/). */
-  items: { id: string; w: number; h: number; o: number; src?: 'correction' | 'confirmed' | 'not' }[]
+  items: { id: string; w: number; h: number; o: number; src?: 'correction' | 'confirmed' | 'not'; n?: string }[]
 }
 
 export function indexFromParts(header: FingerprintHeader, pixels: Uint8Array): FingerprintIndex {
@@ -611,6 +900,7 @@ export function indexFromParts(header: FingerprintHeader, pixels: Uint8Array): F
     offsets: new Uint32Array(n),
     pixels,
     corrections: Uint8Array.from(header.items, (it) => (it.src === 'correction' ? 1 : it.src === 'confirmed' ? 2 : it.src === 'not' ? 3 : 0)),
+    names: header.items.map((it) => it.n ?? ''),
   }
   header.items.forEach((it, i) => {
     index.widths[i] = it.w

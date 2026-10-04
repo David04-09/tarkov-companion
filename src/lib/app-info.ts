@@ -21,5 +21,6 @@ export const CREDITS: Credit[] = [
   { name: 'tarkov-dev-svg-maps', url: 'https://github.com/the-hideout/tarkov-dev-svg-maps', license: 'CC BY-NC-SA 4.0', what: 'The map drawings (SVG) and photo imagery used for most maps.' },
   { name: 'RE3MR', url: 'https://reemr.se', license: 'CC BY-NC-SA 4.0', what: 'The post-1.1.5 Lighthouse render, sliced into tiles for this app.' },
   { name: 'TarkovMonitor', url: 'https://github.com/the-hideout/TarkovMonitor', license: 'GPL-3.0 (reference only; no code copied)', what: 'Where the meaning of the game log lines was learned. The parser here is an independent implementation.' },
+  { name: 'Tesseract OCR (tesseract.js)', url: 'https://github.com/naptha/tesseract.js', license: 'Apache-2.0', what: 'Reads the item names printed in stash screenshots, offline, for the stash scanner.' },
   { name: 'Electron, React, Leaflet, TanStack, Zustand, Tailwind, Geoman, lucide', url: 'https://github.com/the-hideout', license: 'MIT and similar', what: 'The open-source libraries the app is built with.' },
 ]

@@ -3,11 +3,11 @@
  * Runs the stash scan off the UI thread. The page sends the fingerprint files
  * once ("init"), then screenshots ("scan") as ImageBitmaps plus an optional crop.
  */
-import { buildCandidates, detectGrid, refineGrid, indexFromParts, scanGrid, withLearned, type Detection, type FingerprintHeader, type FingerprintIndex, type Grid, type LearnedFingerprint } from './core'
+import { buildCandidates, chooseGrid, detectGrid, refineGrid, indexFromParts, scanGrid, withLearned, type Detection, type FingerprintHeader, type FingerprintIndex, type Grid, type LearnedFingerprint, type OcrWord } from './core'
 
 export type WorkerRequest =
   | { type: 'init'; header: FingerprintHeader; pixels: ArrayBuffer }
-  | { type: 'scan'; id: number; bitmap: ImageBitmap; crop: { x: number; y: number; w: number; h: number } | null; pitch?: number; learned?: LearnedFingerprint[] }
+  | { type: 'scan'; id: number; bitmap: ImageBitmap; crop: { x: number; y: number; w: number; h: number } | null; pitch?: number; learned?: LearnedFingerprint[]; words?: OcrWord[] }
 
 export type WorkerResponse =
   | { type: 'ready'; items: number }
@@ -40,10 +40,10 @@ self.onmessage = (e: MessageEvent<WorkerRequest>) => {
       msg.bitmap.close()
       const pixels = ctx.getImageData(0, 0, crop.w, crop.h)
       const img = { width: pixels.width, height: pixels.height, data: pixels.data }
-      let grid = detectGrid(img, msg.pitch)
-      // Selections and small containers: let the matcher pick the line positions.
-      if (msg.pitch || grid.cols * grid.rows <= 48) grid = refineGrid(img, grid, candidates)
-      const detections = scanGrid(img, grid, withLearned(candidates, msg.learned ?? []), index, {}, (done, total) => post({ type: 'progress', id: msg.id, done, total }))
+      // Known cell size (a selection): only the line positions are searched. Otherwise the
+      // matcher judges a few proposed grids and keeps the one real items fit best.
+      const grid = msg.pitch ? refineGrid(img, detectGrid(img, msg.pitch), candidates) : chooseGrid(img, candidates)
+      const detections = scanGrid(img, grid, withLearned(candidates, msg.learned ?? []), index, { words: (msg.words ?? []).map((w) => ({ ...w, x0: w.x0 - crop.x, x1: w.x1 - crop.x, y0: w.y0 - crop.y, y1: w.y1 - crop.y })) }, (done, total) => post({ type: 'progress', id: msg.id, done, total }))
       // Report positions in full-screenshot coordinates.
       const shifted: Grid = { ...grid, ox: grid.ox + crop.x, oy: grid.oy + crop.y }
       post({ type: 'result', id: msg.id, grid: shifted, detections, ms: Math.round(performance.now() - t0) })

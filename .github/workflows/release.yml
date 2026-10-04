@@ -57,6 +57,9 @@ jobs:
       - name: Build stash scanner fingerprints
         run: npm run scan:fingerprints
 
+      - name: Offline text reader for the scanner (Tesseract)
+        run: npm run ocr:assets
+
       - name: Unit tests and lint
         run: |
           npm test

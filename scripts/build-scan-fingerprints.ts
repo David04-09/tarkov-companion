@@ -16,10 +16,13 @@ interface RawItem {
   width?: number
   height?: number
   gridImageLink?: string
+  shortName?: string
   types?: string[]
 }
 
 const res = (await (await fetch('https://json.tarkov.dev/regular/items')).json()) as { data: { items: Record<string, RawItem> } }
+const en = (await (await fetch('https://json.tarkov.dev/regular/items_en')).json()) as { data?: Record<string, string> } & Record<string, string>
+const shortNames = (en.data ?? en) as Record<string, string>
 // Presets duplicate their base weapon's look; skip them (the base weapon still matches).
 const items = Object.values(res.data.items).filter((i) => i.gridImageLink && !(i.types ?? []).includes('preset'))
 fs.mkdirSync(CACHE, { recursive: true })
@@ -43,7 +46,7 @@ async function gridImage(item: RawItem): Promise<Buffer | null> {
   return null
 }
 
-const results: { id: string; w: number; h: number; px: Uint8Array }[] = []
+const results: { id: string; w: number; h: number; px: Uint8Array; n: string }[] = []
 let next = 0
 let failed = 0
 async function worker() {
@@ -58,7 +61,7 @@ async function worker() {
     const h = item.height || 1
     const { data, info } = await sharp(buf).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
     const fp = sampleRegion({ width: info.width, height: info.height, data }, 0, 0, info.width, info.height, w * FP, h * FP)
-    results.push({ id: item.id, w, h, px: Uint8Array.from(fp, (v) => Math.round(v)) })
+    results.push({ id: item.id, w, h, px: Uint8Array.from(fp, (v) => Math.round(v)), n: shortNames[item.shortName ?? ''] ?? '' })
     if (results.length % 500 === 0) console.log(`  ${results.length} / ${items.length}`)
   }
 }
@@ -87,7 +90,7 @@ const total = results.reduce((n, r) => n + r.px.length, 0) + corrections.reduce(
 const pixels = new Uint8Array(total)
 let o = 0
 for (const r of results) {
-  header.items.push({ id: r.id, w: r.w, h: r.h, o })
+  header.items.push({ id: r.id, w: r.w, h: r.h, o, n: r.n || undefined })
   pixels.set(r.px, o)
   o += r.px.length
 }
@@ -98,4 +101,5 @@ for (const c of corrections) {
 }
 fs.writeFileSync(path.join(OUT_DIR, 'fingerprints.json'), JSON.stringify(header))
 fs.writeFileSync(path.join(OUT_DIR, 'fingerprints.bin'), pixels)
+
 console.log(`wrote ${results.length} fingerprints (${(total / 1e6).toFixed(1)} MB), ${failed} failed`)

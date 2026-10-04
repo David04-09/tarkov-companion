@@ -45,3 +45,6 @@ CLAUDE.local.md
 
 # Stash scanner fingerprints (generated: npm run scan:fingerprints)
 public/scan/
+
+# Offline text reader for the stash scanner (generated: npm run ocr:assets)
+public/ocr/

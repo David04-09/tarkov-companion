@@ -3,7 +3,7 @@
  * (from the web server, or through the desktop bridge because Chromium cannot
  * fetch() file:// URLs) and turns an image into detections.
  */
-import type { Detection, FingerprintHeader, Grid, LearnedFingerprint } from './core'
+import type { Detection, FingerprintHeader, Grid, LearnedFingerprint, OcrWord } from './core'
 import type { WorkerRequest, WorkerResponse } from './scan.worker'
 import ScanWorker from './scan.worker?worker'
 
@@ -20,7 +20,7 @@ const pending = new Map<number, { resolve: (r: ScanResult) => void; reject: (e: 
 
 async function loadFile(name: string): Promise<ArrayBuffer> {
   if (window.desktop?.readAppResource) return window.desktop.readAppResource(`scan/${name}`)
-  const res = await fetch(`${import.meta.env.BASE_URL}scan/${name}`)
+  const res = await fetch(`${import.meta.env.BASE_URL}scan/${name}`, { cache: "no-cache" })
   if (!res.ok) throw new Error(`Scanner data missing (${name}, HTTP ${res.status}). Run "npm run scan:fingerprints".`)
   return res.arrayBuffer()
 }
@@ -69,13 +69,15 @@ export async function scanImage(
   learned: LearnedFingerprint[] = [],
   /** Cell size already known (e.g. from the full screenshot when scanning a selection). */
   pitch?: number,
+  /** Item names read from the screenshot (see ocr.ts). */
+  words?: OcrWord[],
 ): Promise<ScanResult> {
   await ensureWorker()
   const bitmap = await createImageBitmap(image)
   const id = nextId++
   return new Promise<ScanResult>((resolve, reject) => {
     pending.set(id, { resolve, reject, onProgress })
-    const msg: WorkerRequest = { type: 'scan', id, bitmap, crop, learned, pitch }
+    const msg: WorkerRequest = { type: 'scan', id, bitmap, crop, learned, pitch, words }
     worker?.postMessage(msg, [bitmap])
   })
 }

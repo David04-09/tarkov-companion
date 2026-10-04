@@ -6,14 +6,18 @@
  * Nothing here touches the game: the overlay is an ordinary always-on-top
  * window (works with the game in borderless windowed mode).
  */
-import { BrowserWindow, Menu, Tray, app, dialog, globalShortcut, ipcMain, nativeImage, shell } from 'electron'
+import { BrowserWindow, Menu, Tray, app, dialog, globalShortcut, ipcMain, nativeImage, protocol, shell } from 'electron'
 import fs from 'node:fs'
 import path from 'node:path'
 import type { DesktopSettings, GameEvent, WipeEvent } from '../src/shared/desktop-api'
 import { detectLogsFolder } from './logs/locator'
 import { LogWatcher } from './logs/watcher'
 import { SettingsStore } from './settings'
-import { captureScreenUnderCursor, listGameScreenshots, readAppResource, readGameScreenshot } from './capture'
+import { captureScreenUnderCursor, listGameScreenshots, readAppResource, readGameScreenshot, resourceResponse } from './capture'
+
+// Read-only access to the app's own bundled scanner/OCR files (the page is a local file and
+// Chromium cannot fetch() file:// URLs). Must be registered before the app is ready.
+protocol.registerSchemesAsPrivileged([{ scheme: 'tcres', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } }])
 import { checkForUpdates, getUpdateStatus, installUpdate, setupUpdater } from './updater'
 
 const DEV_URL = process.env.VITE_DEV_SERVER_URL
@@ -47,6 +51,7 @@ function broadcast(channel: string, payload: unknown) {
 }
 
 function bootstrap() {
+  protocol.handle('tcres', (req) => resourceResponse(req.url, Boolean(DEV_URL)))
   settings = new SettingsStore(app.getPath('userData'))
   const startHidden = settings.get().startMinimized || process.argv.includes('--minimized')
 

@@ -12,6 +12,7 @@ import type { Detection } from './core'
 import { scanImage, warmUpScanner, type ScanResult } from './scanner'
 import { learnedFingerprints, recordFromCorrection, recordFromSpot, useLearnedStore } from './learned'
 import { LearnedPanel } from './LearnedPanel'
+import { readWords, warmUpOcr } from './ocr'
 import { imageFromClipboard, useScanStore } from './scanStore'
 
 interface Row {
@@ -31,12 +32,15 @@ interface Row {
   learned: boolean
   /** You picked this item yourself ("Wrong item?"). */
   manual?: boolean
+  /** The printed name on screen matches (every spot of this row). */
+  nameMatch: boolean
 }
 
 type Box = { x: number; y: number; w: number; h: number }
 
 /** Sure only when the match is close AND clearly better than the next item (BEAR vs USEC tags etc.). */
-const confidence = (error: number, margin = Infinity) => (error < 12 && margin >= 1.5 ? 'sure' : error < 18 ? 'likely' : 'check')
+const confidence = (error: number, margin = Infinity, nameMatch = false) =>
+  nameMatch ? (error < 20 ? 'sure' : 'likely') : error < 12 && margin >= 1.5 ? 'sure' : error < 18 ? 'likely' : 'check'
 const marginOf = (d: Detection) => (d.alternatives.length ? d.alternatives[0].error - d.error : Infinity)
 const KEEP_FILL = 'rgba(34,197,94,0.30)'
 const SELL_FILL = 'rgba(239,68,68,0.30)'
@@ -62,9 +66,10 @@ function buildRows(result: ScanResult): Row[] {
       row.error = Math.min(row.error, d.error)
       row.margin = Math.min(row.margin, marginOf(d))
       row.learned = row.learned || Boolean(d.learned)
+      row.nameMatch = row.nameMatch && Boolean(d.nameMatch)
       for (const a of d.alternatives) if (!row.alternatives.includes(a.itemId)) row.alternatives.push(a.itemId)
     } else {
-      byItem.set(d.itemId, { key: d.itemId, itemId: d.itemId, count: 1, selected: true, spots: [i], error: d.error, alternatives: d.alternatives.map((a) => a.itemId), margin: marginOf(d), learned: Boolean(d.learned) })
+      byItem.set(d.itemId, { key: d.itemId, itemId: d.itemId, count: 1, selected: true, spots: [i], error: d.error, alternatives: d.alternatives.map((a) => a.itemId), margin: marginOf(d), learned: Boolean(d.learned), nameMatch: Boolean(d.nameMatch) })
     }
   })
   return [...byItem.values()]
@@ -105,6 +110,8 @@ export function ScanDialog() {
   const [changing, setChanging] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [learnNote, setLearnNote] = useState<string | null>(null)
+  const [phase, setPhase] = useState('Scanning…')
+  const [namesRead, setNamesRead] = useState<number | null>(null)
   const svgRef = useRef<SVGSVGElement>(null)
   const fileInput = useRef<HTMLInputElement>(null)
 
@@ -122,6 +129,7 @@ export function ScanDialog() {
   useEffect(() => {
     if (!open) return
     void warmUpScanner().catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
+    warmUpOcr()
     if (isDesktop()) void window.desktop?.listGameScreenshots().then(setShots)
     const onPaste = (e: ClipboardEvent) => {
       const img = imageFromClipboard(e)
@@ -155,7 +163,7 @@ export function ScanDialog() {
   // Default selection: items that count toward something you still need.
   useEffect(() => {
     // Uncertain matches stay unticked so a wrong guess cannot slip into Item Collection.
-    setRows((rs) => rs.map((r) => ({ ...r, selected: (needFor.get(r.itemId)?.remaining ?? 0) > 0 && confidence(r.error, r.margin) !== 'check' })))
+    setRows((rs) => rs.map((r) => ({ ...r, selected: (needFor.get(r.itemId)?.remaining ?? 0) > 0 && confidence(r.error, r.margin, r.nameMatch) !== 'check' })))
     // Only when a new result arrives.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [result])
@@ -166,9 +174,14 @@ export function ScanDialog() {
     setError(null)
     try {
       await useLearnedStore.getState().load()
+      // Read the printed item names first (a few seconds); scanning without them still works.
+      setPhase('Reading item names…')
+      const words = await readWords(img, box).catch(() => undefined)
+      setPhase('Matching items…')
       // A selection inside an already-scanned screenshot keeps its known cell size.
       const knownPitch = box && result ? result.grid.pitch : undefined
-      const r = await scanImage(img, box, setProgress, learnedFingerprints(useLearnedStore.getState().records), knownPitch)
+      const r = await scanImage(img, box, setProgress, learnedFingerprints(useLearnedStore.getState().records), knownPitch, words)
+      setNamesRead(words ? words.length : null)
       setResult(r)
       setRows(buildRows(r))
       setStatus('done')
@@ -228,7 +241,7 @@ export function ScanDialog() {
   const rememberConfirmations = async () => {
     if (!result || !image) return
     for (const r of rows) {
-      if (!r.selected || r.manual || confidence(r.error, r.margin) === 'sure') continue
+      if (!r.selected || r.manual || confidence(r.error, r.margin, r.nameMatch) === 'sure') continue
       for (const spot of r.spots.slice(0, 2)) {
         const det = result.detections[spot]
         if (!det || det.itemId !== r.itemId) continue
@@ -314,13 +327,13 @@ export function ScanDialog() {
                   <button type="button" onClick={() => { setCrop(null); if (image) void runScan(image, null) }} className="btn !py-1">Whole image</button>
                 </>
               )}
-              {status === 'scanning' && <span className="flex items-center gap-1.5 text-ink-muted"><Loader2 className="h-4 w-4 animate-spin" /> Scanning… {Math.round(progress * 100)}%</span>}
+              {status === 'scanning' && <span className="flex items-center gap-1.5 text-ink-muted"><Loader2 className="h-4 w-4 animate-spin" /> {phase} {phase === 'Matching items…' ? `${Math.round(progress * 100)}%` : ''}</span>}
               {result && (
                 <button type="button" onClick={() => setTint((v) => !v)} className={`btn !py-1 ${tint ? 'border-accent text-accent' : ''}`} title="Green = keep (you still need it), red = sell">
                   <Palette className="h-4 w-4" /> Keep/sell tint
                 </button>
               )}
-              {status === 'done' && result && <span className="text-ink-dim">{result.detections.length} items in {result.ms} ms · cell {result.grid.pitch.toFixed(0)} px</span>}
+              {status === 'done' && result && <span className="text-ink-dim">{result.detections.length} items · cell {result.grid.pitch.toFixed(0)} px{namesRead === null ? ' · names not read' : ''}</span>}
             </div>
             <div className="p-2 md:min-h-0 md:flex-1 md:overflow-auto">
               {!url ? (
@@ -352,7 +365,7 @@ export function ScanDialog() {
                       onPointerUp={() => { if (!cropping) return; setDragStart(null); setCropping(false); setCrop((c) => (c && c.w > 20 && c.h > 20 ? { x: Math.round(c.x), y: Math.round(c.y), w: Math.round(c.w), h: Math.round(c.h) } : null)) }}
                     >
                       {result?.detections.map((d, i) => {
-                        const conf = CONF_STYLE[confidence(d.error, marginOf(d))]
+                        const conf = CONF_STYLE[confidence(d.error, marginOf(d), Boolean(d.nameMatch))]
                         const x = result.grid.ox + d.col * result.grid.pitch
                         const y = result.grid.oy + d.row * result.grid.pitch
                         const row = rows.find((r) => r.spots.includes(i))
@@ -380,7 +393,7 @@ export function ScanDialog() {
                 {[...rows].sort((a, b) => Number(b.selected) - Number(a.selected) || a.error - b.error).map((r) => {
                   const item = items?.[r.itemId]
                   const need = needFor.get(r.itemId)
-                  const conf = CONF_STYLE[confidence(r.error, r.margin)]
+                  const conf = CONF_STYLE[confidence(r.error, r.margin, r.nameMatch)]
                   const v = verdicts.get(r.key) ?? { keep: 0, sell: r.count }
                   const value = sellValue(item, 1)
                   const stack = (item?.types ?? []).includes('ammo') || (item?.types ?? []).includes('ammoBox')

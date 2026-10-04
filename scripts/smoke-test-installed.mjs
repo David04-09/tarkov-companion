@@ -100,9 +100,9 @@ if (process.env.TC_SCAN_IMAGE) {
   await evalJs(`(async () => { const bin = atob('${b64}'); const u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); const dt = new DataTransfer(); dt.items.add(new File([u], 'shot.png', { type: 'image/png' })); window.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt })); return true })()`)
   for (let i = 0; i < 40; i++) {
     await sleep(1000)
-    if (await evalJs('/items in [0-9]+ ms|Scanner data|error/i.test((document.querySelector("[aria-labelledby=scan-title]")||{}).innerText||"")')) break
+    if (await evalJs('/items · cell|Scanner data|error/i.test((document.querySelector("[aria-labelledby=scan-title]")||{}).innerText||"")')) break
   }
-  out.scan = await evalJs('(() => { const d = document.querySelector("[aria-labelledby=scan-title]"); if (!d) return "no dialog"; return { status: (d.innerText.match(/[0-9]+ items in [0-9]+ ms[^·]*·[^·]*/) || [""])[0], error: d.querySelector(".text-danger")?.innerText ?? null, rows: d.querySelectorAll("li input[type=number]").length } })()')
+  out.scan = await evalJs('(() => { const d = document.querySelector("[aria-labelledby=scan-title]"); if (!d) return "no dialog"; return { status: d.innerText, error: d.querySelector(".text-danger")?.innerText ?? null, rows: d.querySelectorAll("li input[type=number]").length } })()')
 }
 out.updateStatus = await evalJs('window.desktop.getUpdateStatus()')
 out.watcher = await evalJs('window.desktop.getState().then(s => ({status: s.status, logsPath: s.logsPath, detected: s.detectedPath, mode: s.sessionMode}))')

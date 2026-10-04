@@ -51,6 +51,30 @@ export function readGameScreenshot(name: string): Uint8Array {
   return new Uint8Array(fs.readFileSync(path.join(gameScreenshotsDir(), name)))
 }
 
+const RESOURCE_DIRS = ['scan', 'ocr']
+
+function resourcePath(rel: string, devServer: boolean): string {
+  const clean = path.normalize(rel).replace(/^([/\\])+/, '')
+  const top = clean.split(/[/\\]/)[0]
+  if (!RESOURCE_DIRS.includes(top) || clean.includes('..')) throw new Error('Not allowed')
+  const base = devServer ? path.join(__dirname, '..', 'public') : path.join(__dirname, '..', 'dist')
+  return path.join(base, clean)
+}
+
+const MIME: Record<string, string> = { '.js': 'text/javascript', '.json': 'application/json', '.gz': 'application/gzip', '.bin': 'application/octet-stream', '.wasm': 'application/wasm' }
+
+/** tcres://app/<dir>/<file> -> the bundled file, read-only, scanner and OCR folders only. */
+export function resourceResponse(url: string, devServer: boolean): Response {
+  try {
+    const rel = decodeURIComponent(new URL(url).pathname)
+    const file = resourcePath(rel, devServer)
+    const body = fs.readFileSync(file)
+    return new Response(body, { headers: { 'content-type': MIME[path.extname(file)] ?? 'application/octet-stream', 'access-control-allow-origin': '*' } })
+  } catch {
+    return new Response('Not found', { status: 404, headers: { 'access-control-allow-origin': '*' } })
+  }
+}
+
 /** Reads a file shipped with the app (only the scanner data folder). */
 export function readAppResource(rel: string, devServer: boolean): Uint8Array {
   const clean = path.normalize(rel).replace(/^([/\\])+/, '')

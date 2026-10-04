@@ -3,7 +3,8 @@
 // Usage: npx tsx scripts/scan-test.ts <screenshot.png>
 import fs from 'node:fs'
 import sharp from 'sharp'
-import { buildCandidates, detectGrid, refineGrid, indexFromParts, scanGrid, type FingerprintHeader } from '../src/scan/core'
+import { closeOcr, readWordsNode } from './ocr-node'
+import { buildCandidates, chooseGrid, detectGrid, refineGrid, indexFromParts, scanGrid, type FingerprintHeader } from '../src/scan/core'
 
 const file = process.argv.slice(2).find((a) => !a.startsWith('--')) as string
 if (!file) throw new Error('usage: scan-test <screenshot>')
@@ -19,16 +20,17 @@ const { data, info } = await sharp(file).ensureAlpha().raw().toBuffer({ resolveW
 const img = { width: info.width, height: info.height, data }
 let t = Date.now()
 const pitchArg = process.argv.find((a) => a.startsWith('--pitch='))
-let grid = detectGrid(img, pitchArg ? Number(pitchArg.slice(8)) : undefined)
-if (pitchArg || grid.cols * grid.rows <= 48) grid = refineGrid(img, grid, buildCandidates(index))
+const grid = pitchArg ? refineGrid(img, detectGrid(img, Number(pitchArg.slice(8))), buildCandidates(index)) : chooseGrid(img, buildCandidates(index))
 console.log(`grid: pitch ${grid.pitch.toFixed(2)} px, origin (${grid.ox.toFixed(1)}, ${grid.oy.toFixed(1)}), ${grid.cols} x ${grid.rows} cells, ${Date.now() - t} ms`)
 t = Date.now()
 const candidates = buildCandidates(index)
-const found = scanGrid(img, grid, candidates, index)
+const words = process.argv.includes('--no-ocr') ? undefined : await readWordsNode(file)
+const found = scanGrid(img, grid, candidates, index, { words })
+await closeOcr()
 console.log(`scan: ${found.length} items in ${Date.now() - t} ms`)
 for (const d of found) {
   const alt = d.alternatives.slice(0, 2).map((a) => `${names[a.itemId]}(${a.error.toFixed(1)})`).join(', ')
-  console.log(`  r${d.row} c${d.col} ${d.w}x${d.h}${d.rotated ? 'R' : ' '} ${names[d.itemId]?.padEnd(14)} err ${d.error.toFixed(1)}   alt: ${alt}`)
+  console.log(`  ${d.nameMatch ? 'N' : ' '} r${d.row} c${d.col} ${d.w}x${d.h}${d.rotated ? 'R' : ' '} ${names[d.itemId]?.padEnd(14)} err ${d.error.toFixed(1)}   alt: ${alt}`)
 }
 
 // Annotated image: grid lines + boxes with labels.
