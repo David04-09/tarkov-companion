@@ -172,6 +172,8 @@ export interface DesktopApi {
   checkForUpdates: () => Promise<UpdateStatus>
   installUpdate: () => Promise<void>
   getUpdateOutcome: () => Promise<UpdateOutcome | null>
+  /** Opens the downloaded installer normally (fallback when the silent install failed). */
+  runInstaller: (version: string) => Promise<void>
   onUpdateStatus: (cb: (s: UpdateStatus) => void) => () => void
   onEvent: (cb: (event: GameEvent) => void) => () => void
   onState: (cb: (state: WatcherState) => void) => () => void

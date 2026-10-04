@@ -29,8 +29,13 @@ export function UpdateBanner() {
       <span className="min-w-0 flex-1">
         {outcome.ok
           ? `Updated to ${outcome.version}.`
-          : `The update to ${outcome.version} didn't finish (usually because the app was opened while it was installing). Click "Restart to update" to try again and wait about a minute for the app to come back on its own.`}
+          : `The update to ${outcome.version} didn't finish. Click "Run the installer" to install it with the normal setup window (it closes the app itself), or "Restart to update" to try the automatic way again.`}
       </span>
+      {!outcome.ok && (
+        <button type="button" onClick={() => void window.desktop?.runInstaller?.(outcome.version)} className="btn !py-1">
+          Run the installer
+        </button>
+      )}
       <button type="button" onClick={() => setOutcome(null)} aria-label="Close" title="Close" className="text-ink-dim hover:text-ink">
         <X className="h-4 w-4" />
       </button>

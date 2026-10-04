@@ -38,6 +38,32 @@ let timer: ReturnType<typeof setInterval> | null = null
 let updater: typeof autoUpdater | null = null
 let outcome: UpdateOutcome | null = null
 
+// A plain text log of every update step (userData/updater.log, last ~200 KB), so a failed
+// install leaves a trail. Nothing personal goes in: versions, file names, errors.
+const logFile = () => path.join(app.getPath('userData'), 'updater.log')
+function logLine(level: string, msg: unknown) {
+  try {
+    const file = logFile()
+    if (fs.existsSync(file) && fs.statSync(file).size > 200_000) fs.renameSync(file, `${file}.old`)
+    const text = msg instanceof Error ? `${msg.message}\n${msg.stack ?? ''}` : String(msg)
+    fs.appendFileSync(file, `${new Date().toISOString()} [${level}] ${text}\n`)
+  } catch {
+    // logging must never break updating
+  }
+}
+const fileLogger = {
+  info: (m: unknown) => logLine('info', m),
+  warn: (m: unknown) => logLine('warn', m),
+  error: (m: unknown) => logLine('error', m),
+  debug: (m: unknown) => logLine('debug', m),
+}
+
+/** The installer electron-updater downloaded for this version (its cache folder, see app-update.yml). */
+function downloadedInstaller(version: string): string | null {
+  const file = path.join(process.env.LOCALAPPDATA ?? '', 'tarkov-companion-updater', 'pending', `TarkovCompanion-Setup-${version}.exe`)
+  return fs.existsSync(file) ? file : null
+}
+
 const attemptFile = () => path.join(app.getPath('userData'), 'update-attempt.json')
 
 /** -1, 0 or 1 for dotted version numbers. */
@@ -58,6 +84,7 @@ function readAttempt() {
     fs.rmSync(attemptFile(), { force: true })
     if (typeof raw.version !== 'string' || typeof raw.at !== 'number' || Date.now() - raw.at > 24 * 60 * 60 * 1000) return
     outcome = { ok: compareVersions(app.getVersion(), raw.version) >= 0, version: raw.version }
+    logLine(outcome.ok ? 'info' : 'warn', `Started ${app.getVersion()} after trying to install ${raw.version}: ${outcome.ok ? 'updated' : 'NOT updated'}`)
   } catch {
     // no attempt pending
   }
@@ -95,7 +122,10 @@ export function setupUpdater(broadcast: Broadcast) {
   autoUpdater.autoDownload = !IS_PORTABLE
   autoUpdater.autoInstallOnAppQuit = !IS_PORTABLE
   autoUpdater.allowPrerelease = false
-  autoUpdater.logger = null
+  autoUpdater.logger = fileLogger
+  logLine('info', `App ${app.getVersion()} started (${IS_PORTABLE ? 'portable' : 'installed'})`)
+  app.on('before-quit', () => logLine('info', 'before-quit'))
+  app.on('quit', (_e, code) => logLine('info', `quit, exit code ${code}`))
 
   autoUpdater.on('checking-for-update', () => setStatus({ state: 'checking' }))
   autoUpdater.on('update-available', (info) =>
@@ -139,6 +169,7 @@ export function installUpdate(): void {
     // only used for the "updated" note at the next launch
   }
   setStatus({ state: 'installing', version })
+  logLine('info', `Restart to update clicked for ${version}`)
   if (Notification.isSupported()) {
     new Notification({
       title: `Updating Tarkov Companion to ${version}`,
@@ -147,4 +178,23 @@ export function installUpdate(): void {
   }
   // A moment to read the bar before the window closes.
   setTimeout(() => updater?.quitAndInstall(true, true), 2500)
+}
+
+/**
+ * Fallback when the silent install did not take: opens the downloaded installer normally
+ * (the visible setup, which closes the app itself), or the releases page if it is gone.
+ */
+export function runInstallerManually(version: string): void {
+  const file = downloadedInstaller(version)
+  logLine('info', `Run the installer by hand for ${version}: ${file ?? 'not downloaded, opening releases page'}`)
+  if (!file) {
+    void shell.openExternal(RELEASES_URL)
+    return
+  }
+  void shell.openPath(file).then((err) => {
+    if (err) {
+      logLine('error', `Could not open installer: ${err}`)
+      void shell.openExternal(RELEASES_URL)
+    }
+  })
 }

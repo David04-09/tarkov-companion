@@ -18,7 +18,7 @@ import { captureScreenUnderCursor, listGameScreenshots, readAppResource, readGam
 // Read-only access to the app's own bundled scanner/OCR files (the page is a local file and
 // Chromium cannot fetch() file:// URLs). Must be registered before the app is ready.
 protocol.registerSchemesAsPrivileged([{ scheme: 'tcres', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } }])
-import { checkForUpdates, getUpdateOutcome, getUpdateStatus, installUpdate, setupUpdater } from './updater'
+import { checkForUpdates, getUpdateOutcome, getUpdateStatus, installUpdate, runInstallerManually, setupUpdater } from './updater'
 
 const DEV_URL = process.env.VITE_DEV_SERVER_URL
 
@@ -371,6 +371,9 @@ function registerIpc() {
   ipcMain.handle('update:check', () => checkForUpdates())
   ipcMain.handle('update:install', () => installUpdate())
   ipcMain.handle('update:outcome', () => getUpdateOutcome())
+  ipcMain.handle('update:runInstaller', (_e, version: unknown) => {
+    if (typeof version === 'string' && /^[0-9]+\.[0-9]+\.[0-9]+$/.test(version)) runInstallerManually(version)
+  })
   ipcMain.handle('resource:read', (_e, rel: string) => readAppResource(String(rel), Boolean(DEV_URL)))
   ipcMain.handle('scan:capture', () => captureScreenUnderCursor())
   ipcMain.handle('scan:listShots', () => listGameScreenshots())
