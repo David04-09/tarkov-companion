@@ -1,8 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import { NAV_ITEMS } from '../config/nav'
 import { FirstRunSetup } from '../desktop/FirstRunSetup'
 import { SyncReviewDialog, SyncToast } from '../desktop/SyncReview'
+import { ScanDialog } from '../scan/ScanDialog'
+import { useScanStore } from '../scan/scanStore'
 import { UpdateBanner } from '../desktop/UpdateBanner'
 import { hasAnyProgress, useLocalFlags } from '../desktop/localFlags'
 import { isDesktop, useDesktopStore } from '../desktop/useDesktop'
@@ -13,6 +15,8 @@ import { Sidebar } from './Sidebar'
 
 export function Layout() {
   const { pathname } = useLocation()
+  // Desktop scan hotkey: the main process captured the game screen; open the scanner with it.
+  useEffect(() => window.desktop?.onScanCapture((png) => useScanStore.getState().openWith(new Blob([png as BlobPart], { type: 'image/png' }))), [])
   const settings = useDesktopStore((s) => s.settings)
   const localSetupDone = useLocalFlags((s) => s.setupDone)
   const hasProgress = useProgressStore((s) => hasAnyProgress(s.profiles))
@@ -31,6 +35,7 @@ export function Layout() {
       {showSetup && <FirstRunSetup />}
       {isDesktop() && <SyncReviewDialog />}
       {isDesktop() && <SyncToast />}
+      <ScanDialog />
       <Sidebar />
       <main className={`min-w-0 flex-1 ${fullBleed ? 'flex min-h-0 flex-col overflow-hidden' : 'overflow-y-auto'}`}>
         <UpdateBanner />

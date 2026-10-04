@@ -88,6 +88,8 @@ export interface DesktopSettings {
   paused: boolean
   /** Electron accelerator for toggling the overlay window. */
   overlayHotkey: string
+  /** Electron accelerator that captures the screen and opens the stash scanner. */
+  scanHotkey: string
   /** 0.3 .. 1 */
   overlayOpacity: number
   /** Last profile id / game version seen in the logs, for wipe detection. */
@@ -148,6 +150,15 @@ export interface DesktopApi {
   getRecentEvents: () => Promise<GameEvent[]>
   openLogsFolder: () => Promise<void>
   openExternal: (url: string) => Promise<void>
+  /** Reads a bundled scanner data file (desktop: file:// cannot be fetched). */
+  readAppResource: (rel: string) => Promise<ArrayBuffer>
+  /** Captures the screen under the mouse (PNG bytes). */
+  captureScreen: () => Promise<Uint8Array>
+  /** Newest screenshots from Documents\Escape from Tarkov\Screenshots. */
+  listGameScreenshots: () => Promise<{ name: string; modified: number }[]>
+  readGameScreenshot: (name: string) => Promise<Uint8Array>
+  /** Scan hotkey pressed: a fresh capture to scan. */
+  onScanCapture: (cb: (png: Uint8Array) => void) => () => void
   getUpdateStatus: () => Promise<UpdateStatus>
   checkForUpdates: () => Promise<UpdateStatus>
   installUpdate: () => Promise<void>

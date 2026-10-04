@@ -15,6 +15,8 @@ export default defineConfig(({ mode }) => {
   const cjs = { rollupOptions: { output: { format: 'cjs' as const, entryFileNames: '[name].cjs' } } }
   return {
     base: desktop ? './' : '/',
+    // Classic (non-module) workers also load from file:// in the packaged desktop app.
+    worker: { format: 'iife' as const },
     define: { 'import.meta.env.VITE_APP_VERSION': JSON.stringify(pkg.version), 'import.meta.env.VITE_REPO_URL': JSON.stringify(repoUrl) },
     plugins: [
       react(),

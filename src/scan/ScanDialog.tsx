@@ -1,0 +1,375 @@
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Camera, Check, Crop, FolderOpen, ImageUp, Loader2, Minus, Plus, ScanSearch, Search, Trash2, X } from 'lucide-react'
+import { useNeeds } from '../hooks/useNeeds'
+import { remainingFor } from '../lib/needs'
+import { isDesktop } from '../desktop/useDesktop'
+import { useInventoryStore, useModeInventory } from '../store/inventory'
+import { useProgressStore } from '../store/progress'
+import type { Detection } from './core'
+import { scanImage, warmUpScanner, type ScanResult } from './scanner'
+import { imageFromClipboard, useScanStore } from './scanStore'
+
+interface Row {
+  key: string
+  itemId: string
+  count: number
+  selected: boolean
+  /** Spots on the screenshot (indexes into result.detections). */
+  spots: number[]
+  /** Best (lowest) match error among the spots. */
+  error: number
+  /** Other likely items, best first. */
+  alternatives: string[]
+}
+
+type Box = { x: number; y: number; w: number; h: number }
+
+const confidence = (error: number) => (error < 12 ? 'sure' : error < 18 ? 'likely' : 'check')
+const CONF_STYLE = {
+  sure: { label: 'Sure', cls: 'border-success/50 text-success', stroke: '#4ade80' },
+  likely: { label: 'Likely', cls: 'border-accent/60 text-accent', stroke: '#fbbf24' },
+  check: { label: 'Check', cls: 'border-danger/60 text-danger', stroke: '#f87171' },
+} as const
+
+function buildRows(result: ScanResult): Row[] {
+  const byItem = new Map<string, Row>()
+  result.detections.forEach((d: Detection, i) => {
+    const row = byItem.get(d.itemId)
+    if (row) {
+      row.count += 1
+      row.spots.push(i)
+      row.error = Math.min(row.error, d.error)
+      for (const a of d.alternatives) if (!row.alternatives.includes(a.itemId)) row.alternatives.push(a.itemId)
+    } else {
+      byItem.set(d.itemId, { key: d.itemId, itemId: d.itemId, count: 1, selected: true, spots: [i], error: d.error, alternatives: d.alternatives.map((a) => a.itemId) })
+    }
+  })
+  return [...byItem.values()]
+}
+
+/**
+ * Stash scanner: take or paste a screenshot of a stash/container, see what was
+ * recognised, fix counts or items, then add them to Item Collection.
+ */
+export function ScanDialog() {
+  const open = useScanStore((s) => s.open)
+  const image = useScanStore((s) => s.image)
+  const nonce = useScanStore((s) => s.nonce)
+  const openWith = useScanStore((s) => s.openWith)
+  const close = useScanStore((s) => s.close)
+  const { needs, items: itemsQuery } = useNeeds()
+  const items = itemsQuery.data?.items
+  const inventory = useModeInventory()
+  const gameMode = useProgressStore((s) => s.gameMode)
+  const setCollected = useInventoryStore((s) => s.setCollected)
+
+  const [url, setUrl] = useState<string | null>(null)
+  const [size, setSize] = useState<{ w: number; h: number } | null>(null)
+  const [crop, setCrop] = useState<Box | null>(null)
+  const [cropping, setCropping] = useState(false)
+  const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null)
+  const [status, setStatus] = useState<'idle' | 'scanning' | 'done' | 'error'>('idle')
+  const [progress, setProgress] = useState(0)
+  const [error, setError] = useState<string | null>(null)
+  const [result, setResult] = useState<ScanResult | null>(null)
+  const [rows, setRows] = useState<Row[]>([])
+  const [hover, setHover] = useState<string | null>(null)
+  const [mode, setMode] = useState<'add' | 'set'>('add')
+  const [applied, setApplied] = useState<string | null>(null)
+  const [shots, setShots] = useState<{ name: string; modified: number }[]>([])
+  const [changing, setChanging] = useState<string | null>(null)
+  const [search, setSearch] = useState('')
+  const svgRef = useRef<SVGSVGElement>(null)
+  const fileInput = useRef<HTMLInputElement>(null)
+
+  // Item id (including accepted alternatives) -> the need it counts toward.
+  const needFor = useMemo(() => {
+    const m = new Map<string, { needId: string; remaining: number; total: number }>()
+    for (const n of needs.values()) {
+      const entry = { needId: n.itemId, remaining: remainingFor(n, inventory.collected[n.itemId] ?? 0), total: n.total }
+      m.set(n.itemId, entry)
+      for (const alt of n.alternatives) if (!m.has(alt)) m.set(alt, entry)
+    }
+    return m
+  }, [needs, inventory.collected])
+
+  useEffect(() => {
+    if (!open) return
+    void warmUpScanner().catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
+    if (isDesktop()) void window.desktop?.listGameScreenshots().then(setShots)
+    const onPaste = (e: ClipboardEvent) => {
+      const img = imageFromClipboard(e)
+      if (img) openWith(img)
+    }
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && !changing && close()
+    window.addEventListener('paste', onPaste)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('paste', onPaste)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [open, openWith, close, changing])
+
+  // New image: show it and scan the whole picture.
+  useEffect(() => {
+    if (!open || !image) return
+    const u = URL.createObjectURL(image)
+    setUrl(u)
+    setCrop(null)
+    setApplied(null)
+    const probe = new Image()
+    probe.onload = () => setSize({ w: probe.naturalWidth, h: probe.naturalHeight })
+    probe.src = u
+    void runScan(image, null)
+    return () => URL.revokeObjectURL(u)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nonce, open])
+
+  // Default selection: items that count toward something you still need.
+  useEffect(() => {
+    setRows((rs) => rs.map((r) => ({ ...r, selected: (needFor.get(r.itemId)?.remaining ?? 0) > 0 })))
+    // Only when a new result arrives.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [result])
+
+  async function runScan(img: Blob, box: Box | null) {
+    setStatus('scanning')
+    setProgress(0)
+    setError(null)
+    try {
+      const r = await scanImage(img, box, setProgress)
+      setResult(r)
+      setRows(buildRows(r))
+      setStatus('done')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+      setStatus('error')
+    }
+  }
+
+  const loadBytes = (bytes: Uint8Array, type = 'image/png') => openWith(new Blob([bytes as BlobPart], { type }))
+
+  const toImage = (e: React.PointerEvent) => {
+    const svg = svgRef.current
+    if (!svg || !size) return { x: 0, y: 0 }
+    const r = svg.getBoundingClientRect()
+    return { x: ((e.clientX - r.left) / r.width) * size.w, y: ((e.clientY - r.top) / r.height) * size.h }
+  }
+
+  const updateRow = (key: string, patch: Partial<Row>) => setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)))
+  const replaceItem = (key: string, itemId: string) => {
+    setRows((rs) => {
+      const row = rs.find((r) => r.key === key)
+      if (!row) return rs
+      const existing = rs.find((r) => r.itemId === itemId && r.key !== key)
+      if (existing) return rs.filter((r) => r.key !== key).map((r) => (r === existing ? { ...r, count: r.count + row.count, spots: [...r.spots, ...row.spots] } : r))
+      return rs.map((r) => (r.key === key ? { ...r, itemId, error: 0, selected: (needFor.get(itemId)?.remaining ?? 0) > 0 } : r))
+    })
+    setChanging(null)
+    setSearch('')
+  }
+
+  const apply = () => {
+    let n = 0
+    const totals = new Map<string, number>()
+    for (const r of rows) {
+      if (!r.selected || r.count <= 0) continue
+      const target = needFor.get(r.itemId)?.needId ?? r.itemId
+      totals.set(target, (totals.get(target) ?? 0) + r.count)
+    }
+    for (const [id, count] of totals) {
+      const current = inventory.collected[id] ?? 0
+      setCollected(gameMode, id, mode === 'add' ? current + count : count)
+      n += count
+    }
+    setApplied(`${mode === 'add' ? 'Added' : 'Set'} ${n} item${n === 1 ? '' : 's'} across ${totals.size} kind${totals.size === 1 ? '' : 's'} in Item Collection.`)
+  }
+
+  const searchResults = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!items || q.length < 2) return []
+    return Object.values(items)
+      .filter((i) => i.name.toLowerCase().includes(q) || i.shortName.toLowerCase().includes(q))
+      .slice(0, 8)
+  }, [items, search])
+
+  if (!open) return null
+  const selectedCount = rows.filter((r) => r.selected).reduce((n, r) => n + r.count, 0)
+  const name = (id: string) => items?.[id]?.name ?? '…'
+  const hoveredSpots = new Set(rows.find((r) => r.key === hover)?.spots ?? [])
+
+  return (
+    <div className="fixed inset-0 z-[75] flex bg-black/80 p-1 sm:p-3" onDragOver={(e) => e.preventDefault()} onDrop={(e) => {
+      e.preventDefault()
+      const f = Array.from(e.dataTransfer.files).find((x) => x.type.startsWith('image/'))
+      if (f) openWith(f)
+    }}>
+      <div role="dialog" aria-modal="true" aria-labelledby="scan-title" className="flex min-h-0 w-full flex-col rounded-lg border border-line bg-surface-2 shadow-xl">
+        <div className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-2">
+          <ScanSearch className="h-5 w-5 text-accent" />
+          <h2 id="scan-title" className="text-base font-semibold">Scan stash screenshot</h2>
+          <span className="text-xs text-ink-muted">Paste (Ctrl+V), drop an image, or pick one.{isDesktop() ? ' In game, press the scan hotkey (Settings) to capture straight from the game.' : ''}</span>
+          <button type="button" onClick={close} aria-label="Close" className="ml-auto rounded p-1 text-ink-dim hover:bg-surface-3 hover:text-ink"><X className="h-5 w-5" /></button>
+        </div>
+
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto md:flex-row md:overflow-hidden">
+          {/* Screenshot */}
+          <div className="flex min-w-0 flex-col border-b border-line md:min-h-0 md:flex-1 md:border-b-0 md:border-r">
+            <div className="flex flex-wrap items-center gap-2 border-b border-line px-3 py-1.5 text-xs">
+              <button type="button" onClick={() => fileInput.current?.click()} className="btn !py-1"><ImageUp className="h-4 w-4" /> Open image</button>
+              <input ref={fileInput} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) openWith(f); e.target.value = '' }} />
+              {isDesktop() && (
+                <button type="button" onClick={() => void window.desktop?.captureScreen().then((b) => loadBytes(b))} className="btn !py-1" title="Captures the screen under the mouse. To capture the game, use the scan hotkey while playing.">
+                  <Camera className="h-4 w-4" /> Capture screen
+                </button>
+              )}
+              {url && (
+                <button type="button" onClick={() => { setCropping((v) => !v); setDragStart(null) }} className={`btn !py-1 ${cropping ? 'border-accent text-accent' : ''}`} title="Drag a box around one stash or container, then scan only that part">
+                  <Crop className="h-4 w-4" /> {cropping ? 'Drag a box…' : 'Select area'}
+                </button>
+              )}
+              {crop && image && (
+                <>
+                  <button type="button" onClick={() => void runScan(image, crop)} className="btn !py-1 border-accent text-accent"><ScanSearch className="h-4 w-4" /> Scan selection</button>
+                  <button type="button" onClick={() => { setCrop(null); if (image) void runScan(image, null) }} className="btn !py-1">Whole image</button>
+                </>
+              )}
+              {status === 'scanning' && <span className="flex items-center gap-1.5 text-ink-muted"><Loader2 className="h-4 w-4 animate-spin" /> Scanning… {Math.round(progress * 100)}%</span>}
+              {status === 'done' && result && <span className="text-ink-dim">{result.detections.length} items in {result.ms} ms · cell {result.grid.pitch.toFixed(0)} px</span>}
+            </div>
+            <div className="p-2 md:min-h-0 md:flex-1 md:overflow-auto">
+              {!url ? (
+                <div className="flex h-full min-h-64 flex-col items-center justify-center gap-3 rounded border-2 border-dashed border-line text-center text-sm text-ink-muted">
+                  <ImageUp className="h-10 w-10 text-ink-dim" />
+                  <p>Paste a screenshot with <b>Ctrl+V</b> or drop an image here.</p>
+                  <p className="max-w-md text-xs text-ink-dim">Works best with one stash, box or container open, items not hovered. Windows: Win+Shift+S copies a selection to the clipboard.</p>
+                  {shots.length > 0 && (
+                    <div className="mt-2 w-full max-w-md text-left">
+                      <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-ink-muted"><FolderOpen className="h-3.5 w-3.5" /> Recent game screenshots</div>
+                      <ul className="space-y-0.5 text-xs">
+                        {shots.slice(0, 6).map((s) => (
+                          <li key={s.name}><button type="button" onClick={() => void window.desktop?.readGameScreenshot(s.name).then((b) => loadBytes(b))} className="w-full truncate rounded px-2 py-1 text-left hover:bg-surface-3">{s.name} <span className="text-ink-dim">· {new Date(s.modified).toLocaleString()}</span></button></li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="relative inline-block max-w-full">
+                  <img src={url} alt="Screenshot to scan" className="block max-h-[60vh] max-w-full select-none md:max-h-[calc(100vh-11rem)]" draggable={false} />
+                  {size && (
+                    <svg
+                      ref={svgRef}
+                      viewBox={`0 0 ${size.w} ${size.h}`}
+                      className={`absolute inset-0 h-full w-full ${cropping ? 'cursor-crosshair' : ''}`}
+                      onPointerDown={(e) => { if (!cropping) return; const p = toImage(e); setDragStart(p); setCrop({ x: p.x, y: p.y, w: 0, h: 0 }); (e.target as Element).setPointerCapture?.(e.pointerId) }}
+                      onPointerMove={(e) => { if (!cropping || !dragStart) return; const p = toImage(e); setCrop({ x: Math.min(p.x, dragStart.x), y: Math.min(p.y, dragStart.y), w: Math.abs(p.x - dragStart.x), h: Math.abs(p.y - dragStart.y) }) }}
+                      onPointerUp={() => { if (!cropping) return; setDragStart(null); setCropping(false); setCrop((c) => (c && c.w > 20 && c.h > 20 ? { x: Math.round(c.x), y: Math.round(c.y), w: Math.round(c.w), h: Math.round(c.h) } : null)) }}
+                    >
+                      {result?.detections.map((d, i) => {
+                        const conf = CONF_STYLE[confidence(d.error)]
+                        const x = result.grid.ox + d.col * result.grid.pitch
+                        const y = result.grid.oy + d.row * result.grid.pitch
+                        const row = rows.find((r) => r.spots.includes(i))
+                        const off = row && !row.selected
+                        return (
+                          <rect key={i} x={x + 2} y={y + 2} width={d.w * result.grid.pitch - 4} height={d.h * result.grid.pitch - 4} fill={hoveredSpots.has(i) ? 'rgba(255,255,255,0.15)' : 'none'} stroke={off ? '#888' : conf.stroke} strokeWidth={hoveredSpots.has(i) ? 5 : 3} strokeDasharray={off ? '6 4' : undefined} onMouseEnter={() => row && setHover(row.key)} onMouseLeave={() => setHover(null)}>
+                            <title>{name(row?.itemId ?? d.itemId)}</title>
+                          </rect>
+                        )
+                      })}
+                      {crop && <rect x={crop.x} y={crop.y} width={crop.w} height={crop.h} fill="rgba(251,191,36,0.08)" stroke="#fbbf24" strokeWidth={3} strokeDasharray="10 6" />}
+                    </svg>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Results */}
+          <div className="flex w-full flex-col md:min-h-0 md:w-[400px] md:shrink-0">
+            {error && <p className="m-3 rounded border border-danger/50 bg-danger/10 px-3 py-2 text-xs text-danger">{error}</p>}
+            <div className="md:min-h-0 md:flex-1 md:overflow-y-auto">
+              {rows.length === 0 && status !== 'scanning' && <p className="p-4 text-sm text-ink-muted">{status === 'done' ? 'No items recognised. Try "Select area" around a single stash grid.' : 'Detected items appear here.'}</p>}
+              <ul className="divide-y divide-line">
+                {[...rows].sort((a, b) => Number(b.selected) - Number(a.selected) || a.error - b.error).map((r) => {
+                  const item = items?.[r.itemId]
+                  const need = needFor.get(r.itemId)
+                  const conf = CONF_STYLE[confidence(r.error)]
+                  const stack = (item?.types ?? []).includes('ammo') || (item?.types ?? []).includes('ammoBox')
+                  return (
+                    <li key={r.key} className={`px-3 py-2 ${hover === r.key ? 'bg-surface-3' : ''}`} onMouseEnter={() => setHover(r.key)} onMouseLeave={() => setHover(null)}>
+                      <div className="flex items-center gap-2">
+                        <input type="checkbox" checked={r.selected} onChange={(e) => updateRow(r.key, { selected: e.target.checked })} aria-label={`Apply ${item?.name ?? ''}`} className="h-4 w-4 shrink-0" />
+                        {item?.iconLink ? <img src={item.iconLink} alt="" className="h-9 w-9 shrink-0 rounded border border-line object-contain" /> : <span className="h-9 w-9 shrink-0 rounded border border-line" />}
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-sm font-medium" title={item?.name}>{item?.name ?? (itemsQuery.isPending ? 'Loading item names…' : r.itemId)}</div>
+                          <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                            <span className={`rounded border px-1 ${conf.cls}`}>{r.error === 0 ? 'Chosen' : conf.label}</span>
+                            {need ? (
+                              <span className={need.remaining > 0 ? 'text-success' : 'text-ink-dim'}>{need.remaining > 0 ? `still need ${need.remaining}` : 'already have enough'}</span>
+                            ) : (
+                              <span className="text-ink-dim">not needed for anything tracked</span>
+                            )}
+                            {stack && <span className="text-accent">stack: check amount</span>}
+                          </div>
+                        </div>
+                        <div className="flex shrink-0 items-center">
+                          <button type="button" onClick={() => updateRow(r.key, { count: Math.max(0, r.count - 1) })} aria-label="One less" className="rounded p-1 text-ink-dim hover:bg-surface-3 hover:text-ink"><Minus className="h-3.5 w-3.5" /></button>
+                          <input type="number" min={0} value={r.count} onChange={(e) => updateRow(r.key, { count: Math.max(0, e.target.valueAsNumber || 0) })} aria-label="Amount" className="w-14 rounded border border-line bg-surface px-1 py-0.5 text-center text-sm" />
+                          <button type="button" onClick={() => updateRow(r.key, { count: r.count + 1 })} aria-label="One more" className="rounded p-1 text-ink-dim hover:bg-surface-3 hover:text-ink"><Plus className="h-3.5 w-3.5" /></button>
+                        </div>
+                      </div>
+                      <div className="mt-1 flex gap-3 pl-6 text-[11px]">
+                        <button type="button" onClick={() => { setChanging(changing === r.key ? null : r.key); setSearch('') }} className="text-accent underline">Wrong item?</button>
+                        <button type="button" onClick={() => setRows((rs) => rs.filter((x) => x.key !== r.key))} className="inline-flex items-center gap-0.5 text-ink-dim underline hover:text-danger"><Trash2 className="h-3 w-3" /> Remove</button>
+                      </div>
+                      {changing === r.key && (
+                        <div className="mt-1.5 rounded border border-line bg-surface p-2 text-xs">
+                          {r.alternatives.length > 0 && (
+                            <>
+                              <div className="mb-1 text-ink-muted">Closest other matches</div>
+                              <ul className="mb-2 flex flex-wrap gap-1">
+                                {r.alternatives.slice(0, 6).map((id) => (
+                                  <li key={id}><button type="button" onClick={() => replaceItem(r.key, id)} className="flex items-center gap-1 rounded border border-line px-1.5 py-0.5 hover:border-accent">{items?.[id]?.iconLink && <img src={items[id].iconLink ?? ''} alt="" className="h-5 w-5 object-contain" />}{items?.[id]?.shortName ?? id.slice(-6)}</button></li>
+                                ))}
+                              </ul>
+                            </>
+                          )}
+                          <label className="relative block">
+                            <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-dim" />
+                            <input autoFocus type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search the right item…" className="w-full rounded border border-line bg-surface-2 py-1 pl-7 pr-2" />
+                          </label>
+                          <ul className="mt-1 space-y-0.5">
+                            {searchResults.map((i) => (
+                              <li key={i.id}><button type="button" onClick={() => replaceItem(r.key, i.id)} className="flex w-full items-center gap-2 rounded px-1 py-0.5 text-left hover:bg-surface-3">{i.iconLink && <img src={i.iconLink} alt="" className="h-5 w-5 object-contain" />}<span className="truncate">{i.name}</span></button></li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+            <div className="space-y-2 border-t border-line px-3 py-2 text-xs">
+              <div className="flex flex-wrap items-center gap-3">
+                <label className="flex items-center gap-1.5"><input type="radio" checked={mode === 'add'} onChange={() => setMode('add')} /> Add to what I have</label>
+                <label className="flex items-center gap-1.5" title="Use when this screenshot shows every copy you own"><input type="radio" checked={mode === 'set'} onChange={() => setMode('set')} /> Replace my counts</label>
+              </div>
+              {applied ? (
+                <p className="flex items-center gap-1.5 text-success"><Check className="h-4 w-4" /> {applied}</p>
+              ) : (
+                <p className="text-ink-dim">Ticked items count toward Item Collection (alternatives a quest accepts count too). Scanning the same stash twice with "Add" counts items twice.</p>
+              )}
+              <div className="flex justify-end gap-2">
+                <button type="button" onClick={close} className="btn">Close</button>
+                <button type="button" onClick={apply} disabled={selectedCount === 0} className="btn border-accent bg-accent text-surface hover:bg-accent disabled:opacity-40">Apply {selectedCount} item{selectedCount === 1 ? '' : 's'} to Item Collection</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}

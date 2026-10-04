@@ -13,6 +13,7 @@ import type { DesktopSettings, GameEvent, WipeEvent } from '../src/shared/deskto
 import { detectLogsFolder } from './logs/locator'
 import { LogWatcher } from './logs/watcher'
 import { SettingsStore } from './settings'
+import { captureScreenUnderCursor, listGameScreenshots, readAppResource, readGameScreenshot } from './capture'
 import { checkForUpdates, getUpdateStatus, installUpdate, setupUpdater } from './updater'
 
 const DEV_URL = process.env.VITE_DEV_SERVER_URL
@@ -233,12 +234,26 @@ function applyOverlayOpacity() {
 
 function registerHotkey() {
   globalShortcut.unregisterAll()
-  const key = settings.get().overlayHotkey
-  if (!key) return
+  const tryRegister = (key: string, fn: () => void) => {
+    if (!key) return
+    try {
+      globalShortcut.register(key, fn)
+    } catch {
+      // Invalid accelerator: ignore; the Settings screen shows the current value.
+    }
+  }
+  tryRegister(settings.get().overlayHotkey, toggleOverlay)
+  tryRegister(settings.get().scanHotkey, () => void captureForScan())
+}
+
+/** Scan hotkey: capture the game screen first, then bring the app up with the scan. */
+async function captureForScan() {
   try {
-    globalShortcut.register(key, toggleOverlay)
+    const png = await captureScreenUnderCursor()
+    showWindow()
+    win?.webContents.send('scan:captured', png)
   } catch {
-    // Invalid accelerator: ignore; the Settings screen shows the current value.
+    // Capture failed (no screen permission or display): nothing to show.
   }
 }
 
@@ -289,7 +304,7 @@ function updateSettings(patch: Partial<DesktopSettings>): DesktopSettings {
     app.setLoginItemSettings({ openAtLogin: after.startWithWindows, args: ['--minimized'] })
   }
   if (patch.logsPath !== undefined || patch.paused !== undefined) applyWatcherSettings()
-  if (patch.overlayHotkey !== undefined) registerHotkey()
+  if (patch.overlayHotkey !== undefined || patch.scanHotkey !== undefined) registerHotkey()
   if (patch.overlayOpacity !== undefined) applyOverlayOpacity()
   broadcast('watcher:state', watcher.getState())
   broadcast('settings:changed', settings.getPublic())
@@ -348,6 +363,10 @@ function registerIpc() {
   ipcMain.handle('update:status', () => getUpdateStatus())
   ipcMain.handle('update:check', () => checkForUpdates())
   ipcMain.handle('update:install', () => installUpdate())
+  ipcMain.handle('resource:read', (_e, rel: string) => readAppResource(String(rel), Boolean(DEV_URL)))
+  ipcMain.handle('scan:capture', () => captureScreenUnderCursor())
+  ipcMain.handle('scan:listShots', () => listGameScreenshots())
+  ipcMain.handle('scan:readShot', (_e, name: string) => readGameScreenshot(String(name)))
   ipcMain.handle('shell:openExternal', async (_e, url: string) => {
     if (/^https?:/i.test(url)) await shell.openExternal(url)
   })

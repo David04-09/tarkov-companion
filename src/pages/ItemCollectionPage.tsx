@@ -1,5 +1,6 @@
-import { Fragment, useMemo, useState } from 'react'
-import { ChevronDown, ChevronRight, Search } from 'lucide-react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
+import { ChevronDown, ChevronRight, ScanSearch, Search } from 'lucide-react'
+import { imageFromClipboard, useScanStore } from '../scan/scanStore'
 import { ErrorPanel, LoadingPanel } from '../components/DataState'
 import { useNeeds } from '../hooks/useNeeds'
 import { formatNumber } from '../lib/format'
@@ -11,6 +12,26 @@ const selectClass =
   'rounded border border-line bg-surface-2 px-2 py-1.5 text-sm text-ink focus:border-accent focus:outline-none'
 
 type SortKey = 'name' | 'needed' | 'remaining'
+
+/** Opens the stash scanner; Ctrl+V with a screenshot on this page opens it with the image. */
+function ScanButton() {
+  const openWith = useScanStore((s) => s.openWith)
+  const open = useScanStore((s) => s.open)
+  useEffect(() => {
+    if (open) return
+    const onPaste = (e: ClipboardEvent) => {
+      const img = imageFromClipboard(e)
+      if (img) openWith(img)
+    }
+    window.addEventListener('paste', onPaste)
+    return () => window.removeEventListener('paste', onPaste)
+  }, [open, openWith])
+  return (
+    <button type="button" onClick={() => openWith()} className="btn" title="Recognise items from a stash screenshot (or press Ctrl+V with one copied)">
+      <ScanSearch className="h-4 w-4" /> Scan screenshot
+    </button>
+  )
+}
 
 export function ItemCollectionPage() {
   const { needs, gameData, hideout, items, inventory } = useNeeds()
@@ -77,8 +98,11 @@ export function ItemCollectionPage() {
             {items.isPending ? ' Loading item names…' : ''}
           </p>
         </div>
-        <div className="text-right text-xs text-ink-muted">
-          {formatNumber(progress.have)} / {formatNumber(progress.needed)} items collected ({progress.pct}%)
+        <div className="flex flex-col items-end gap-1.5">
+          <ScanButton />
+          <div className="text-right text-xs text-ink-muted">
+            {formatNumber(progress.have)} / {formatNumber(progress.needed)} items collected ({progress.pct}%)
+          </div>
         </div>
       </div>
       <div className="mt-3 h-2 w-full overflow-hidden rounded bg-surface-3">

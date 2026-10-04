@@ -92,6 +92,18 @@ out.lighthouse = await evalJs('(() => { const t=[...document.querySelectorAll("i
 await evalJs('(() => { const s=document.querySelector("select[aria-label=\\"Select map\\"]"); const setter=Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,"value").set; setter.call(s,"customs"); s.dispatchEvent(new Event("change",{bubbles:true})); })()')
 await sleep(8000)
 out.customs = await evalJs('(() => { const t=[...document.querySelectorAll("img.leaflet-tile")]; return { tiles: t.length, loaded: t.filter(i=>i.complete&&i.naturalWidth>0).length, markers: document.querySelectorAll(".leaflet-marker-icon").length } })()')
+// Optional: paste a stash screenshot into Item Collection and read the scan result.
+if (process.env.TC_SCAN_IMAGE) {
+  const b64 = fs.readFileSync(process.env.TC_SCAN_IMAGE).toString('base64')
+  await evalJs('location.hash = "#/items"')
+  await sleep(2500)
+  await evalJs(`(async () => { const bin = atob('${b64}'); const u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); const dt = new DataTransfer(); dt.items.add(new File([u], 'shot.png', { type: 'image/png' })); window.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt })); return true })()`)
+  for (let i = 0; i < 40; i++) {
+    await sleep(1000)
+    if (await evalJs('/items in [0-9]+ ms|Scanner data|error/i.test((document.querySelector("[aria-labelledby=scan-title]")||{}).innerText||"")')) break
+  }
+  out.scan = await evalJs('(() => { const d = document.querySelector("[aria-labelledby=scan-title]"); if (!d) return "no dialog"; return { status: (d.innerText.match(/[0-9]+ items in [0-9]+ ms[^·]*·[^·]*/) || [""])[0], error: d.querySelector(".text-danger")?.innerText ?? null, rows: d.querySelectorAll("li input[type=number]").length } })()')
+}
 out.updateStatus = await evalJs('window.desktop.getUpdateStatus()')
 out.watcher = await evalJs('window.desktop.getState().then(s => ({status: s.status, logsPath: s.logsPath, detected: s.detectedPath, mode: s.sessionMode}))')
 out.completed = await evalJs('(() => { const p = JSON.parse(localStorage.getItem("tarkov-companion-progress")||"{}").state?.profiles; return p ? { pve: p.pve.completedTaskIds.values.length, pvp: p.regular.completedTaskIds.values.length } : null })()')

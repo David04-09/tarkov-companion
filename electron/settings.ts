@@ -27,6 +27,7 @@ export const DEFAULT_SETTINGS: StoredSettings = {
   initialBackfillDone: false,
   paused: false,
   overlayHotkey: 'Control+Shift+T',
+  scanHotkey: 'Alt+Shift+S',
   overlayOpacity: 0.9,
   knownProfileId: null,
   knownGameVersion: null,

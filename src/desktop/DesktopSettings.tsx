@@ -305,6 +305,17 @@ export function DesktopSettingsSection() {
           </label>
         </div>
         <p className="text-[11px] text-ink-dim">Hotkey format: Electron accelerator, e.g. Control+Shift+T or Alt+F2. Position and size are remembered.</p>
+        <label className="flex flex-wrap items-center gap-1.5 text-xs">
+          Stash scanner hotkey
+          <input
+            type="text"
+            defaultValue={settings?.scanHotkey ?? 'Alt+Shift+S'}
+            onBlur={(e) => e.target.value.trim() && set({ scanHotkey: e.target.value.trim() })}
+            aria-label="Stash scanner hotkey"
+            className="w-40 rounded border border-line bg-surface px-2 py-1 font-mono text-xs"
+          />
+          <span className="text-ink-dim">Captures the screen the game is on and opens the scanner with it.</span>
+        </label>
       </section>
 
       <SyncHistorySection />

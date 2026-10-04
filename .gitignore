@@ -42,3 +42,6 @@ CLAUDE.local.md
 *.pfx
 *.p12
 *.key
+
+# Stash scanner fingerprints (generated: npm run scan:fingerprints)
+public/scan/

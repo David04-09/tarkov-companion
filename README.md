@@ -9,6 +9,10 @@ A free Windows app (and web app) for Escape from Tarkov players: quest tracking 
 3. The installer needs no admin rights: it installs for your user only, with a desktop and Start-menu shortcut.
 4. On first start a short setup screen finds your EFT logs folder (or lets you pick it), asks PvP/PvE and faction, and offers to read your old logs so quests you have already finished are ticked.
 
+### Stash scanner
+
+In **Item Collection**, click **Scan screenshot** (or copy a screenshot and press Ctrl+V). In the desktop app you can also press **Alt+Shift+S** while playing: it captures the game screen and opens the scanner. It recognises the items in a stash or container, shows what it found with a confidence label, and lets you fix amounts or pick the right item before adding them to Item Collection. It works fully offline and only looks at the picture.
+
 ### How it works, in one paragraph
 
 Escape from Tarkov writes plain-text log files while you play. The app watches the newest log and notices lines like "quest finished", "raid started" and "game mode PvE". That is how it ticks quests, starts the raid timer and opens the right map. **It only reads those files.** It never touches the game process, its memory, its files or its network traffic, and never writes into the game folder. Everything else (quest list, items, prices, maps) comes from tarkov.dev over HTTPS and is cached on your PC, so the app keeps working offline except for live flea prices.

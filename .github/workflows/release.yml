@@ -47,6 +47,16 @@ jobs:
       - name: Build Lighthouse tiles
         run: npm run tiles:lighthouse
 
+      - name: Cache item grid images (stash scanner)
+        uses: actions/cache@v4
+        with:
+          path: assets-src/scan/grid-cache
+          key: scan-grid-cache-${{ github.run_id }}
+          restore-keys: scan-grid-cache-
+
+      - name: Build stash scanner fingerprints
+        run: npm run scan:fingerprints
+
       - name: Unit tests and lint
         run: |
           npm test

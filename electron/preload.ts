@@ -21,6 +21,14 @@ const api: DesktopApi = {
   openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),
   toggleOverlay: () => ipcRenderer.invoke('overlay:toggle'),
   closeOverlay: () => ipcRenderer.invoke('overlay:close'),
+  readAppResource: async (rel: string) => {
+    const bytes = (await ipcRenderer.invoke('resource:read', rel)) as Uint8Array
+    return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
+  },
+  captureScreen: () => ipcRenderer.invoke('scan:capture'),
+  listGameScreenshots: () => ipcRenderer.invoke('scan:listShots'),
+  readGameScreenshot: (name: string) => ipcRenderer.invoke('scan:readShot', name),
+  onScanCapture: (cb) => subscribe<Uint8Array>('scan:captured', cb),
   getUpdateStatus: () => ipcRenderer.invoke('update:status'),
   checkForUpdates: () => ipcRenderer.invoke('update:check'),
   installUpdate: () => ipcRenderer.invoke('update:install'),
