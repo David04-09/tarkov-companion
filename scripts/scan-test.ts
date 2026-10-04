@@ -3,9 +3,9 @@
 // Usage: npx tsx scripts/scan-test.ts <screenshot.png>
 import fs from 'node:fs'
 import sharp from 'sharp'
-import { buildCandidates, detectGrid, indexFromParts, scanGrid, type FingerprintHeader } from '../src/scan/core'
+import { buildCandidates, detectGrid, refineGrid, indexFromParts, scanGrid, type FingerprintHeader } from '../src/scan/core'
 
-const file = process.argv[2]
+const file = process.argv.slice(2).find((a) => !a.startsWith('--')) as string
 if (!file) throw new Error('usage: scan-test <screenshot>')
 const header = JSON.parse(fs.readFileSync('public/scan/fingerprints.json', 'utf8')) as FingerprintHeader
 const index = indexFromParts(header, new Uint8Array(fs.readFileSync('public/scan/fingerprints.bin')))
@@ -18,7 +18,9 @@ for (const i of Object.values(itemsRes.data.items)) names[i.id] = tr[i.shortName
 const { data, info } = await sharp(file).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
 const img = { width: info.width, height: info.height, data }
 let t = Date.now()
-const grid = detectGrid(img)
+const pitchArg = process.argv.find((a) => a.startsWith('--pitch='))
+let grid = detectGrid(img, pitchArg ? Number(pitchArg.slice(8)) : undefined)
+if (pitchArg || grid.cols * grid.rows <= 48) grid = refineGrid(img, grid, buildCandidates(index))
 console.log(`grid: pitch ${grid.pitch.toFixed(2)} px, origin (${grid.ox.toFixed(1)}, ${grid.oy.toFixed(1)}), ${grid.cols} x ${grid.rows} cells, ${Date.now() - t} ms`)
 t = Date.now()
 const candidates = buildCandidates(index)

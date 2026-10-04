@@ -11,7 +11,7 @@ A free Windows app (and web app) for Escape from Tarkov players: quest tracking 
 
 ### Stash scanner
 
-In **Item Collection**, click **Scan screenshot** (or copy a screenshot and press Ctrl+V). In the desktop app you can also press **Alt+Shift+S** while playing: it captures the game screen and opens the scanner. It recognises the items in a stash or container, shows what it found with a confidence label, and lets you fix amounts or pick the right item before adding them to Item Collection. It works fully offline and only looks at the picture.
+In **Item Collection**, click **Scan screenshot** (or copy a screenshot and press Ctrl+V). In the desktop app you can also press **Alt+Shift+S** while playing: it captures the game screen and opens the scanner. It recognises the items in a stash or container, shows what it found with a confidence label, and lets you fix amounts or pick the right item before adding them to Item Collection. It works fully offline and only looks at the picture. The scanner learns from you: fixing a wrong item teaches it the right answer (and that its guess was wrong for that look), and applying a scan confirms the uncertain matches you kept. Under "What the scanner learned" you can review, forget or export what it learned, so it can be added to the app for everyone.
 
 ### How it works, in one paragraph
 

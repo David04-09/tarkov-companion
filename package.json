@@ -1,7 +1,7 @@
 {
   "name": "tarkov-companion",
   "private": true,
-  "version": "1.3.0",
+  "version": "1.4.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -15,7 +15,9 @@
     "test": "vitest run",
     "scan:logs": "tsx scripts/scan-logs.ts",
     "tiles:fetch": "node scripts/fetch-lighthouse-source.mjs",
-    "scan:fingerprints": "tsx scripts/build-scan-fingerprints.ts"
+    "scan:fingerprints": "tsx scripts/build-scan-fingerprints.ts",
+    "scan:check": "tsx scripts/scan-check-corrections.ts",
+    "scan:test": "tsx scripts/scan-test.ts"
   },
   "dependencies": {
     "electron-updater": "^6.8.9"

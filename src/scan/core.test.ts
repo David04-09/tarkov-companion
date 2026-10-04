@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { FP, buildCandidates, detectGrid, rotateCW, scanGrid, type FingerprintIndex, type Rgba } from './core'
+import { FP, buildCandidates, detectGrid, rotateCW, scanGrid, withLearned, type FingerprintIndex, type Rgba } from './core'
 
 /** Deterministic pseudo-random fingerprint for a fake item. */
 function fakeFingerprint(seed: number, w: number, h: number): Uint8Array {
@@ -87,5 +87,41 @@ describe('stash scanner core', () => {
     const found = scanGrid(img, grid, buildCandidates(index), index)
     const summary = found.map((d) => `${d.itemId}@${d.col},${d.row}${d.rotated ? 'R' : ''}`).sort()
     expect(summary).toEqual(['item0@0,0', 'item2@2,0', 'item3@0,3R', 'item4@4,1', 'item5@7,5'].sort())
+  })
+
+  it('prefers a saved correction for a slot the bundled pictures get wrong', () => {
+    // The game shows item0 with a different look than its reference picture.
+    const lookInGame = fakeFingerprint(99, 1, 1)
+    const img = renderStash(84, 4, 3, [{ fp: lookInGame, col: 1, row: 1, w: 1, h: 1 }])
+    const grid = detectGrid(img)
+    const before = scanGrid(img, grid, buildCandidates(index), index, { maxError: 200 })
+    expect(before.find((d) => d.col === 1 && d.row === 1)?.itemId).not.toBe('item0')
+    const learned = withLearned(buildCandidates(index), [{ itemId: 'item0', w: 1, h: 1, fp: lookInGame }])
+    const after = scanGrid(img, grid, learned, index)
+    expect(after.find((d) => d.col === 1 && d.row === 1)).toMatchObject({ itemId: 'item0', learned: true })
+  })
+
+  it('learns from a rejected guess: the same look stops matching the wrong item', () => {
+    // A slot that looks almost exactly like item0's picture, but the user said it is item5.
+    const look = Uint8Array.from(fps[0], (v, i) => Math.min(255, v + (i % 7 === 0 ? 6 : 0)))
+    const img = renderStash(84, 4, 3, [{ fp: look, col: 2, row: 1, w: 1, h: 1 }])
+    const grid = detectGrid(img)
+    const first = scanGrid(img, grid, buildCandidates(index), index)
+    expect(first.find((d) => d.col === 2 && d.row === 1)?.itemId).toBe('item0')
+    // Only the "not item0" memory, no positive one: item0 must no longer win this look.
+    const taught = withLearned(buildCandidates(index), [{ itemId: 'item0', w: 1, h: 1, fp: look, kind: 'not' }])
+    const again = scanGrid(img, grid, taught, index, { maxError: 200 })
+    expect(again.find((d) => d.col === 2 && d.row === 1)?.itemId).not.toBe('item0')
+  })
+
+  it('a confirmed match gets a smaller boost than a fixed mistake', () => {
+    const look = fakeFingerprint(77, 1, 1)
+    const img = renderStash(84, 4, 3, [{ fp: look, col: 0, row: 0, w: 1, h: 1 }])
+    const grid = detectGrid(img)
+    const both = withLearned(buildCandidates(index), [
+      { itemId: 'item1', w: 1, h: 1, fp: look, kind: 'confirmed' },
+      { itemId: 'item5', w: 1, h: 1, fp: look, kind: 'correct' },
+    ])
+    expect(scanGrid(img, grid, both, index).find((d) => d.col === 0 && d.row === 0)?.itemId).toBe('item5')
   })
 })

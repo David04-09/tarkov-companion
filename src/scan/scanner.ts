@@ -3,7 +3,7 @@
  * (from the web server, or through the desktop bridge because Chromium cannot
  * fetch() file:// URLs) and turns an image into detections.
  */
-import type { Detection, FingerprintHeader, Grid } from './core'
+import type { Detection, FingerprintHeader, Grid, LearnedFingerprint } from './core'
 import type { WorkerRequest, WorkerResponse } from './scan.worker'
 import ScanWorker from './scan.worker?worker'
 
@@ -66,13 +66,16 @@ export async function scanImage(
   image: Blob,
   crop: { x: number; y: number; w: number; h: number } | null,
   onProgress?: (fraction: number) => void,
+  learned: LearnedFingerprint[] = [],
+  /** Cell size already known (e.g. from the full screenshot when scanning a selection). */
+  pitch?: number,
 ): Promise<ScanResult> {
   await ensureWorker()
   const bitmap = await createImageBitmap(image)
   const id = nextId++
   return new Promise<ScanResult>((resolve, reject) => {
     pending.set(id, { resolve, reject, onProgress })
-    const msg: WorkerRequest = { type: 'scan', id, bitmap, crop }
+    const msg: WorkerRequest = { type: 'scan', id, bitmap, crop, learned, pitch }
     worker?.postMessage(msg, [bitmap])
   })
 }

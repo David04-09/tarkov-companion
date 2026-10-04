@@ -10,6 +10,8 @@ import { useInventoryStore, useModeInventory } from '../store/inventory'
 import { useProgressStore } from '../store/progress'
 import type { Detection } from './core'
 import { scanImage, warmUpScanner, type ScanResult } from './scanner'
+import { learnedFingerprints, recordFromCorrection, recordFromSpot, useLearnedStore } from './learned'
+import { LearnedPanel } from './LearnedPanel'
 import { imageFromClipboard, useScanStore } from './scanStore'
 
 interface Row {
@@ -25,6 +27,10 @@ interface Row {
   alternatives: string[]
   /** Smallest gap between the match and the runner-up (small = could easily be the other item). */
   margin: number
+  /** Matched one of your saved corrections. */
+  learned: boolean
+  /** You picked this item yourself ("Wrong item?"). */
+  manual?: boolean
 }
 
 type Box = { x: number; y: number; w: number; h: number }
@@ -55,9 +61,10 @@ function buildRows(result: ScanResult): Row[] {
       row.spots.push(i)
       row.error = Math.min(row.error, d.error)
       row.margin = Math.min(row.margin, marginOf(d))
+      row.learned = row.learned || Boolean(d.learned)
       for (const a of d.alternatives) if (!row.alternatives.includes(a.itemId)) row.alternatives.push(a.itemId)
     } else {
-      byItem.set(d.itemId, { key: d.itemId, itemId: d.itemId, count: 1, selected: true, spots: [i], error: d.error, alternatives: d.alternatives.map((a) => a.itemId), margin: marginOf(d) })
+      byItem.set(d.itemId, { key: d.itemId, itemId: d.itemId, count: 1, selected: true, spots: [i], error: d.error, alternatives: d.alternatives.map((a) => a.itemId), margin: marginOf(d), learned: Boolean(d.learned) })
     }
   })
   return [...byItem.values()]
@@ -97,6 +104,7 @@ export function ScanDialog() {
   const [shots, setShots] = useState<{ name: string; modified: number }[]>([])
   const [changing, setChanging] = useState<string | null>(null)
   const [search, setSearch] = useState('')
+  const [learnNote, setLearnNote] = useState<string | null>(null)
   const svgRef = useRef<SVGSVGElement>(null)
   const fileInput = useRef<HTMLInputElement>(null)
 
@@ -135,6 +143,7 @@ export function ScanDialog() {
     setUrl(u)
     setCrop(null)
     setApplied(null)
+    setLearnNote(null)
     const probe = new Image()
     probe.onload = () => setSize({ w: probe.naturalWidth, h: probe.naturalHeight })
     probe.src = u
@@ -156,7 +165,10 @@ export function ScanDialog() {
     setProgress(0)
     setError(null)
     try {
-      const r = await scanImage(img, box, setProgress)
+      await useLearnedStore.getState().load()
+      // A selection inside an already-scanned screenshot keeps its known cell size.
+      const knownPitch = box && result ? result.grid.pitch : undefined
+      const r = await scanImage(img, box, setProgress, learnedFingerprints(useLearnedStore.getState().records), knownPitch)
       setResult(r)
       setRows(buildRows(r))
       setStatus('done')
@@ -176,19 +188,58 @@ export function ScanDialog() {
   }
 
   const updateRow = (key: string, patch: Partial<Row>) => setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)))
+  /** Saves the corrected spots of the screenshot as references for this item (up to three per fix). */
+  const rememberCorrection = async (spots: number[], itemId: string) => {
+    const item = items?.[itemId]
+    if (!result || !image || !item) return
+    let saved = 0
+    for (const spot of spots.slice(0, 3)) {
+      const det = result.detections[spot]
+      if (!det) continue
+      const rec = await recordFromCorrection(image, result.grid, det, { width: item.width, height: item.height }, itemId).catch(() => null)
+      if (rec) {
+        await useLearnedStore.getState().add(rec)
+        saved++
+      }
+      // The failed attempt teaches too: this exact look is NOT what the scanner guessed.
+      if (det.itemId !== itemId) {
+        const not = await recordFromSpot(image, result.grid, det, det.w, det.h, det.itemId, 'not').catch(() => null)
+        if (not) await useLearnedStore.getState().add(not)
+      }
+    }
+    setLearnNote(saved ? `Remembered: ${item.shortName} will be recognised from this picture next time (Your corrections).` : null)
+  }
+
   const replaceItem = (key: string, itemId: string) => {
+    const corrected = rows.find((r) => r.key === key)
+    if (corrected && corrected.itemId !== itemId) void rememberCorrection(corrected.spots, itemId)
     setRows((rs) => {
       const row = rs.find((r) => r.key === key)
       if (!row) return rs
       const existing = rs.find((r) => r.itemId === itemId && r.key !== key)
       if (existing) return rs.filter((r) => r.key !== key).map((r) => (r === existing ? { ...r, count: r.count + row.count, spots: [...r.spots, ...row.spots] } : r))
-      return rs.map((r) => (r.key === key ? { ...r, itemId, error: 0, margin: Infinity, selected: (needFor.get(itemId)?.remaining ?? 0) > 0 } : r))
+      return rs.map((r) => (r.key === key ? { ...r, itemId, manual: true, error: 0, margin: Infinity, selected: (needFor.get(itemId)?.remaining ?? 0) > 0 } : r))
     })
     setChanging(null)
     setSearch('')
   }
 
+  /** Uncertain matches you kept (not changed, still ticked) are confirmed: remember them as successes. */
+  const rememberConfirmations = async () => {
+    if (!result || !image) return
+    for (const r of rows) {
+      if (!r.selected || r.manual || confidence(r.error, r.margin) === 'sure') continue
+      for (const spot of r.spots.slice(0, 2)) {
+        const det = result.detections[spot]
+        if (!det || det.itemId !== r.itemId) continue
+        const rec = await recordFromSpot(image, result.grid, det, det.w, det.h, r.itemId, 'confirmed').catch(() => null)
+        if (rec) await useLearnedStore.getState().add(rec)
+      }
+    }
+  }
+
   const apply = () => {
+    void rememberConfirmations()
     let n = 0
     const totals = new Map<string, number>()
     for (const r of rows) {
@@ -341,7 +392,8 @@ export function ScanDialog() {
                         <div className="min-w-0 flex-1">
                           <div className="truncate text-sm font-medium" title={item?.name}>{item?.name ?? (itemsQuery.isPending ? 'Loading item names…' : r.itemId)}</div>
                           <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
-                            <span className={`rounded border px-1 ${conf.cls}`}>{r.error === 0 ? 'Chosen' : conf.label}</span>
+                            <span className={`rounded border px-1 ${conf.cls}`}>{r.manual ? 'Chosen' : conf.label}</span>
+                            {r.learned && <span className="rounded border border-info/50 px-1 text-info" title="Matched one of your saved corrections">Learned</span>}
                             {need ? (
                               <span className={need.remaining > 0 ? 'text-success' : 'text-ink-dim'}>{need.remaining > 0 ? `still need ${need.remaining}` : 'already have enough'}</span>
                             ) : (
@@ -398,6 +450,8 @@ export function ScanDialog() {
                 })}
               </ul>
             </div>
+            {learnNote && <p className="border-t border-line px-3 py-1.5 text-xs text-info">{learnNote}</p>}
+            <LearnedPanel items={items} canRescan={Boolean(image) && status !== 'scanning'} onRescan={() => { if (image) void runScan(image, crop) }} />
             <div className="space-y-2 border-t border-line px-3 py-2 text-xs">
               <div className="flex flex-wrap items-center gap-3">
                 <label className="flex items-center gap-1.5"><input type="radio" checked={mode === 'add'} onChange={() => setMode('add')} /> Add to what I have</label>

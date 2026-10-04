@@ -65,14 +65,36 @@ async function worker() {
 await Promise.all(Array.from({ length: CONCURRENCY }, worker))
 results.sort((a, b) => a.id.localeCompare(b.id))
 
+// Corrections exported from the app (scan-corrections/*.json) ship as extra references.
+const corrections: { id: string; w: number; h: number; px: Uint8Array; src: 'correction' | 'confirmed' | 'not' }[] = []
+if (fs.existsSync('scan-corrections')) {
+  for (const f of fs.readdirSync('scan-corrections').filter((n) => n.endsWith('.json'))) {
+    const file = JSON.parse(fs.readFileSync(path.join('scan-corrections', f), 'utf8')) as { fp?: number; records?: { itemId: string; kind?: 'correct' | 'confirmed' | 'not'; w: number; h: number; fp: string }[] }
+    if (file.fp !== FP) {
+      console.warn(`skipping ${f}: made with FP=${file.fp}, scanner uses ${FP}`)
+      continue
+    }
+    for (const r of file.records ?? []) {
+      const px = new Uint8Array(Buffer.from(r.fp, 'base64'))
+      if (px.length === r.w * FP * r.h * FP * 3) corrections.push({ id: r.itemId, w: r.w, h: r.h, px, src: r.kind === 'confirmed' ? 'confirmed' : r.kind === 'not' ? 'not' : 'correction' })
+    }
+  }
+  console.log(`${corrections.length} shipped corrections`)
+}
+
 const header: FingerprintHeader = { version: 1, fp: FP, generated: new Date().toISOString(), items: [] }
-const total = results.reduce((n, r) => n + r.px.length, 0)
+const total = results.reduce((n, r) => n + r.px.length, 0) + corrections.reduce((n, r) => n + r.px.length, 0)
 const pixels = new Uint8Array(total)
 let o = 0
 for (const r of results) {
   header.items.push({ id: r.id, w: r.w, h: r.h, o })
   pixels.set(r.px, o)
   o += r.px.length
+}
+for (const c of corrections) {
+  header.items.push({ id: c.id, w: c.w, h: c.h, o, src: c.src })
+  pixels.set(c.px, o)
+  o += c.px.length
 }
 fs.writeFileSync(path.join(OUT_DIR, 'fingerprints.json'), JSON.stringify(header))
 fs.writeFileSync(path.join(OUT_DIR, 'fingerprints.bin'), pixels)

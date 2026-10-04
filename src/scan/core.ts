@@ -157,7 +157,8 @@ function edgeProfile(img: Rgba, axis: 'x' | 'y'): Float32Array {
   return prof
 }
 
-function bestPeriod(prof: Float32Array, minP: number, maxP: number): { pitch: number; offset: number; score: number } {
+/** Line score (and best offset) for every candidate pitch along one axis. */
+function periodScores(prof: Float32Array, pitches: number[]): { pitch: number; offset: number; score: number }[] {
   const len = prof.length
   let mean = 0
   for (const v of prof) mean += v
@@ -168,7 +169,7 @@ function bestPeriod(prof: Float32Array, minP: number, maxP: number): { pitch: nu
     return Math.max(prof[i - 1] ?? 0, prof[i] ?? 0, prof[i + 1] ?? 0)
   }
   const results: { pitch: number; offset: number; score: number }[] = []
-  for (let p = minP; p <= maxP; p += 0.05) {
+  for (const p of pitches) {
     let best = -Infinity
     let bestOff = 0
     for (let off = 0; off < p; off += 0.5) {
@@ -187,22 +188,89 @@ function bestPeriod(prof: Float32Array, minP: number, maxP: number): { pitch: nu
     }
     results.push({ pitch: p, offset: bestOff, score: best })
   }
-  const top = Math.max(...results.map((r) => r.score))
-  // Multiples of the true pitch score as high as the pitch itself: take the smallest strong one.
-  return results.find((r) => r.score >= top * 0.92) ?? results[0]
+  return results
 }
 
 /** Finds the stash cell grid. `hintPitch` narrows the search (e.g. from a previous scan). */
 export function detectGrid(img: Rgba, hintPitch?: number): Grid {
   const minP = hintPitch ? hintPitch * 0.97 : Math.max(32, img.height / 40)
-  const maxP = hintPitch ? hintPitch * 1.03 : Math.min(160, img.height / 4)
-  const px = bestPeriod(edgeProfile(img, 'x'), minP, maxP)
+  // Small crops (a 3-row container) still need room for the real pitch: use the longer side.
+  const maxP = hintPitch ? hintPitch * 1.03 : Math.min(160, Math.max(img.width, img.height) / 3)
+  const range = (lo: number, hi: number) => {
+    const out: number[] = []
+    for (let p = lo; p <= hi; p += 0.05) out.push(p)
+    return out
+  }
+  // Multiples of the true pitch score as high as the pitch itself: take the smallest strong one.
+  const pick = (list: { pitch: number; offset: number; score: number }[]) => {
+    const top = Math.max(...list.map((r) => r.score))
+    return list.find((r) => r.score >= top * 0.92) ?? list[0]
+  }
+  const px = pick(periodScores(edgeProfile(img, 'x'), range(minP, maxP)))
   // Same pitch both ways: search y only around the x result.
-  const py = bestPeriod(edgeProfile(img, 'y'), px.pitch * 0.98, px.pitch * 1.02)
-  const pitch = (px.pitch + py.pitch) / 2
-  const cols = Math.floor((img.width - px.offset) / pitch)
-  const rows = Math.floor((img.height - py.offset) / pitch)
-  return { pitch, ox: px.offset, oy: py.offset, cols, rows }
+  const py = pick(periodScores(edgeProfile(img, 'y'), range(px.pitch * 0.98, px.pitch * 1.02)))
+  const pitch = hintPitch ? hintPitch : (px.pitch + py.pitch) / 2
+  // With a known pitch (a selection inside an already-scanned screenshot), only the offsets are searched.
+  const ox = hintPitch ? periodScores(edgeProfile(img, 'x'), [hintPitch])[0].offset : px.offset
+  const oy = hintPitch ? periodScores(edgeProfile(img, 'y'), [hintPitch])[0].offset : py.offset
+  const cols = Math.floor((img.width - ox) / pitch)
+  const rows = Math.floor((img.height - oy) / pitch)
+  return { pitch, ox, oy, cols, rows }
+}
+
+/** Offsets along one axis whose lines are strongest (local maxima), best first. */
+function offsetCandidates(prof: Float32Array, pitch: number, count: number): number[] {
+  const scored: { off: number; score: number }[] = []
+  for (let off = 0; off < pitch; off += 1) {
+    let sum = 0
+    let k = 0
+    for (let pos = off; pos < prof.length - 1; pos += pitch) {
+      const i = Math.round(pos)
+      sum += Math.max(prof[i - 1] ?? 0, prof[i] ?? 0, prof[i + 1] ?? 0)
+      k++
+    }
+    scored.push({ off, score: k ? sum / k : 0 })
+  }
+  const peaks = scored.filter((c, i) => c.score >= (scored[i - 1]?.score ?? -1) && c.score >= (scored[(i + 1) % scored.length]?.score ?? -1))
+  return peaks.sort((a, b) => b.score - a.score).slice(0, count).map((c) => c.off)
+}
+
+/**
+ * Small grids (a selected container) have few lines, and item name text can look
+ * like a grid line. Try the strongest line positions and keep the alignment where
+ * 1x1 items match best on average.
+ */
+export function refineGrid(img: Rgba, grid: Grid, candidates: Map<string, Candidate[]>): Grid {
+  const xs = offsetCandidates(edgeProfile(img, 'x'), grid.pitch, 4)
+  const ys = offsetCandidates(edgeProfile(img, 'y'), grid.pitch, 4)
+  const ones = candidates.get('1x1') ?? []
+  const mask = compareMask(1, 1, false)
+  let best = { grid, score: Infinity }
+  for (const ox of xs) {
+    for (const oy of ys) {
+      const cols = Math.floor((img.width - ox) / grid.pitch)
+      const rows = Math.floor((img.height - oy) / grid.pitch)
+      if (cols < 1 || rows < 1) continue
+      const errs: number[] = []
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const region = sampleRegion(img, ox + c * grid.pitch, oy + r * grid.pitch, grid.pitch + 1, grid.pitch + 1, FP, FP)
+          let e = Infinity
+          for (const cand of ones) {
+            if (cand.rotated) continue
+            e = Math.min(e, distance(region, cand.fp, mask, e))
+          }
+          errs.push(e)
+        }
+      }
+      // Average of the better half: big items and empty slots don't match 1x1 pictures anyway.
+      errs.sort((a, b) => a - b)
+      const half = errs.slice(0, Math.max(1, Math.ceil(errs.length / 2)))
+      const score = half.reduce((a, b) => a + b, 0) / half.length
+      if (score < best.score) best = { grid: { ...grid, ox, oy, cols, rows }, score }
+    }
+  }
+  return best.grid
 }
 
 // ---------------------------------------------------------------------------
@@ -217,6 +285,8 @@ export interface FingerprintIndex {
   offsets: Uint32Array
   /** All fingerprints, RGB, FP px per cell. */
   pixels: Uint8Array
+  /** 0 tarkov.dev picture, 1 shipped correction, 2 shipped confirmation, 3 shipped "not this item". */
+  corrections?: Uint8Array
 }
 
 export interface Detection {
@@ -231,7 +301,34 @@ export interface Detection {
   error: number
   /** Next best different items for this spot, for "change item". */
   alternatives: { itemId: string; error: number }[]
+  /** Matched one of the user's own corrections rather than a tarkov.dev picture. */
+  learned?: boolean
 }
+
+/** A reference taken from a real screenshot after the user corrected a match. */
+export interface LearnedFingerprint {
+  itemId: string
+  /** Footprint exactly as it appeared on screen (rotation already applied). */
+  w: number
+  h: number
+  /** RGB, FP px per cell, w*FP x h*FP. */
+  fp: Uint8Array
+  /**
+   * correct   = the user picked this item for this look (a fixed mistake)
+   * confirmed = the user kept an uncertain match (a success)
+   * not       = this look is NOT itemId (the wrong guess from a fixed mistake)
+   */
+  kind?: 'correct' | 'confirmed' | 'not'
+}
+
+/**
+ * Learned references win close calls: they come from the same game, resolution and
+ * lighting. Fixed mistakes count more than confirmations.
+ */
+const LEARNED_BONUS = 1.5
+const CONFIRMED_BONUS = 0.8
+/** A region this close to a "not X" memory is the same look the user already rejected as X. */
+const NOT_RADIUS = 9
 
 export interface ScanOptions {
   /** Accept matches below this error (0..255 per channel). */
@@ -242,6 +339,12 @@ export interface ScanOptions {
 
 interface Candidate {
   idx: number
+  itemId: string
+  learned: boolean
+  /** Error reduction for learned references. */
+  bonus: number
+  /** A "this look is not itemId" memory: never a match itself, only a penalty. */
+  negative?: boolean
   rotated: boolean
   fp: Uint8Array | Float32Array
   mean: [number, number, number]
@@ -321,12 +424,42 @@ export function buildCandidates(index: FingerprintIndex, opts: ScanOptions = {})
       const base = compareMask(cw, ch, rotated)
       // Rotated thin items (stocks, barrels) match too much without their background.
       const iconMask = rotated ? null : iconMaskFor(f, cw, ch, base)
-      push(cw, ch, { idx: i, rotated, fp: f, mean: meanColor(f, base), iconMask, iconMean: iconMask ? meanColor(f, iconMask) : [0, 0, 0] })
+      const src = index.corrections?.[i] ?? 0
+      push(cw, ch, { idx: i, itemId: index.ids[i], learned: src === 1 || src === 2, negative: src === 3, bonus: src === 1 ? LEARNED_BONUS : src === 2 ? CONFIRMED_BONUS : 0, rotated, fp: f, mean: meanColor(f, base), iconMask, iconMean: iconMask ? meanColor(f, iconMask) : [0, 0, 0] })
     }
     add(w, h, false, fp)
-    if (w !== h) add(h, w, true, rotateCW(fp, w * FP, h * FP))
+    // Shipped user memories are already in on-screen orientation.
+    if (w !== h && !index.corrections?.[i]) add(h, w, true, rotateCW(fp, w * FP, h * FP))
   }
   return groups
+}
+
+/** Base candidates plus the user's corrections (a new map; the base one is not modified). */
+export function withLearned(base: Map<string, Candidate[]>, learned: LearnedFingerprint[]): Map<string, Candidate[]> {
+  if (learned.length === 0) return base
+  const out = new Map<string, Candidate[]>()
+  for (const [k, v] of base) out.set(k, [...v])
+  for (const l of learned) {
+    const key = `${l.w}x${l.h}`
+    const mask = compareMask(l.w, l.h, false)
+    const kind = l.kind ?? 'correct'
+    const c: Candidate = {
+      idx: -1,
+      itemId: l.itemId,
+      learned: kind !== 'not',
+      bonus: kind === 'confirmed' ? CONFIRMED_BONUS : kind === 'correct' ? LEARNED_BONUS : 0,
+      negative: kind === 'not',
+      rotated: false,
+      fp: l.fp,
+      mean: meanColor(l.fp, mask),
+      iconMask: null,
+      iconMean: [0, 0, 0],
+    }
+    const list = out.get(key)
+    if (list) list.push(c)
+    else out.set(key, [c])
+  }
+  return out
 }
 
 const AREA_BONUS = 0.8
@@ -360,7 +493,7 @@ export function emptyCells(img: Rgba, grid: Grid): boolean[][] {
 }
 
 /** Looks for items on the grid; returns non-overlapping detections, best first. */
-export function scanGrid(img: Rgba, grid: Grid, candidates: Map<string, Candidate[]>, index: FingerprintIndex, opts: ScanOptions = {}, onProgress?: (done: number, total: number) => void): Detection[] {
+export function scanGrid(img: Rgba, grid: Grid, candidates: Map<string, Candidate[]>, _index: FingerprintIndex, opts: ScanOptions = {}, onProgress?: (done: number, total: number) => void): Detection[] {
   const maxError = opts.maxError ?? 28
   const footprints = [...candidates.keys()].map((k) => k.split('x').map(Number) as [number, number])
   const raw: Detection[] = []
@@ -390,10 +523,19 @@ export function scanGrid(img: Rgba, grid: Grid, candidates: Map<string, Candidat
         const y0 = grid.oy + row * grid.pitch
         const region = sampleRegion(img, x0, y0, w * grid.pitch + 1, h * grid.pitch + 1, w * FP, h * FP)
         const list = candidates.get(`${w}x${h}`) ?? []
-        const top: { idx: number; rotated: boolean; error: number }[] = []
+        const top: { itemId: string; learned: boolean; rotated: boolean; error: number }[] = []
         let cutoff = maxError * 1.5
         const regionMean = { plain: meanColor(region, maskFor(w, h, false)), rot: meanColor(region, maskFor(w, h, true)) }
+        // Rejected looks (nearest neighbour): if this spot is closer to a look the user said is NOT X
+        // than to X's own picture, X is ruled out here. Nearly identical looks are always ruled out.
+        const rejectedAt = new Map<string, number>()
         for (const c of list) {
+          if (!c.negative) continue
+          const d = distance(region, c.fp, maskFor(w, h, false), cutoff)
+          if (d < (rejectedAt.get(c.itemId) ?? Infinity)) rejectedAt.set(c.itemId, d)
+        }
+        for (const c of list) {
+          if (c.negative) continue
           const rm = c.rotated ? regionMean.rot : regionMean.plain
           // Cheap reject: average colour far off means the full comparison cannot win.
           const md = (Math.abs(rm[0] - c.mean[0]) + Math.abs(rm[1] - c.mean[1]) + Math.abs(rm[2] - c.mean[2])) / 3
@@ -408,22 +550,25 @@ export function scanGrid(img: Rgba, grid: Grid, candidates: Map<string, Candidat
             }
           }
           if (err === Infinity) continue
-          top.push({ idx: c.idx, rotated: c.rotated, error: err })
+          const dNot = rejectedAt.get(c.itemId)
+          if (dNot !== undefined && (dNot < NOT_RADIUS || dNot <= err)) continue
+          if (c.bonus) err = Math.max(0, err - c.bonus)
+          top.push({ itemId: c.itemId, learned: c.learned, rotated: c.rotated, error: err })
           top.sort((a, b) => a.error - b.error)
           if (top.length > 6) top.length = 6
           if (top.length === 6) cutoff = Math.min(cutoff, top[5].error)
         }
         if (top.length && top[0].error <= maxError) {
           const best = top[0]
-          const seen = new Set([index.ids[best.idx]])
+          const seen = new Set([best.itemId])
           const alternatives: Detection['alternatives'] = []
           for (const t of top.slice(1)) {
-            const id = index.ids[t.idx]
+            const id = t.itemId
             if (seen.has(id)) continue
             seen.add(id)
             alternatives.push({ itemId: id, error: t.error })
           }
-          raw.push({ itemId: index.ids[best.idx], col, row, w, h, rotated: best.rotated, error: best.error, alternatives })
+          raw.push({ itemId: best.itemId, col, row, w, h, rotated: best.rotated, error: best.error, alternatives, learned: best.learned || undefined })
         }
       }
       done++
@@ -453,7 +598,8 @@ export interface FingerprintHeader {
   version: 1
   fp: number
   generated: string
-  items: { id: string; w: number; h: number; o: number }[]
+  /** src = user memories shipped with the app (see scan-corrections/). */
+  items: { id: string; w: number; h: number; o: number; src?: 'correction' | 'confirmed' | 'not' }[]
 }
 
 export function indexFromParts(header: FingerprintHeader, pixels: Uint8Array): FingerprintIndex {
@@ -464,6 +610,7 @@ export function indexFromParts(header: FingerprintHeader, pixels: Uint8Array): F
     heights: new Uint8Array(n),
     offsets: new Uint32Array(n),
     pixels,
+    corrections: Uint8Array.from(header.items, (it) => (it.src === 'correction' ? 1 : it.src === 'confirmed' ? 2 : it.src === 'not' ? 3 : 0)),
   }
   header.items.forEach((it, i) => {
     index.widths[i] = it.w

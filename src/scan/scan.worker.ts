@@ -3,11 +3,11 @@
  * Runs the stash scan off the UI thread. The page sends the fingerprint files
  * once ("init"), then screenshots ("scan") as ImageBitmaps plus an optional crop.
  */
-import { buildCandidates, detectGrid, indexFromParts, scanGrid, type Detection, type FingerprintHeader, type FingerprintIndex, type Grid } from './core'
+import { buildCandidates, detectGrid, refineGrid, indexFromParts, scanGrid, withLearned, type Detection, type FingerprintHeader, type FingerprintIndex, type Grid, type LearnedFingerprint } from './core'
 
 export type WorkerRequest =
   | { type: 'init'; header: FingerprintHeader; pixels: ArrayBuffer }
-  | { type: 'scan'; id: number; bitmap: ImageBitmap; crop: { x: number; y: number; w: number; h: number } | null; pitch?: number }
+  | { type: 'scan'; id: number; bitmap: ImageBitmap; crop: { x: number; y: number; w: number; h: number } | null; pitch?: number; learned?: LearnedFingerprint[] }
 
 export type WorkerResponse =
   | { type: 'ready'; items: number }
@@ -40,8 +40,10 @@ self.onmessage = (e: MessageEvent<WorkerRequest>) => {
       msg.bitmap.close()
       const pixels = ctx.getImageData(0, 0, crop.w, crop.h)
       const img = { width: pixels.width, height: pixels.height, data: pixels.data }
-      const grid = detectGrid(img, msg.pitch)
-      const detections = scanGrid(img, grid, candidates, index, {}, (done, total) => post({ type: 'progress', id: msg.id, done, total }))
+      let grid = detectGrid(img, msg.pitch)
+      // Selections and small containers: let the matcher pick the line positions.
+      if (msg.pitch || grid.cols * grid.rows <= 48) grid = refineGrid(img, grid, candidates)
+      const detections = scanGrid(img, grid, withLearned(candidates, msg.learned ?? []), index, {}, (done, total) => post({ type: 'progress', id: msg.id, done, total }))
       // Report positions in full-screenshot coordinates.
       const shifted: Grid = { ...grid, ox: grid.ox + crop.x, oy: grid.oy + crop.y }
       post({ type: 'result', id: msg.id, grid: shifted, detections, ms: Math.round(performance.now() - t0) })
