@@ -18,7 +18,7 @@ import { captureScreenUnderCursor, listGameScreenshots, readAppResource, readGam
 // Read-only access to the app's own bundled scanner/OCR files (the page is a local file and
 // Chromium cannot fetch() file:// URLs). Must be registered before the app is ready.
 protocol.registerSchemesAsPrivileged([{ scheme: 'tcres', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } }])
-import { checkForUpdates, getUpdateStatus, installUpdate, setupUpdater } from './updater'
+import { checkForUpdates, getUpdateOutcome, getUpdateStatus, installUpdate, setupUpdater } from './updater'
 
 const DEV_URL = process.env.VITE_DEV_SERVER_URL
 
@@ -51,6 +51,8 @@ function broadcast(channel: string, payload: unknown) {
 }
 
 function bootstrap() {
+  // Same id as the installer's shortcuts, so Windows shows the app's notifications under its name.
+  if (process.platform === 'win32') app.setAppUserModelId('io.github.david04-09.tarkov-companion')
   protocol.handle('tcres', (req) => resourceResponse(req.url, Boolean(DEV_URL)))
   settings = new SettingsStore(app.getPath('userData'))
   const startHidden = settings.get().startMinimized || process.argv.includes('--minimized')
@@ -368,6 +370,7 @@ function registerIpc() {
   ipcMain.handle('update:status', () => getUpdateStatus())
   ipcMain.handle('update:check', () => checkForUpdates())
   ipcMain.handle('update:install', () => installUpdate())
+  ipcMain.handle('update:outcome', () => getUpdateOutcome())
   ipcMain.handle('resource:read', (_e, rel: string) => readAppResource(String(rel), Boolean(DEV_URL)))
   ipcMain.handle('scan:capture', () => captureScreenUnderCursor())
   ipcMain.handle('scan:listShots', () => listGameScreenshots())

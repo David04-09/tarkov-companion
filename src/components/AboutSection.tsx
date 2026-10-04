@@ -31,6 +31,8 @@ function UpdateLine() {
         return `Downloading ${status.version ?? 'update'}… ${status.percent}%`
       case 'ready':
         return `Version ${status.version} is downloaded; restart to apply.`
+      case 'installing':
+        return `Installing ${status.version}… the app reopens by itself in about a minute.`
       case 'available':
         return `Version ${status.version} is available; download it from GitHub (the portable exe cannot update itself).`
       case 'none':

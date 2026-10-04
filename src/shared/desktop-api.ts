@@ -105,9 +105,18 @@ export type UpdateStatus =
   | { state: 'none'; checkedAt: number }
   | { state: 'downloading'; version?: string; percent: number }
   | { state: 'ready'; version: string }
+  /** "Restart to update" clicked: the app is about to close and the installer to run. */
+  | { state: 'installing'; version: string }
   /** Portable exe: a newer release exists but must be downloaded by hand. */
   | { state: 'available'; version: string; url: string }
   | { state: 'error'; message: string }
+
+/** What became of the last "Restart to update" (checked once at the next launch). */
+export interface UpdateOutcome {
+  ok: boolean
+  /** Version that was being installed. */
+  version: string
+}
 
 export interface WipeEvent {
   reason: 'profile' | 'version'
@@ -162,6 +171,7 @@ export interface DesktopApi {
   getUpdateStatus: () => Promise<UpdateStatus>
   checkForUpdates: () => Promise<UpdateStatus>
   installUpdate: () => Promise<void>
+  getUpdateOutcome: () => Promise<UpdateOutcome | null>
   onUpdateStatus: (cb: (s: UpdateStatus) => void) => () => void
   onEvent: (cb: (event: GameEvent) => void) => () => void
   onState: (cb: (state: WatcherState) => void) => () => void

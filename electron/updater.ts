@@ -11,10 +11,19 @@
  * Updates download silently in the background; nothing is installed until
  * the user clicks "Restart to update" (or quits the app, when the pending
  * installer runs on exit).
+ *
+ * The installer runs silently and takes about a minute with nothing on screen
+ * (the visible NSIS installer would ask "just me / all users" on every update).
+ * Opening the app during that minute makes the installer fail on locked files,
+ * which looked like "it only restarted". So the app says what is happening
+ * before it closes (bar + Windows notification), writes update-attempt.json,
+ * and at the next launch reports whether the version actually changed.
  */
-import { app, shell } from 'electron'
+import { Notification, app, shell } from 'electron'
+import fs from 'node:fs'
+import path from 'node:path'
 import { autoUpdater } from 'electron-updater'
-import type { UpdateStatus } from '../src/shared/desktop-api'
+import type { UpdateOutcome, UpdateStatus } from '../src/shared/desktop-api'
 
 const SIX_HOURS = 6 * 60 * 60 * 1000
 const RELEASES_URL = 'https://github.com/David04-09/tarkov-companion/releases/latest'
@@ -27,6 +36,36 @@ let status: UpdateStatus = { state: 'idle' }
 let broadcastFn: Broadcast = () => undefined
 let timer: ReturnType<typeof setInterval> | null = null
 let updater: typeof autoUpdater | null = null
+let outcome: UpdateOutcome | null = null
+
+const attemptFile = () => path.join(app.getPath('userData'), 'update-attempt.json')
+
+/** -1, 0 or 1 for dotted version numbers. */
+function compareVersions(a: string, b: string): number {
+  const pa = a.split('.').map(Number)
+  const pb = b.split('.').map(Number)
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const d = (pa[i] || 0) - (pb[i] || 0)
+    if (d) return Math.sign(d)
+  }
+  return 0
+}
+
+/** Reads (once) and clears the note left by the last "Restart to update". */
+function readAttempt() {
+  try {
+    const raw = JSON.parse(fs.readFileSync(attemptFile(), 'utf8')) as { version?: unknown; at?: unknown }
+    fs.rmSync(attemptFile(), { force: true })
+    if (typeof raw.version !== 'string' || typeof raw.at !== 'number' || Date.now() - raw.at > 24 * 60 * 60 * 1000) return
+    outcome = { ok: compareVersions(app.getVersion(), raw.version) >= 0, version: raw.version }
+  } catch {
+    // no attempt pending
+  }
+}
+
+export function getUpdateOutcome(): UpdateOutcome | null {
+  return outcome
+}
 
 /** First line only: electron-updater errors include whole HTTP header dumps. */
 function shortError(err: unknown): string {
@@ -50,6 +89,7 @@ export function setupUpdater(broadcast: Broadcast) {
     setStatus({ state: 'disabled', message: 'Updates only work in the installed app.' })
     return
   }
+  readAttempt()
   updater = autoUpdater
   // The portable exe cannot replace itself: only check, then offer the download page.
   autoUpdater.autoDownload = !IS_PORTABLE
@@ -76,7 +116,7 @@ export function setupUpdater(broadcast: Broadcast) {
 
 export async function checkForUpdates(): Promise<UpdateStatus> {
   if (!updater) return status
-  if (status.state === 'ready' || status.state === 'downloading' || status.state === 'available') return status
+  if (status.state === 'ready' || status.state === 'downloading' || status.state === 'available' || status.state === 'installing') return status
   try {
     await updater.checkForUpdates()
   } catch (err) {
@@ -92,5 +132,19 @@ export function installUpdate(): void {
     return
   }
   if (!updater || status.state !== 'ready') return
-  setImmediate(() => updater?.quitAndInstall(true, true))
+  const version = status.version
+  try {
+    fs.writeFileSync(attemptFile(), JSON.stringify({ version, at: Date.now() }))
+  } catch {
+    // only used for the "updated" note at the next launch
+  }
+  setStatus({ state: 'installing', version })
+  if (Notification.isSupported()) {
+    new Notification({
+      title: `Updating Tarkov Companion to ${version}`,
+      body: "It closes now and opens again by itself in about a minute. Please don't open it in the meantime.",
+    }).show()
+  }
+  // A moment to read the bar before the window closes.
+  setTimeout(() => updater?.quitAndInstall(true, true), 2500)
 }
