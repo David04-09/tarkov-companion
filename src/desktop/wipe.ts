@@ -3,6 +3,7 @@ import type { WipeEvent } from '../shared/desktop-api'
 import { useArchivesStore } from '../store/archives'
 import { useInventoryStore } from '../store/inventory'
 import { useProgressStore } from '../store/progress'
+import { useStoryStore } from '../store/story'
 
 interface WipeBannerState {
   event: WipeEvent | null
@@ -31,4 +32,6 @@ export function archiveAndReset(label: string) {
     for (const itemId of Object.keys(inv.byMode[mode].collected)) inv.setCollected(mode, itemId, 0)
     for (const stationId of Object.keys(inv.byMode[mode].stationLevels)) inv.setStationLevel(mode, stationId, 0)
   }
+  // Story chapters restart with the wipe too.
+  useStoryStore.getState().resetAll()
 }

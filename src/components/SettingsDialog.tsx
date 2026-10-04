@@ -6,6 +6,7 @@ import { JSON_API_BASE } from '../api/client'
 import { useProgressStore } from '../store/progress'
 import { DesktopSettingsSection } from '../desktop/DesktopSettings'
 import { parseDrawings, useDrawingsStore } from '../store/drawings'
+import { parseStory, useStoryStore } from '../store/story'
 import { AboutSection } from './AboutSection'
 
 function downloadJson(filename: string, data: unknown) {
@@ -40,9 +41,9 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
 
   const handleExport = () => {
     const date = new Date().toISOString().slice(0, 10)
-    // Map drawings ride along with the progress file.
-    downloadJson(`tarkov-companion-progress-${date}.json`, { ...exportProgress(), drawings: useDrawingsStore.getState().byKey })
-    setMessage({ kind: 'ok', text: 'Progress file downloaded (including map drawings).' })
+    // Map drawings and story progress ride along with the progress file.
+    downloadJson(`tarkov-companion-progress-${date}.json`, { ...exportProgress(), drawings: useDrawingsStore.getState().byKey, story: useStoryStore.getState().byMode })
+    setMessage({ kind: 'ok', text: 'Progress file downloaded (including map drawings and story chapters).' })
   }
 
   const handleImportFile = async (file: File) => {
@@ -51,7 +52,9 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
       importProgress(parsed)
       const drawings = parseDrawings((parsed as { drawings?: unknown }).drawings)
       if (drawings) useDrawingsStore.getState().importAll(drawings)
-      setMessage({ kind: 'ok', text: `Imported progress${drawings ? ' and map drawings' : ''} from ${file.name}.` })
+      const story = parseStory((parsed as { story?: unknown }).story)
+      if (story) useStoryStore.getState().importAll(story)
+      setMessage({ kind: 'ok', text: `Imported progress${drawings ? ', map drawings' : ''}${story ? ', story chapters' : ''} from ${file.name}.` })
     } catch (err) {
       setMessage({
         kind: 'error',

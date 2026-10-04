@@ -233,3 +233,34 @@ select option {
 .leaflet-pm-toolbar .leaflet-buttons-control-button:hover {
   background-color: var(--color-surface-3) !important;
 }
+
+/* Story tab: guide content from the EFT Wiki (rebuilt from an allow-list in api/storyWiki.ts). */
+.wiki-content {
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  color: var(--color-ink-muted);
+}
+.wiki-content p { margin: 0.35rem 0; }
+.wiki-content ul { list-style: disc; padding-left: 1.25rem; margin: 0.3rem 0; }
+.wiki-content ol { list-style: decimal; padding-left: 1.25rem; margin: 0.3rem 0; }
+.wiki-content li { margin: 0.1rem 0; }
+.wiki-content a { color: var(--color-accent); text-decoration: underline; text-underline-offset: 2px; }
+.wiki-content b, .wiki-content strong { color: var(--color-ink); font-weight: 600; }
+.wiki-content h4, .wiki-content h5, .wiki-content h6 { color: var(--color-ink); font-weight: 600; margin: 0.7rem 0 0.2rem; }
+.wiki-content blockquote { border-left: 2px solid var(--color-accent-dim); padding: 0.25rem 0.75rem; margin: 0.4rem 0; font-style: italic; }
+.wiki-content hr { border-color: var(--color-line); margin: 0.6rem 0; }
+.wiki-content dd { margin-left: 1rem; }
+.wiki-content .wiki-table { border-collapse: collapse; margin: 0.5rem 0; font-size: 0.75rem; max-width: 100%; }
+.wiki-content .wiki-table th,
+.wiki-content .wiki-table td { border: 1px solid var(--color-line); padding: 0.2rem 0.45rem; text-align: left; vertical-align: middle; }
+.wiki-content .wiki-table th { background: var(--color-surface-3); color: var(--color-ink); font-weight: 600; }
+.wiki-content .wiki-icon { display: inline-block; height: 2rem; width: auto; max-width: 3.5rem; object-fit: contain; vertical-align: middle; }
+.wiki-content .wiki-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 0.4rem; margin: 0.5rem 0; }
+.wiki-content .wiki-figure { display: block; width: 100%; overflow: hidden; border: 1px solid var(--color-line); border-radius: 4px; background: var(--color-surface); text-align: left; cursor: zoom-in; }
+.wiki-content .wiki-figure:hover { border-color: var(--color-accent); }
+.wiki-content .wiki-figure img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; }
+.wiki-content .wiki-figure span { display: block; overflow: hidden; padding: 0.2rem 0.4rem; font-size: 0.6875rem; white-space: nowrap; text-overflow: ellipsis; color: var(--color-ink-muted); }
+.wiki-red { color: var(--color-danger); }
+.wiki-green { color: var(--color-success); }
+.wiki-content .wiki-scroll { max-width: 100%; overflow-x: auto; }
+.wiki-content { overflow-wrap: anywhere; }

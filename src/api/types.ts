@@ -673,6 +673,12 @@ export interface Task {
    * dialogue, story progression). Shown for information only.
    */
   otherRequirements: string[]
+  /** Waiting time after the prerequisites are done before the trader offers it (seconds), or null. */
+  availableDelay: { minS: number; maxS: number } | null
+  /** Hidden progress counters the game checks ("globalVariable" requirements). */
+  storyGates: { variableId: string; compare: string; value: number }[]
+  /** Traders you must talk to first ("dialogue" requirements). */
+  dialogueTraderIds: string[]
   objectives: TaskObjective[]
   /** Keys the task needs, per map id. */
   neededKeys: { mapId: string; keyIds: string[] }[]

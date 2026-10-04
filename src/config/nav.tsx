@@ -1,5 +1,5 @@
 import type { ComponentType } from 'react'
-import { Hammer, House, KeyRound, LayoutDashboard, Map, Package, ScrollText, Store, type LucideIcon } from 'lucide-react'
+import { BookOpen, Hammer, House, KeyRound, LayoutDashboard, Map, Package, ScrollText, Store, type LucideIcon } from 'lucide-react'
 import { CraftsPage } from '../pages/CraftsPage'
 import { DashboardPage } from '../pages/DashboardPage'
 import { HideoutPage } from '../pages/HideoutPage'
@@ -7,6 +7,7 @@ import { ItemCollectionPage } from '../pages/ItemCollectionPage'
 import { KeysPage } from '../pages/KeysPage'
 import { MapsPage } from '../pages/MapsPage'
 import { QuestsPage } from '../pages/QuestsPage'
+import { StoryPage } from '../pages/StoryPage'
 import { FleaMarketPage } from '../pages/FleaMarketPage'
 
 export interface NavItem {
@@ -25,6 +26,7 @@ export interface NavItem {
 export const NAV_ITEMS: NavItem[] = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard, component: DashboardPage },
   { path: '/quests', label: 'Quests', icon: ScrollText, component: QuestsPage },
+  { path: '/story', label: 'Story', icon: BookOpen, component: StoryPage },
   { path: '/maps', label: 'Maps', icon: Map, component: MapsPage, fullBleed: true },
   { path: '/items', label: 'Item Collection', icon: Package, component: ItemCollectionPage },
   { path: '/keys', label: 'Keys', icon: KeyRound, component: KeysPage },

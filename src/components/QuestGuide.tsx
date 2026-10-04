@@ -84,7 +84,7 @@ export function BuildCard({ build }: { build: WeaponBuild }) {
   )
 }
 
-function Lightbox({ images, index, onClose, onIndex }: { images: GuideImage[]; index: number; onClose: () => void; onIndex: (i: number) => void }) {
+export function Lightbox({ images, index, onClose, onIndex }: { images: GuideImage[]; index: number; onClose: () => void; onIndex: (i: number) => void }) {
   const img = images[index]
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

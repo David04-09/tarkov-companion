@@ -11,6 +11,7 @@ import { isDesktop, useDesktopStore } from '../desktop/useDesktop'
 import { useProgressStore } from '../store/progress'
 import { WipeBanner } from '../desktop/WipeBanner'
 import { ItemLookup } from './ItemLookup'
+import { StoryTimerWatcher } from '../story/StoryTimerWatcher'
 import { Sidebar } from './Sidebar'
 
 export function Layout() {
@@ -32,6 +33,7 @@ export function Layout() {
   return (
     <div className="flex h-full bg-surface text-ink">
       <ItemLookup />
+      <StoryTimerWatcher />
       {showSetup && <FirstRunSetup />}
       {isDesktop() && <SyncReviewDialog />}
       {isDesktop() && <SyncToast />}

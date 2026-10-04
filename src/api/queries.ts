@@ -255,6 +255,11 @@ function adaptTask(
       status: r.status ?? [],
     })),
     otherRequirements: describeOtherRequirements(raw, tradersById),
+    availableDelay: (raw.availableDelaySecondsMax ?? 0) > 0 ? { minS: raw.availableDelaySecondsMin ?? 0, maxS: raw.availableDelaySecondsMax ?? 0 } : null,
+    storyGates: (raw.otherRequirements ?? [])
+      .filter((r) => r.type === 'globalVariable' && r.variableId)
+      .map((r) => ({ variableId: r.variableId as string, compare: r.compareMethod ?? '>=', value: r.value ?? 0 })),
+    dialogueTraderIds: (raw.otherRequirements ?? []).filter((r) => r.type === 'dialogue').flatMap((r) => r.traders ?? []),
     neededKeys: (raw.neededKeys ?? [])
       .filter((k) => k && k.map && Array.isArray(k.keys))
       .map((k) => ({ mapId: k.map, keyIds: k.keys })),

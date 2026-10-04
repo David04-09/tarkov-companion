@@ -34,7 +34,7 @@ export function wikiTitle(wikiLink: string | null | undefined): string | null {
 }
 
 /** Fandom image URLs carry a size step; strip it for full size, set it for the thumbnail. */
-function imageUrls(src: string): { full: string; thumb: string } {
+export function imageUrls(src: string): { full: string; thumb: string } {
   const clean = src.replace(/\/scale-to-width-down\/\d+/, '').replace(/\/smart\/width\/\d+\/height\/\d+/, '')
   const [base, query] = clean.split('?')
   const thumb = base.endsWith('/revision/latest') ? `${base}/scale-to-width-down/480${query ? `?${query}` : ''}` : clean
@@ -95,6 +95,8 @@ export function parseWikiGuide(html: string, pageUrl: string): WikiGuide {
   }
   return { pageUrl, images, guideText }
 }
+
+export const WIKI_API = API
 
 async function fetchWikiGuide(title: string, signal?: AbortSignal): Promise<WikiGuide> {
   const url = `${API}?action=parse&page=${encodeURIComponent(title)}&prop=text&redirects=1&format=json&formatversion=2&origin=*`
