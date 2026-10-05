@@ -3,20 +3,27 @@
  * Runs the stash scan off the UI thread. The page sends the fingerprint files
  * once ("init"), then screenshots ("scan") as ImageBitmaps plus an optional crop.
  */
-import { buildCandidates, chooseGrid, detectGrid, refineGrid, indexFromParts, scanGrid, withLearned, type Detection, type FingerprintHeader, type FingerprintIndex, type Grid, type LearnedFingerprint, type OcrWord } from './core'
+import { buildCandidates, chooseGrid, detectGrid, identifyRegion, refineGrid, indexFromParts, scanGrid, withLearned, type Rgba, type Detection, type FingerprintHeader, type FingerprintIndex, type Grid, type LearnedFingerprint, type OcrWord } from './core'
 
 export type WorkerRequest =
   | { type: 'init'; header: FingerprintHeader; pixels: ArrayBuffer }
   | { type: 'scan'; id: number; bitmap: ImageBitmap; crop: { x: number; y: number; w: number; h: number } | null; pitch?: number; preferredPitch?: number; learned?: LearnedFingerprint[]; words?: OcrWord[] }
+  /** Best items for one box of the last scan (grid cells), for the box editor. */
+  | { type: 'identify'; id: number; box: { col: number; row: number; w: number; h: number } }
 
 export type WorkerResponse =
   | { type: 'ready'; items: number }
   | { type: 'progress'; id: number; done: number; total: number }
   | { type: 'result'; id: number; grid: Grid; detections: Detection[]; ms: number }
+  | { type: 'identified'; id: number; matches: IdentifyMatch[] }
   | { type: 'error'; id: number; message: string }
 
 let index: FingerprintIndex | null = null
 let candidates: ReturnType<typeof buildCandidates> | null = null
+/** The last scan (cropped image, grid in its coordinates, words, candidates with corrections) for 'identify'. */
+let last: { img: Rgba; grid: Grid; words: OcrWord[]; candidates: ReturnType<typeof buildCandidates> } | null = null
+
+export type IdentifyMatch = ReturnType<typeof identifyRegion>[number]
 
 const post = (msg: WorkerResponse) => (self as unknown as DedicatedWorkerGlobalScope).postMessage(msg)
 
@@ -45,12 +52,21 @@ self.onmessage = (e: MessageEvent<WorkerRequest>) => {
       // Words in crop coordinates (OCR ran on the full screenshot).
       const words = (msg.words ?? []).map((w) => ({ ...w, x0: w.x0 - crop.x, x1: w.x1 - crop.x, y0: w.y0 - crop.y, y1: w.y1 - crop.y }))
       const grid = msg.pitch ? refineGrid(img, detectGrid(img, msg.pitch), candidates) : chooseGrid(img, candidates, words, msg.preferredPitch)
-      const detections = scanGrid(img, grid, withLearned(candidates, msg.learned ?? []), index, { words }, (done, total) => post({ type: 'progress', id: msg.id, done, total }))
+      const withMine = withLearned(candidates, msg.learned ?? [])
+      const detections = scanGrid(img, grid, withMine, index, { words }, (done, total) => post({ type: 'progress', id: msg.id, done, total }))
+      last = { img, grid, words, candidates: withMine }
       // Report positions in full-screenshot coordinates.
       const shifted: Grid = { ...grid, ox: grid.ox + crop.x, oy: grid.oy + crop.y }
       post({ type: 'result', id: msg.id, grid: shifted, detections, ms: Math.round(performance.now() - t0) })
     } catch (err) {
       post({ type: 'error', id: msg.id, message: err instanceof Error ? err.message : String(err) })
     }
+  }
+  if (msg.type === 'identify') {
+    if (!last) {
+      post({ type: 'error', id: msg.id, message: 'Scan a screenshot first' })
+      return
+    }
+    post({ type: 'identified', id: msg.id, matches: identifyRegion(last.img, last.grid, last.candidates, msg.box, last.words) })
   }
 }

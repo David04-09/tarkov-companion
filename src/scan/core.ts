@@ -726,6 +726,8 @@ const NAME_MATCH = 0.75
 const NAME_BONUS = 10
 /** When some candidate's name matches a confidently read label, the others lose this much. */
 const NAME_PENALTY = 12
+/** A label this close to an item's short name pins that item's top-right corner (see scanGrid). */
+const ANCHOR_MATCH = 0.85
 
 /** Lowercase, letters that OCR confuses mapped together (0/o, 1/l/i/|, 5/s), punctuation dropped. */
 export function normName(s: string): string {
@@ -755,14 +757,26 @@ export function nameSimilarity(a: string, b: string): number {
 /** Words in the top-right corner of a slot, keyed "row,col" (the slot the name belongs to). */
 function nameLabels(words: OcrWord[] | undefined, grid: Grid): Map<string, { text: string; conf: number }> {
   const out = new Map<string, { text: string; conf: number }>()
-  // Names with spaces ("F scdr") come back as separate words: join neighbours on one line.
-  const sorted = [...(words ?? [])].sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0)
+  // Names with spaces ("F scdr", "Hand drill") come back as separate words: join neighbours on
+  // one line. Words of one line differ by a pixel or two in height, so group them into lines
+  // first and read each line left to right (sorting by height alone let "Awl" further along the
+  // line slip between "Hand" and "drill").
+  const byHeight = [...(words ?? [])].sort((a, b) => a.y0 - b.y0)
+  const lines: OcrWord[][] = []
+  for (const w of byHeight) {
+    const line = lines.find((l) => Math.abs(l[0].y0 - w.y0) < 0.15 * grid.pitch)
+    if (line) line.push(w)
+    else lines.push([w])
+  }
+  const sorted = lines.flatMap((l) => l.sort((a, b) => a.x0 - b.x0))
   const merged: OcrWord[] = []
   for (const w of sorted) {
     const prev = merged[merged.length - 1]
     // Same line, a space apart, and inside the same slot (neighbouring slots' names often touch).
     const slotOf = (x: number) => Math.floor((x - grid.ox) / grid.pitch - 0.02)
-    if (prev && Math.abs(prev.y0 - w.y0) < 0.15 * grid.pitch && w.x0 >= prev.x1 - 2 && w.x0 - prev.x1 < 0.1 * grid.pitch && slotOf(prev.x1) === slotOf(w.x1)) {
+    // Never glue a clean read to junk read off the item's picture ("FENA" + "Poster").
+    const junkPair = Math.min(prev?.conf ?? 0, w.conf) < 40 && Math.max(prev?.conf ?? 0, w.conf) >= 60
+    if (prev && !junkPair && Math.abs(prev.y0 - w.y0) < 0.15 * grid.pitch && w.x0 >= prev.x1 - 2 && w.x0 - prev.x1 < 0.1 * grid.pitch && slotOf(prev.x1) === slotOf(w.x1)) {
       merged[merged.length - 1] = { text: prev.text + w.text, conf: Math.min(prev.conf, w.conf), x0: prev.x0, y0: Math.min(prev.y0, w.y0), x1: w.x1, y1: Math.max(prev.y1, w.y1) }
     } else merged.push({ ...w })
   }
@@ -947,6 +961,70 @@ export function scanGrid(img: Rgba, grid: Grid, candidates: Map<string, Candidat
     }
   }
 
+  // Name anchors. A confidently read label that is (nearly) an item's short name marks that
+  // item's top-right corner, so the item can only sit at one place: try it exactly there, even
+  // over slots that looked empty (a dark item edge, e.g. the Hand drill's tip, passes for an
+  // empty slot). Then every other box is checked against the names it covers.
+  const anchors = new Map<string, Set<string>>()
+  const nameIds = new Map<string, string[]>()
+  for (const list of candidates.values()) {
+    for (const c of list) {
+      if (!c.name || c.negative) continue
+      const ids = nameIds.get(c.name)
+      if (!ids) nameIds.set(c.name, [c.itemId])
+      else if (!ids.includes(c.itemId)) ids.push(c.itemId)
+    }
+  }
+  const already = new Set(raw.map((d) => `${d.itemId}|${d.col}|${d.row}|${d.w}|${d.h}`))
+  for (const [key, label] of labels) {
+    if (label.conf < 50 || label.text.length < 3) continue
+    const sims = new Map<string, number>()
+    for (const [name, ids] of nameIds) {
+      const sim = nameSimilarity(label.text, name)
+      if (sim >= ANCHOR_MATCH) for (const id of ids) sims.set(id, Math.max(sims.get(id) ?? 0, sim))
+    }
+    if (!sims.size) continue
+    anchors.set(key, new Set(sims.keys()))
+    const [row, rightCol] = key.split(',').map(Number)
+    for (const [w, h] of footprints) {
+      const col = rightCol - w + 1
+      if (col < 0 || row + h > grid.rows) continue
+      let emptyCount = 0
+      for (let y = row; y < row + h; y++) for (let x = col; x < col + w; x++) if (empty[y][x]) emptyCount++
+      if (emptyCount * 2 > w * h) continue
+      const list = (candidates.get(`${w}x${h}`) ?? []).filter((c) => !c.negative && sims.has(c.itemId))
+      if (!list.length) continue
+      const region = sampleRegion(img, grid.ox + col * grid.pitch, grid.oy + row * grid.pitch, w * grid.pitch + 1, h * grid.pitch + 1, w * FP, h * FP)
+      for (const c of list) {
+        const id = `${c.itemId}|${col}|${row}|${w}|${h}`
+        if (already.has(id)) continue
+        let err = distance(region, c.fp, maskFor(w, h, c.rotated))
+        if (c.iconMask) err = Math.min(err, distance(region, c.fp, c.iconMask) + ICON_PENALTY)
+        if (c.bonus) err = Math.max(0, err - c.bonus)
+        if (err > maxError * 1.5) continue
+        already.add(id)
+        const sim = sims.get(c.itemId) ?? 0
+        raw.push({ itemId: c.itemId, col, row, w, h, rotated: c.rotated, error: Math.max(0, err - NAME_BONUS * (sim - 0.5) * 2), alternatives: [], learned: c.learned || undefined, nameMatch: true })
+      }
+    }
+  }
+  if (anchors.size) {
+    for (const d of raw) {
+      if (d.clipped) continue
+      let conflict = false
+      for (let y = d.row; y < d.row + d.h && !conflict; y++) {
+        for (let x = d.col; x < d.col + d.w && !conflict; x++) {
+          const ids = anchors.get(`${y},${x}`)
+          if (!ids) continue
+          // A name must sit in the box's own top-right slot, and be this item's name.
+          const corner = y === d.row && x === d.col + d.w - 1
+          if (!corner || !ids.has(d.itemId)) conflict = true
+        }
+      }
+      if (conflict) d.error += NAME_PENALTY
+    }
+  }
+
   // Greedy, best first, no overlaps. A whole item fits slightly worse than one of its own
   // corners does (more pixels, more chance of a highlight), so larger footprints get a
   // small bonus per extra cell: the 400 ml WD-40 must beat "100 ml WD-40 + something".
@@ -968,6 +1046,45 @@ export function scanGrid(img: Rgba, grid: Grid, candidates: Map<string, Candidat
   }
   onProgress?.(total, total)
   return out.sort((a, b) => a.row - b.row || a.col - b.col)
+}
+
+/**
+ * Best items for one box the user placed or moved by hand (the scan dialog's box editor):
+ * every item of that on-screen footprint (both orientations), compared over the box, with
+ * the printed name in the box's top-right slot counted like in scanGrid. Best first.
+ */
+export function identifyRegion(
+  img: Rgba,
+  grid: Grid,
+  candidates: Map<string, Candidate[]>,
+  box: { col: number; row: number; w: number; h: number },
+  words?: OcrWord[],
+  limit = 10,
+): { itemId: string; error: number; rotated: boolean; nameMatch: boolean; learned: boolean }[] {
+  const { col, row, w, h } = box
+  const list = candidates.get(`${w}x${h}`) ?? []
+  if (!list.length) return []
+  const region = sampleRegion(img, grid.ox + col * grid.pitch, grid.oy + row * grid.pitch, w * grid.pitch + 1, h * grid.pitch + 1, w * FP, h * FP)
+  const masks = { plain: compareMask(w, h, false), rot: compareMask(w, h, true) }
+  const label = nameLabels(words, grid).get(`${row},${col + w - 1}`)
+  const best = new Map<string, { itemId: string; error: number; rotated: boolean; nameMatch: boolean; learned: boolean }>()
+  for (const c of list) {
+    if (c.negative) continue
+    let err = distance(region, c.fp, c.rotated ? masks.rot : masks.plain)
+    if (c.iconMask) err = Math.min(err, distance(region, c.fp, c.iconMask) + ICON_PENALTY)
+    if (c.bonus) err = Math.max(0, err - c.bonus)
+    let nameMatch = false
+    if (label && c.name) {
+      const sim = nameSimilarity(label.text, c.name)
+      if (sim >= (label.conf < 40 ? 0.9 : NAME_MATCH)) {
+        err = Math.max(0, err - NAME_BONUS * (sim - 0.5) * 2)
+        nameMatch = true
+      }
+    }
+    const prev = best.get(c.itemId)
+    if (!prev || err < prev.error) best.set(c.itemId, { itemId: c.itemId, error: err, rotated: c.rotated, nameMatch, learned: c.learned })
+  }
+  return [...best.values()].sort((a, b) => a.error - b.error).slice(0, limit)
 }
 
 /** Serialized fingerprint file: JSON header line + binary pixels. */

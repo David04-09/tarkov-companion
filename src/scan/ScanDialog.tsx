@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Camera, Check, Crop, Palette, FolderOpen, ImageUp, Loader2, Minus, Plus, ScanSearch, Search, Trash2, X } from 'lucide-react'
+import { Camera, Check, Crop, Palette, FolderOpen, ImageUp, Loader2, Minus, Move, Plus, ScanSearch, Search, Trash2, X } from 'lucide-react'
 import { useNeeds } from '../hooks/useNeeds'
 import { remainingFor, type NeedSource } from '../lib/needs'
 import { sellValue } from '../lib/economy'
@@ -9,7 +9,8 @@ import { isDesktop } from '../desktop/useDesktop'
 import { useInventoryStore, useModeInventory } from '../store/inventory'
 import { useProgressStore } from '../store/progress'
 import type { Detection } from './core'
-import { scanImage, warmUpScanner, type ScanResult } from './scanner'
+import { identifyBox, scanImage, warmUpScanner, type IdentifyMatch, type ScanResult } from './scanner'
+import { cellAt, covers, moveBox, overlaps, resizeBox, sameCells, spanCells, type Cells, type Corner } from './boxEdit'
 import { rememberCellSize, rememberedCellSize } from './cellSize'
 import { learnedFingerprints, recordFromCorrection, recordFromSpot, useLearnedStore } from './learned'
 import { LearnedPanel } from './LearnedPanel'
@@ -38,6 +39,24 @@ interface Row {
 }
 
 type Box = { x: number; y: number; w: number; h: number }
+/** A detection as the box editor sees it: boxes can be removed or moved/drawn by hand. */
+type EditDet = Detection & { removed?: boolean; edited?: boolean }
+type Drag =
+  | { kind: 'move'; spot: number; start: { col: number; row: number }; orig: Cells }
+  | { kind: 'resize'; spot: number; corner: Corner; orig: Cells }
+  | { kind: 'new'; start: { col: number; row: number }; startPx: { x: number; y: number } }
+const cellsOf = (d: Cells): Cells => ({ col: d.col, row: d.row, w: d.w, h: d.h })
+const CORNERS: Corner[] = ['nw', 'ne', 'sw', 'se']
+
+/** Takes spots out of their rows; rows left with no spots and no count disappear. */
+function detachSpots(rs: Row[], spots: number[]): Row[] {
+  return rs
+    .map((r) => {
+      const keep = r.spots.filter((x) => !spots.includes(x))
+      return keep.length === r.spots.length ? r : { ...r, spots: keep, count: Math.max(0, r.count - (r.spots.length - keep.length)) }
+    })
+    .filter((r) => r.spots.length > 0 || r.count > 0)
+}
 
 /** Sure only when the match is close AND clearly better than the next item (BEAR vs USEC tags etc.). */
 const confidence = (error: number, margin = Infinity, nameMatch = false) =>
@@ -117,6 +136,17 @@ export function ScanDialog() {
   const [phase, setPhase] = useState('Scanning…')
   const [namesRead, setNamesRead] = useState<number | null>(null)
   const svgRef = useRef<SVGSVGElement>(null)
+  // Box editor: detections as they stand after the user's edits (indexes = row spots).
+  const [dets, setDets] = useState<EditDet[]>([])
+  const [editMode, setEditMode] = useState(false)
+  /** Move/resize existing boxes, or draw new ones (also over existing boxes, which a full stash needs). */
+  const [editTool, setEditTool] = useState<'move' | 'draw'>('move')
+  const [selected, setSelected] = useState<number | null>(null)
+  const [drag, setDrag] = useState<Drag | null>(null)
+  const [draft, setDraft] = useState<Cells | null>(null)
+  const [boxMatches, setBoxMatches] = useState<IdentifyMatch[] | null>(null)
+  const [boxSearch, setBoxSearch] = useState('')
+  const [boxNote, setBoxNote] = useState<string | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
 
   // Item id (including accepted alternatives) -> the need it counts toward.
@@ -139,14 +169,30 @@ export function ScanDialog() {
       const img = imageFromClipboard(e)
       if (img) openWith(img)
     }
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && !changing && close()
     window.addEventListener('paste', onPaste)
-    window.addEventListener('keydown', onKey)
-    return () => {
-      window.removeEventListener('paste', onPaste)
-      window.removeEventListener('keydown', onKey)
+    return () => window.removeEventListener('paste', onPaste)
+  }, [open, openWith])
+
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => {
+      const typing = (e.target as HTMLElement | null)?.closest?.('input, textarea')
+      if (editMode && !typing && selected !== null && (e.key === 'Delete' || e.key === 'Backspace')) {
+        e.preventDefault()
+        deleteBox(selected)
+        return
+      }
+      if (e.key !== 'Escape') return
+      if (editMode) {
+        if (selected !== null) setSelected(null)
+        else setEditMode(false)
+        return
+      }
+      if (!changing) close()
     }
-  }, [open, openWith, close, changing])
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  })
 
   // New image: show it and scan the whole picture.
   useEffect(() => {
@@ -190,6 +236,11 @@ export function ScanDialog() {
       rememberCellSize(r.grid.pitch, sure, r.detections.length)
       setNamesRead(words ? words.length : null)
       setResult(r)
+      setDets(r.detections)
+      setEditMode(false)
+      setSelected(null)
+      setBoxMatches(null)
+      setBoxNote(null)
       setRows(buildRows(r))
       setStatus('done')
     } catch (e) {
@@ -214,8 +265,8 @@ export function ScanDialog() {
     if (!result || !image || !item) return
     let saved = 0
     for (const spot of spots.slice(0, 3)) {
-      const det = result.detections[spot]
-      if (!det) continue
+      const det = dets[spot]
+      if (!det || det.removed) continue
       const rec = await recordFromCorrection(image, result.grid, det, { width: item.width, height: item.height }, itemId).catch(() => null)
       if (rec) {
         await useLearnedStore.getState().add(rec)
@@ -250,8 +301,8 @@ export function ScanDialog() {
     for (const r of rows) {
       if (!r.selected || r.manual || confidence(r.error, r.margin, r.nameMatch) === 'sure') continue
       for (const spot of r.spots.slice(0, 2)) {
-        const det = result.detections[spot]
-        if (!det || det.itemId !== r.itemId) continue
+        const det = dets[spot]
+        if (!det || det.removed || det.edited || det.itemId !== r.itemId) continue
         const rec = await recordFromSpot(image, result.grid, det, det.w, det.h, r.itemId, 'confirmed').catch(() => null)
         if (rec) await useLearnedStore.getState().add(rec)
       }
@@ -276,6 +327,139 @@ export function ScanDialog() {
     }
     setApplied(`${mode === 'add' ? 'Added' : 'Set'} ${n} item${n === 1 ? '' : 's'} across ${totals.size} kind${totals.size === 1 ? '' : 's'} in Item Collection.`)
   }
+
+  /** Puts one box (spot) under an item: updates the box and moves it between rows. */
+  const assignBox = (spot: number, geom: Cells, itemId: string, matches: IdentifyMatch[], learn: boolean) => {
+    const m0 = matches.find((m) => m.itemId === itemId)
+    const others = matches.filter((m) => m.itemId !== itemId)
+    setDets((ds) => ds.map((d, i) => (i === spot ? { ...d, ...geom, itemId, error: m0?.error ?? 0, rotated: m0?.rotated ?? false, nameMatch: m0?.nameMatch || undefined, alternatives: others.map((m) => ({ itemId: m.itemId, error: m.error })) } : d)))
+    setRows((rs) => {
+      const next = detachSpots(rs, [spot])
+      const existing = next.find((r) => r.itemId === itemId)
+      if (existing) return next.map((r) => (r === existing ? { ...r, spots: [...r.spots, spot], count: r.count + 1 } : r))
+      return [...next, { key: `${itemId}@${spot}`, itemId, count: 1, selected: (needFor.get(itemId)?.remaining ?? 0) > 0, spots: [spot], error: m0?.error ?? 0, alternatives: others.map((m) => m.itemId), margin: m0 && others[0] ? others[0].error - m0.error : Infinity, learned: false, manual: true, nameMatch: Boolean(m0?.nameMatch) }]
+    })
+    setBoxNote(null)
+    if (learn && image && result) {
+      // A hand-placed box with a hand-picked item is the best teacher there is.
+      const det: Detection = { itemId, ...geom, rotated: false, error: 0, alternatives: [] }
+      void recordFromSpot(image, result.grid, det, geom.w, geom.h, itemId, 'correct')
+        .then((rec) => rec && useLearnedStore.getState().add(rec))
+        .then(() => setLearnNote(`Remembered: ${items?.[itemId]?.shortName ?? 'this item'} at this size and look (Your corrections).`))
+        .catch(() => undefined)
+    }
+  }
+
+  const loadMatches = (geom: Cells) => {
+    setBoxMatches(null)
+    void identifyBox(geom).then(setBoxMatches).catch(() => setBoxMatches([]))
+  }
+
+  /** Applies a moved, resized or newly drawn box: boxes it fully covers go, then it is identified again. */
+  const commitEdit = async (spot: number | null, geom: Cells) => {
+    if (!result) return
+    const idx = spot ?? dets.length
+    const prev = spot !== null ? dets[spot] : null
+    const swallowed = dets.map((d, i) => (i !== idx && !d.removed && covers(geom, d) ? i : -1)).filter((i) => i >= 0)
+    setDets((ds) => {
+      const next = ds.map((d, i) => (swallowed.includes(i) ? { ...d, removed: true } : d))
+      if (spot === null) next.push({ itemId: '', ...geom, rotated: false, error: 99, alternatives: [], edited: true })
+      else next[spot] = { ...next[spot], ...geom, edited: true }
+      return next
+    })
+    if (swallowed.length) setRows((rs) => detachSpots(rs, swallowed))
+    setSelected(idx)
+    setBoxSearch('')
+    setBoxMatches(null)
+    const matches = await identifyBox(geom).catch(() => [] as IdentifyMatch[])
+    setBoxMatches(matches)
+    // Keep the item when the box only moved and it still fits there; otherwise take the best match.
+    const keep = prev?.itemId && matches.slice(0, 3).some((m) => m.itemId === prev.itemId) ? prev.itemId : matches[0]?.itemId
+    if (keep) assignBox(idx, geom, keep, matches, false)
+    else {
+      setRows((rs) => detachSpots(rs, [idx]))
+      setDets((ds) => ds.map((d, i) => (i === idx ? { ...d, itemId: '' } : d)))
+      setBoxNote(`No item is ${geom.w}×${geom.h} cells. Resize the box, or search for the item.`)
+    }
+  }
+
+  const deleteBox = (spot: number) => {
+    setDets((ds) => ds.map((d, i) => (i === spot ? { ...d, removed: true } : d)))
+    setRows((rs) => detachSpots(rs, [spot]))
+    setSelected(null)
+    setBoxMatches(null)
+  }
+
+  const onEditPointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (!result) return
+    const p = toImage(e)
+    const cell = cellAt(result.grid, p.x, p.y)
+    const target = e.target as Element
+    const handle = target.closest('[data-handle]') as SVGElement | null
+    const box = target.closest('[data-spot]') as SVGElement | null
+    if (editTool === 'draw') {
+      setSelected(null)
+      setDrag({ kind: 'new', start: cell, startPx: p })
+      setDraft(spanCells(cell, cell))
+    } else if (handle && selected !== null && dets[selected]) {
+      const orig = cellsOf(dets[selected])
+      setDrag({ kind: 'resize', spot: selected, corner: handle.dataset.handle as Corner, orig })
+      setDraft(orig)
+    } else if (box) {
+      const spot = Number(box.dataset.spot)
+      const orig = cellsOf(dets[spot])
+      if (spot !== selected) {
+        setSelected(spot)
+        setBoxSearch('')
+        setBoxNote(null)
+        loadMatches(orig)
+      }
+      setDrag({ kind: 'move', spot, start: cell, orig })
+      setDraft(orig)
+    } else {
+      setSelected(null)
+      setDrag({ kind: 'new', start: cell, startPx: p })
+      setDraft(spanCells(cell, cell))
+    }
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId)
+    } catch {
+      // pointer already released (e.g. a very quick tap)
+    }
+  }
+
+  const onEditPointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (!drag || !result) return
+    const p = toImage(e)
+    const cell = cellAt(result.grid, p.x, p.y)
+    if (drag.kind === 'move') setDraft(moveBox(drag.orig, drag.start, cell, result.grid))
+    else if (drag.kind === 'resize') setDraft(resizeBox(drag.orig, drag.corner, cell))
+    else setDraft(spanCells(drag.start, cell))
+  }
+
+  const onEditPointerUp = (e: React.PointerEvent<SVGSVGElement>) => {
+    const d = drag
+    const geom = draft
+    setDrag(null)
+    setDraft(null)
+    if (!d || !geom) return
+    if (d.kind === 'new') {
+      // A plain click on an empty spot only deselects; a drag (even inside one cell) draws a box.
+      const p = toImage(e)
+      if (Math.hypot(p.x - d.startPx.x, p.y - d.startPx.y) < 6) return
+      void commitEdit(null, geom)
+    } else if (!sameCells(geom, d.orig)) {
+      void commitEdit(d.spot, geom)
+    }
+  }
+
+  const boxResults = useMemo(() => {
+    const q = boxSearch.trim().toLowerCase()
+    if (!items || q.length < 2) return []
+    return Object.values(items)
+      .filter((i) => i.name.toLowerCase().includes(q) || i.shortName.toLowerCase().includes(q))
+      .slice(0, 8)
+  }, [items, boxSearch])
 
   const searchResults = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -342,8 +526,66 @@ export function ScanDialog() {
                   <Palette className="h-4 w-4" /> Keep/sell tint
                 </button>
               )}
-              {status === 'done' && result && <span className="text-ink-dim">{result.detections.length} items · cell {result.grid.pitch.toFixed(0)} px{namesRead === null ? ' · names not read' : ''}</span>}
+              {result && status === 'done' && (
+                <button type="button" onClick={() => { setEditMode((v) => !v); setCropping(false); setSelected(null); setBoxNote(null) }} className={`btn !py-1 ${editMode ? 'border-accent bg-accent/15 text-accent' : ''}`} title="Move, resize, add or delete boxes; they snap to the stash grid">
+                  <Move className="h-4 w-4" /> {editMode ? 'Done editing' : 'Edit boxes'}
+                </button>
+              )}
+              {status === 'done' && result && <span className="text-ink-dim">{dets.filter((d) => !d.removed).length} items · cell {result.grid.pitch.toFixed(0)} px{namesRead === null ? ' · names not read' : ''}</span>}
             </div>
+            {editMode && (
+              <div className="flex flex-wrap items-center gap-2 border-b border-line bg-accent/5 px-3 py-1.5 text-xs">
+                <span className="flex items-center gap-0.5 rounded border border-line bg-surface-2 p-0.5">
+                  <button type="button" onClick={() => setEditTool('move')} aria-pressed={editTool === 'move'} className={`rounded px-2 py-0.5 ${editTool === 'move' ? 'bg-accent text-surface' : 'text-ink-muted hover:text-ink'}`}>Move / resize</button>
+                  <button type="button" onClick={() => { setEditTool('draw'); setSelected(null) }} aria-pressed={editTool === 'draw'} className={`rounded px-2 py-0.5 ${editTool === 'draw' ? 'bg-accent text-surface' : 'text-ink-muted hover:text-ink'}`}>Draw new box</button>
+                </span>
+                {selected === null || !dets[selected] || dets[selected].removed ? (
+                  <span className="text-ink-muted">{editTool === 'draw' ? 'Drag across the slots the item really covers. Boxes inside the new one are replaced.' : 'Click a box to pick it, drag it to move, drag a yellow corner to resize.'} Boxes snap to the grid; <b>Delete</b> removes the picked box.</span>
+                ) : (
+                  (() => {
+                    const d = dets[selected]
+                    const it = d.itemId ? items?.[d.itemId] : undefined
+                    const geom = cellsOf(d)
+                    const overlapping = dets.filter((o, i) => i !== selected && !o.removed && overlaps(geom, o)).length
+                    return (
+                      <>
+                        <span className="font-medium text-ink">Box {d.w}×{d.h}:</span>
+                        {it ? (
+                          <span className="flex items-center gap-1 rounded border border-accent/60 bg-surface px-1.5 py-0.5 text-ink">{it.iconLink && <img src={it.iconLink} alt="" className="h-5 w-5 object-contain" />}{it.shortName}</span>
+                        ) : (
+                          <span className="text-danger">no item</span>
+                        )}
+                        <span className="text-ink-dim">or</span>
+                        {boxMatches === null ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin text-ink-dim" />
+                        ) : (
+                          boxMatches.filter((m) => m.itemId !== d.itemId).slice(0, 5).map((m) => (
+                            <button key={m.itemId} type="button" onClick={() => assignBox(selected, geom, m.itemId, boxMatches, true)} className="flex items-center gap-1 rounded border border-line bg-surface px-1.5 py-0.5 hover:border-accent" title={items?.[m.itemId]?.name}>
+                              {items?.[m.itemId]?.iconLink && <img src={items[m.itemId].iconLink ?? ''} alt="" className="h-5 w-5 object-contain" />}
+                              {items?.[m.itemId]?.shortName ?? m.itemId.slice(-6)}
+                            </button>
+                          ))
+                        )}
+                        <span className="relative">
+                          <Search className="pointer-events-none absolute left-1.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-dim" />
+                          <input type="search" value={boxSearch} onChange={(e) => setBoxSearch(e.target.value)} placeholder="Other item…" className="w-36 rounded border border-line bg-surface py-0.5 pl-6 pr-1" />
+                          {boxResults.length > 0 && (
+                            <ul className="absolute left-0 top-full z-10 mt-1 w-64 rounded border border-line bg-surface-2 p-1 shadow-lg">
+                              {boxResults.map((i) => (
+                                <li key={i.id}><button type="button" onClick={() => { assignBox(selected, geom, i.id, boxMatches ?? [], true); setBoxSearch('') }} className="flex w-full items-center gap-2 rounded px-1 py-0.5 text-left hover:bg-surface-3">{i.iconLink && <img src={i.iconLink} alt="" className="h-5 w-5 object-contain" />}<span className="truncate">{i.name}</span></button></li>
+                              ))}
+                            </ul>
+                          )}
+                        </span>
+                        {overlapping > 0 && <span className="text-danger">Overlaps {overlapping} other box{overlapping === 1 ? '' : 'es'}: move or delete {overlapping === 1 ? 'it' : 'them'}.</span>}
+                        <button type="button" onClick={() => deleteBox(selected)} className="ml-auto inline-flex items-center gap-1 text-ink-dim hover:text-danger"><Trash2 className="h-3.5 w-3.5" /> Delete box</button>
+                      </>
+                    )
+                  })()
+                )}
+                {boxNote && <span className="w-full text-info">{boxNote}</span>}
+              </div>
+            )}
             <div className="p-2 md:min-h-0 md:flex-1 md:overflow-auto">
               {!url ? (
                 <div className="flex h-full min-h-64 flex-col items-center justify-center gap-3 rounded border-2 border-dashed border-line text-center text-sm text-ink-muted">
@@ -368,23 +610,47 @@ export function ScanDialog() {
                     <svg
                       ref={svgRef}
                       viewBox={`0 0 ${size.w} ${size.h}`}
-                      className={`absolute inset-0 h-full w-full ${cropping ? 'cursor-crosshair' : ''}`}
-                      onPointerDown={(e) => { if (!cropping) return; const p = toImage(e); setDragStart(p); setCrop({ x: p.x, y: p.y, w: 0, h: 0 }); (e.target as Element).setPointerCapture?.(e.pointerId) }}
-                      onPointerMove={(e) => { if (!cropping || !dragStart) return; const p = toImage(e); setCrop({ x: Math.min(p.x, dragStart.x), y: Math.min(p.y, dragStart.y), w: Math.abs(p.x - dragStart.x), h: Math.abs(p.y - dragStart.y) }) }}
-                      onPointerUp={() => { if (!cropping) return; setDragStart(null); setCropping(false); setCrop((c) => (c && c.w > 20 && c.h > 20 ? { x: Math.round(c.x), y: Math.round(c.y), w: Math.round(c.w), h: Math.round(c.h) } : null)) }}
+                      className={`absolute inset-0 h-full w-full touch-none ${cropping || editMode ? 'cursor-crosshair' : ''}`}
+                      onPointerDown={(e) => { if (editMode && !cropping) { onEditPointerDown(e); return } if (!cropping) return; const p = toImage(e); setDragStart(p); setCrop({ x: p.x, y: p.y, w: 0, h: 0 }); (e.target as Element).setPointerCapture?.(e.pointerId) }}
+                      onPointerMove={(e) => { if (editMode && !cropping) { onEditPointerMove(e); return } if (!cropping || !dragStart) return; const p = toImage(e); setCrop({ x: Math.min(p.x, dragStart.x), y: Math.min(p.y, dragStart.y), w: Math.abs(p.x - dragStart.x), h: Math.abs(p.y - dragStart.y) }) }}
+                      onPointerUp={(e) => { if (editMode && !cropping) { onEditPointerUp(e); return } if (!cropping) return; setDragStart(null); setCropping(false); setCrop((c) => (c && c.w > 20 && c.h > 20 ? { x: Math.round(c.x), y: Math.round(c.y), w: Math.round(c.w), h: Math.round(c.h) } : null)) }}
                     >
-                      {result?.detections.map((d, i) => {
+                      {editMode && result && (
+                        <g stroke="rgba(255,255,255,0.35)" strokeWidth={1} pointerEvents="none">
+                          {Array.from({ length: result.grid.cols + 1 }, (_, c) => (
+                            <line key={`c${c}`} x1={result.grid.ox + c * result.grid.pitch} x2={result.grid.ox + c * result.grid.pitch} y1={result.grid.oy} y2={result.grid.oy + result.grid.rows * result.grid.pitch} />
+                          ))}
+                          {Array.from({ length: result.grid.rows + 1 }, (_, r) => (
+                            <line key={`r${r}`} y1={result.grid.oy + r * result.grid.pitch} y2={result.grid.oy + r * result.grid.pitch} x1={result.grid.ox} x2={result.grid.ox + result.grid.cols * result.grid.pitch} />
+                          ))}
+                        </g>
+                      )}
+                      {result && dets.map((d, i) => {
+                        if (d.removed || (drag && drag.kind !== 'new' && drag.spot === i)) return null
                         const conf = CONF_STYLE[confidence(d.error, marginOf(d), Boolean(d.nameMatch))]
                         const x = result.grid.ox + d.col * result.grid.pitch
                         const y = result.grid.oy + d.row * result.grid.pitch
                         const row = rows.find((r) => r.spots.includes(i))
                         const off = row && !row.selected
                         return (
-                          <rect key={i} x={x + 2} y={y + 2} width={d.w * result.grid.pitch - 4} height={d.h * result.grid.pitch - 4} fill={hoveredSpots.has(i) ? 'rgba(255,255,255,0.18)' : tint ? (spotVerdict.get(i) === 'keep' ? KEEP_FILL : SELL_FILL) : 'none'} stroke={off ? '#888' : conf.stroke} strokeWidth={hoveredSpots.has(i) ? 5 : tint ? 2 : 3} strokeDasharray={off ? '6 4' : undefined} onMouseEnter={() => row && setHover(row.key)} onMouseLeave={() => setHover(null)}>
-                            <title>{`${name(row?.itemId ?? d.itemId)} · ${spotVerdict.get(i) === 'keep' ? 'keep' : 'sell'}`}</title>
+                          <rect key={i} data-spot={i} x={x + 2} y={y + 2} width={d.w * result.grid.pitch - 4} height={d.h * result.grid.pitch - 4} className={editMode ? 'cursor-move' : undefined} fill={hoveredSpots.has(i) ? 'rgba(255,255,255,0.18)' : tint ? (spotVerdict.get(i) === 'keep' ? KEEP_FILL : SELL_FILL) : editMode ? 'rgba(0,0,0,0.01)' : 'none'} stroke={selected === i && editMode ? '#fbbf24' : !d.itemId ? '#f87171' : off ? '#888' : conf.stroke} strokeWidth={selected === i && editMode ? 6 : hoveredSpots.has(i) ? 5 : tint ? 2 : 3} strokeDasharray={off ? '6 4' : undefined} onMouseEnter={() => row && setHover(row.key)} onMouseLeave={() => setHover(null)}>
+                            <title>{d.itemId ? `${name(row?.itemId ?? d.itemId)} · ${spotVerdict.get(i) === 'keep' ? 'keep' : 'sell'}` : 'No item'}</title>
                           </rect>
                         )
                       })}
+                      {editMode && result && selected !== null && dets[selected] && !dets[selected].removed && !drag && (() => {
+                        const d = dets[selected]
+                        const g = result.grid
+                        const hs = Math.max(10, g.pitch * 0.2)
+                        return CORNERS.map((c) => {
+                          const cx = g.ox + (c.endsWith('w') ? d.col : d.col + d.w) * g.pitch
+                          const cy = g.oy + (c.startsWith('n') ? d.row : d.row + d.h) * g.pitch
+                          return <rect key={c} data-handle={c} x={cx - hs / 2} y={cy - hs / 2} width={hs} height={hs} fill="#fbbf24" stroke="#0c0c0b" strokeWidth={2} className={c === 'nw' || c === 'se' ? 'cursor-nwse-resize' : 'cursor-nesw-resize'} />
+                        })
+                      })()}
+                      {editMode && result && draft && (
+                        <rect x={result.grid.ox + draft.col * result.grid.pitch + 2} y={result.grid.oy + draft.row * result.grid.pitch + 2} width={draft.w * result.grid.pitch - 4} height={draft.h * result.grid.pitch - 4} fill="rgba(251,191,36,0.15)" stroke="#fbbf24" strokeWidth={4} strokeDasharray="10 6" pointerEvents="none" />
+                      )}
                       {crop && <rect x={crop.x} y={crop.y} width={crop.w} height={crop.h} fill="rgba(251,191,36,0.08)" stroke="#fbbf24" strokeWidth={3} strokeDasharray="10 6" />}
                     </svg>
                   )}

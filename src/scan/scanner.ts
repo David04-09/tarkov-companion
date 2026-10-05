@@ -4,7 +4,7 @@
  * fetch() file:// URLs) and turns an image into detections.
  */
 import type { Detection, FingerprintHeader, Grid, LearnedFingerprint, OcrWord } from './core'
-import type { WorkerRequest, WorkerResponse } from './scan.worker'
+import type { IdentifyMatch, WorkerRequest, WorkerResponse } from './scan.worker'
 import ScanWorker from './scan.worker?worker'
 
 export interface ScanResult {
@@ -17,6 +17,7 @@ let worker: Worker | null = null
 let ready: Promise<number> | null = null
 let nextId = 1
 const pending = new Map<number, { resolve: (r: ScanResult) => void; reject: (e: Error) => void; onProgress?: (p: number) => void }>()
+const identifying = new Map<number, { resolve: (m: IdentifyMatch[]) => void; reject: (e: Error) => void }>()
 
 async function loadFile(name: string): Promise<ArrayBuffer> {
   if (window.desktop?.readAppResource) return window.desktop.readAppResource(`scan/${name}`)
@@ -37,9 +38,14 @@ function ensureWorker(): Promise<number> {
       else if (m.type === 'result') {
         pending.get(m.id)?.resolve({ grid: m.grid, detections: m.detections, ms: m.ms })
         pending.delete(m.id)
+      } else if (m.type === 'identified') {
+        identifying.get(m.id)?.resolve(m.matches)
+        identifying.delete(m.id)
       } else if (m.type === 'error') {
         pending.get(m.id)?.reject(new Error(m.message))
         pending.delete(m.id)
+        identifying.get(m.id)?.reject(new Error(m.message))
+        identifying.delete(m.id)
       }
     }
     w.onerror = (e) => reject(new Error(e.message || 'Scanner worker failed'))
@@ -81,5 +87,18 @@ export async function scanImage(
     pending.set(id, { resolve, reject, onProgress })
     const msg: WorkerRequest = { type: 'scan', id, bitmap, crop, learned, pitch, preferredPitch, words }
     worker?.postMessage(msg, [bitmap])
+  })
+}
+
+export type { IdentifyMatch }
+
+/** Best items for a box (grid cells of the last scan), e.g. after the user moved or drew it. */
+export async function identifyBox(box: { col: number; row: number; w: number; h: number }): Promise<IdentifyMatch[]> {
+  await ensureWorker()
+  const id = nextId++
+  return new Promise<IdentifyMatch[]>((resolve, reject) => {
+    identifying.set(id, { resolve, reject })
+    const msg: WorkerRequest = { type: 'identify', id, box }
+    worker?.postMessage(msg)
   })
 }
