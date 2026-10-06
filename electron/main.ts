@@ -1,10 +1,10 @@
 /**
- * Tarkov Companion desktop shell: main window + tray + overlay window + the
- * read-only EFT log watcher. The React app runs in the renderer with
+ * Tarkov Companion desktop shell: main window + tray + the read-only EFT log
+ * watcher. The React app runs in the renderer with
  * contextIsolation; the only bridge is the typed API in preload.ts.
  *
- * Nothing here touches the game: the overlay is an ordinary always-on-top
- * window (works with the game in borderless windowed mode).
+ * Nothing here touches the game, and nothing is shown on top of it (the old
+ * overlay window was removed in 1.8.0).
  */
 import { BrowserWindow, Menu, Tray, app, dialog, globalShortcut, ipcMain, nativeImage, protocol, shell } from 'electron'
 import fs from 'node:fs'
@@ -13,6 +13,7 @@ import type { DesktopSettings, GameEvent, LogStatsData, WipeEvent } from '../src
 import { detectLogsFolder } from './logs/locator'
 import { LogWatcher } from './logs/watcher'
 import { SettingsStore } from './settings'
+import { latestPosition, watchScreenshots } from './position'
 import { captureScreenUnderCursor, listGameScreenshots, readAppResource, readGameScreenshot, resourceResponse } from './capture'
 
 // Read-only access to the app's own bundled scanner/OCR files (the page is a local file and
@@ -23,7 +24,6 @@ import { checkForUpdates, getUpdateOutcome, getUpdateStatus, installUpdate, runI
 const DEV_URL = process.env.VITE_DEV_SERVER_URL
 
 let win: BrowserWindow | null = null
-let overlay: BrowserWindow | null = null
 let tray: Tray | null = null
 let quitting = false
 let settings: SettingsStore
@@ -45,7 +45,7 @@ function appIcon(): Electron.NativeImage {
   return img.isEmpty() ? nativeImage.createEmpty() : img
 }
 
-/** Sends to every open renderer (main + overlay). */
+/** Sends to every open renderer window. */
 function broadcast(channel: string, payload: unknown) {
   for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send(channel, payload)
 }
@@ -70,6 +70,8 @@ function bootstrap() {
     detectWipe(e)
   })
   watcher.on('state', (s) => broadcast('watcher:state', s))
+  // "Where am I": positions from the names of new in-game screenshots (read-only).
+  watchScreenshots((p) => broadcast('position:new', p))
 
   app.on('before-quit', () => {
     quitting = true
@@ -205,55 +207,6 @@ function showWindow() {
   win.focus()
 }
 
-/** Small frameless always-on-top window showing the map, timers and item lookup. */
-function toggleOverlay() {
-  if (overlay && !overlay.isDestroyed()) {
-    if (overlay.isVisible()) overlay.hide()
-    else overlay.show()
-    return
-  }
-  const b = settings.get().overlay
-  overlay = new BrowserWindow({
-    x: b.x,
-    y: b.y,
-    width: b.width,
-    height: b.height,
-    minWidth: 320,
-    minHeight: 240,
-    frame: false,
-    alwaysOnTop: true,
-    skipTaskbar: true,
-    resizable: true,
-    title: 'Tarkov Companion overlay',
-    backgroundColor: '#0c0c0b',
-    icon: appIcon(),
-    opacity: settings.get().overlayOpacity,
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.cjs'),
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: true,
-      additionalArguments: ['--tc-window=overlay', `--tc-version=${app.getVersion()}`],
-    },
-  })
-  overlay.setAlwaysOnTop(true, 'screen-saver')
-  overlay.setVisibleOnAllWorkspaces(true)
-  const saveBounds = () => {
-    if (overlay && !overlay.isDestroyed()) settings.update({ overlay: overlay.getBounds() })
-  }
-  overlay.on('resize', saveBounds)
-  overlay.on('move', saveBounds)
-  overlay.on('closed', () => {
-    overlay = null
-  })
-  lockNavigation(overlay)
-  load(overlay, '/overlay')
-}
-
-function applyOverlayOpacity() {
-  if (overlay && !overlay.isDestroyed()) overlay.setOpacity(settings.get().overlayOpacity)
-}
-
 function registerHotkey() {
   globalShortcut.unregisterAll()
   const tryRegister = (key: string, fn: () => void) => {
@@ -264,7 +217,6 @@ function registerHotkey() {
       // Invalid accelerator: ignore; the Settings screen shows the current value.
     }
   }
-  tryRegister(settings.get().overlayHotkey, toggleOverlay)
   tryRegister(settings.get().scanHotkey, () => void captureForScan())
 }
 
@@ -297,7 +249,6 @@ function refreshTrayMenu() {
   tray.setContextMenu(
     Menu.buildFromTemplate([
       { label: 'Open Tarkov Companion', click: showWindow },
-      { label: 'Toggle overlay', click: toggleOverlay },
       { label: paused ? 'Resume log watching' : 'Pause log watching', click: () => updateSettings({ paused: !settings.get().paused }) },
       { type: 'separator' },
       {
@@ -326,8 +277,7 @@ function updateSettings(patch: Partial<DesktopSettings>): DesktopSettings {
     app.setLoginItemSettings({ openAtLogin: after.startWithWindows, args: ['--minimized'] })
   }
   if (patch.logsPath !== undefined || patch.paused !== undefined) applyWatcherSettings()
-  if (patch.overlayHotkey !== undefined || patch.scanHotkey !== undefined) registerHotkey()
-  if (patch.overlayOpacity !== undefined) applyOverlayOpacity()
+  if (patch.scanHotkey !== undefined) registerHotkey()
   broadcast('watcher:state', watcher.getState())
   broadcast('settings:changed', settings.getPublic())
   return settings.getPublic()
@@ -338,10 +288,6 @@ function registerIpc() {
   ipcMain.handle('settings:get', () => settings.getPublic())
   ipcMain.handle('settings:set', (_e, patch: Partial<DesktopSettings>) => updateSettings(patch ?? {}))
   ipcMain.handle('watcher:recent', () => watcher.getRecentEvents())
-  ipcMain.handle('overlay:toggle', () => toggleOverlay())
-  ipcMain.handle('overlay:close', () => {
-    if (overlay && !overlay.isDestroyed()) overlay.hide()
-  })
   ipcMain.handle('watcher:pickFolder', async () => {
     if (!win) return null
     const res = await dialog.showOpenDialog(win, {
@@ -399,6 +345,7 @@ function registerIpc() {
   ipcMain.handle('update:check', () => checkForUpdates())
   ipcMain.handle('update:install', () => installUpdate())
   ipcMain.handle('update:outcome', () => getUpdateOutcome())
+  ipcMain.handle('position:latest', () => latestPosition())
   ipcMain.handle('update:runInstaller', (_e, version: unknown) => {
     if (typeof version === 'string' && /^[0-9]+\.[0-9]+\.[0-9]+$/.test(version)) runInstallerManually(version)
   })

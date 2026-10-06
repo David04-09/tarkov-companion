@@ -157,7 +157,7 @@ export function QuestPanel({ mapName, mapTasks, statuses, traders, items, hasFlo
         <button type="button" onClick={() => setCollapsed(false)} title="Show quest panel" className="flex h-10 w-full items-center justify-center gap-2 text-xs text-ink-muted hover:text-accent md:h-full md:w-10 md:flex-col">
           <ChevronLeft className="hidden h-4 w-4 md:block" />
           <ChevronUp className="h-4 w-4 md:hidden" />
-          <span className="md:[writing-mode:vertical-rl]">Quests {checkedHere > 0 ? `(${checkedHere} shown)` : ''}</span>
+          <span className="md:[writing-mode:vertical-rl]">Show quest panel {checkedHere > 0 ? `(${checkedHere} on map)` : ''}</span>
         </button>
       </div>
     )
@@ -173,9 +173,10 @@ export function QuestPanel({ mapName, mapTasks, statuses, traders, items, hasFlo
             </button>
           ))}
         </div>
-        <button type="button" onClick={() => setCollapsed(true)} title="Hide panel" className="rounded p-1 text-ink-muted hover:bg-surface-3 hover:text-ink">
+        <button type="button" onClick={() => setCollapsed(true)} title="Hide this panel to make the map bigger" className="flex items-center gap-1 rounded border border-line px-1.5 py-1 text-xs text-ink-muted hover:border-accent hover:text-accent">
           <PanelRightClose className="hidden h-4 w-4 md:block" />
           <ChevronDown className="h-4 w-4 md:hidden" />
+          Hide
         </button>
       </div>
 

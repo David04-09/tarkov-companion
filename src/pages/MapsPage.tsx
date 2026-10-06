@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from 'react'
-import { Image as ImageIcon, Info, Layers } from 'lucide-react'
+import { Image as ImageIcon, Info, Layers, MapPin, X } from 'lucide-react'
 import { useGameData } from '../api/hooks'
 import { SegmentButton } from '../components/SegmentButton'
 import { useNeeds } from '../hooks/useNeeds'
@@ -9,6 +9,9 @@ import { floorIsDrawable, resolveBaseLayer } from '../maps/mapConfig'
 import { DrawingLayer } from '../maps/overlay/DrawingLayer'
 import { FocusController } from '../maps/overlay/FocusController'
 import { Legend } from '../maps/overlay/Legend'
+import { BringBox } from '../maps/overlay/BringBox'
+import { PositionLayer } from '../maps/overlay/PositionLayer'
+import { usePositionStore } from '../maps/position'
 import { LootLayer, LootLegend } from '../maps/overlay/LootLayer'
 import { buildLootGroups } from '../maps/overlay/lootGroups'
 import { OtherLayers } from '../maps/overlay/OtherLayers'
@@ -49,6 +52,8 @@ export function MapsPage() {
   const layerToggles = useMapOverlayStore((s) => s.layers)
   const lootOn = useMapOverlayStore((s) => s.lootGroups)
   const spawnToggles = useMapOverlayStore((s) => s.spawnToggles)
+  const position = usePositionStore((s) => s.pos)
+  const clearPosition = usePositionStore((s) => s.set)
 
   const selected = options.find((o) => o.key === lastMapKey) ?? options[0]
 
@@ -109,6 +114,19 @@ export function MapsPage() {
             ))}
           </div>
         )}
+        {position && (
+          <span className="flex items-center gap-1.5 rounded border border-sky-400/50 bg-sky-400/10 px-2 py-1 text-xs text-sky-300" title={position.file}>
+            <MapPin className="h-3.5 w-3.5" />
+            {position.mapKey === selected.key ? (
+              <>You are here · screenshot {new Date(position.at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</>
+            ) : (
+              <button type="button" onClick={() => position.mapKey && setLastMapKey(position.mapKey)} className="underline">
+                Last position is on {options.find((o) => o.key === position.mapKey)?.name ?? 'another map'}
+              </button>
+            )}
+            <button type="button" onClick={() => clearPosition(null)} aria-label="Clear position" className="ml-1 text-sky-300/70 hover:text-sky-200"><X className="h-3.5 w-3.5" /></button>
+          </span>
+        )}
         {cfg.baseLayers.length > 1 && (
           <label className="ml-auto flex items-center gap-1.5 text-xs text-ink-muted">
             <ImageIcon className="h-4 w-4 text-ink-dim" aria-hidden />
@@ -144,6 +162,8 @@ export function MapsPage() {
             <FocusController mapTasks={mapTasks} maxZoom={layer.maxZoom} />
             <Legend entries={shown} />
             <LootLegend groups={lootShown} />
+            {position && position.mapKey === selected.key && <PositionLayer pos={position} />}
+            <BringBox mapTasks={shown.map((x) => x.mapTask).filter((m) => statuses[m.task.id] !== 'completed')} items={items} ownedKeyIds={ownedKeyIds} />
           </MapViewer>
         </div>
 

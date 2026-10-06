@@ -99,7 +99,7 @@ export function AboutSection() {
         <ul className="list-disc space-y-0.5 pl-4">
           <li>No access to the game's process or memory, no injection, nothing drawn inside the game.</li>
           <li>No keyboard or mouse input is sent and no network traffic is read; nothing is written to the game folder.</li>
-          <li>Quest tracking only reads the game's text log files (read-only, shared). The overlay is a separate normal window.</li>
+          <li>Quest tracking only reads the game's text log files (read-only, shared). There is no overlay: nothing is shown on top of the game.</li>
           <li>The stash scanner works on an ordinary Windows screenshot, like the Snipping Tool, Discord or OBS.</li>
         </ul>
       </div>

@@ -12,6 +12,9 @@ import { useProgressStore } from '../store/progress'
 import { WipeBanner } from '../desktop/WipeBanner'
 import { ItemLookup } from './ItemLookup'
 import { StoryTimerWatcher } from '../story/StoryTimerWatcher'
+import { AutoUntickCompleted } from '../maps/AutoUntick'
+import { RaidResultPrompt } from '../stats/RaidResultPrompt'
+import { PositionListener } from '../maps/position'
 import { Sidebar } from './Sidebar'
 
 export function Layout() {
@@ -34,6 +37,9 @@ export function Layout() {
     <div className="flex h-full bg-surface text-ink">
       <ItemLookup />
       <StoryTimerWatcher />
+      <AutoUntickCompleted />
+      {isDesktop() && <RaidResultPrompt />}
+      {isDesktop() && <PositionListener />}
       {showSetup && <FirstRunSetup />}
       {isDesktop() && <SyncReviewDialog />}
       {isDesktop() && <SyncToast />}

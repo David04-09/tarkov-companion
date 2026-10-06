@@ -88,12 +88,8 @@ export interface DesktopSettings {
   /** Set after the first automatic backfill so it only runs once. */
   initialBackfillDone: boolean
   paused: boolean
-  /** Electron accelerator for toggling the overlay window. */
-  overlayHotkey: string
   /** Electron accelerator that captures the screen and opens the stash scanner. */
   scanHotkey: string
-  /** 0.3 .. 1 */
-  overlayOpacity: number
   /** Last profile id / game version seen in the logs, for wipe detection. */
   knownProfileId: string | null
   knownGameVersion: string | null
@@ -148,6 +144,18 @@ export interface LogStatsData {
   to: number | null
 }
 
+/** Player position from an in-game screenshot's file name (game coordinates, y = height). */
+export interface PlayerPosition {
+  x: number
+  y: number
+  z: number
+  /** Heading in degrees around the vertical axis, 0 = facing +z. */
+  yaw: number
+  /** When the screenshot was taken (ms). */
+  at: number
+  file: string
+}
+
 export interface BackfillResult {
   /** First/last log line time per log folder (game launch). */
   sessions?: PlaySession[]
@@ -165,10 +173,6 @@ export interface BackfillResult {
 export interface DesktopApi {
   platform: string
   appVersion: string
-  /** True inside the small always-on-top overlay window. */
-  isOverlay: boolean
-  toggleOverlay: () => Promise<void>
-  closeOverlay: () => Promise<void>
   onWipeDetected: (cb: (e: WipeEvent) => void) => () => void
   onSettingsChanged: (cb: (s: DesktopSettings) => void) => () => void
   getState: () => Promise<WatcherState>
@@ -178,6 +182,10 @@ export interface DesktopApi {
   readPastLogs: () => Promise<BackfillResult>
   /** Raids, flea sales and quest hand-ins from all log folders, for the Stats tab. */
   readLogStats: () => Promise<LogStatsData>
+  /** Newest in-game screenshot position from the last 30 minutes, if any. */
+  getLatestPosition: () => Promise<PlayerPosition | null>
+  /** A new in-game screenshot was taken: the position from its file name. */
+  onPosition: (cb: (p: PlayerPosition) => void) => () => void
   getRecentEvents: () => Promise<GameEvent[]>
   openLogsFolder: () => Promise<void>
   openExternal: (url: string) => Promise<void>

@@ -15,7 +15,6 @@ export interface StoredSettings extends DesktopSettings {
   /** The one-time "still running in the tray" balloon was shown. */
   trayNoticeShown: boolean
   window: WindowBounds
-  overlay: WindowBounds
 }
 
 export const DEFAULT_SETTINGS: StoredSettings = {
@@ -26,15 +25,12 @@ export const DEFAULT_SETTINGS: StoredSettings = {
   openMapOnRaid: true,
   initialBackfillDone: false,
   paused: false,
-  overlayHotkey: 'Control+Shift+T',
   scanHotkey: 'Alt+Shift+S',
-  overlayOpacity: 0.9,
   knownProfileId: null,
   knownGameVersion: null,
   setupDone: false,
   trayNoticeShown: false,
   window: { width: 1360, height: 860 },
-  overlay: { width: 560, height: 480 },
 }
 
 export class SettingsStore {
@@ -45,12 +41,13 @@ export class SettingsStore {
     this.file = path.join(userDataDir, 'settings.json')
     this.data = { ...DEFAULT_SETTINGS }
     try {
-      const raw = JSON.parse(fs.readFileSync(this.file, 'utf8')) as Partial<StoredSettings>
+      const raw = JSON.parse(fs.readFileSync(this.file, 'utf8')) as Partial<StoredSettings> & Record<string, unknown>
+      // The overlay window was removed in 1.8.0: drop its old settings.
+      for (const k of ['overlay', 'overlayHotkey', 'overlayOpacity']) delete raw[k]
       this.data = {
         ...DEFAULT_SETTINGS,
         ...raw,
         window: { ...DEFAULT_SETTINGS.window, ...(raw.window ?? {}) },
-        overlay: { ...DEFAULT_SETTINGS.overlay, ...(raw.overlay ?? {}) },
       }
       // Installs from before the setup screen existed: an earlier backfill means setup already happened.
       if (raw.setupDone === undefined && raw.initialBackfillDone) this.data.setupDone = true
@@ -65,7 +62,7 @@ export class SettingsStore {
 
   /** The renderer-facing subset (no window bounds). */
   getPublic(): DesktopSettings {
-    const { window: _w, overlay: _o, trayNoticeShown: _t, ...rest } = this.data
+    const { window: _w, trayNoticeShown: _t, ...rest } = this.data
     return rest
   }
 
@@ -74,7 +71,6 @@ export class SettingsStore {
       ...this.data,
       ...patch,
       window: { ...this.data.window, ...(patch.window ?? {}) },
-      overlay: { ...this.data.overlay, ...(patch.overlay ?? {}) },
     }
     this.save()
     return this.get()

@@ -7,6 +7,8 @@ import { useProgressStore } from '../store/progress'
 import { DesktopSettingsSection } from '../desktop/DesktopSettings'
 import { parseDrawings, useDrawingsStore } from '../store/drawings'
 import { parseStory, useStoryStore } from '../store/story'
+import { useMapOverlayStore } from '../store/mapOverlay'
+import { useRaidLogStore } from '../store/raidLog'
 import { AboutSection } from './AboutSection'
 
 function downloadJson(filename: string, data: unknown) {
@@ -31,6 +33,8 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
 
   const fileInput = useRef<HTMLInputElement>(null)
   const [message, setMessage] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
+  const autoUntick = useMapOverlayStore((s) => s.autoUntickCompleted)
+  const setAutoUntick = useMapOverlayStore((s) => s.setAutoUntickCompleted)
   const [confirmReset, setConfirmReset] = useState(false)
 
   useEffect(() => {
@@ -42,8 +46,8 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const handleExport = () => {
     const date = new Date().toISOString().slice(0, 10)
     // Map drawings and story progress ride along with the progress file.
-    downloadJson(`tarkov-companion-progress-${date}.json`, { ...exportProgress(), drawings: useDrawingsStore.getState().byKey, story: useStoryStore.getState().byMode })
-    setMessage({ kind: 'ok', text: 'Progress file downloaded (including map drawings and story chapters).' })
+    downloadJson(`tarkov-companion-progress-${date}.json`, { ...exportProgress(), drawings: useDrawingsStore.getState().byKey, story: useStoryStore.getState().byMode, raidLog: useRaidLogStore.getState().byMode })
+    setMessage({ kind: 'ok', text: 'Progress file downloaded (including map drawings, story chapters and your raid log).' })
   }
 
   const handleImportFile = async (file: File) => {
@@ -54,6 +58,11 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
       if (drawings) useDrawingsStore.getState().importAll(drawings)
       const story = parseStory((parsed as { story?: unknown }).story)
       if (story) useStoryStore.getState().importAll(story)
+      const raidLog = (parsed as { raidLog?: unknown }).raidLog
+      if (raidLog && typeof raidLog === 'object') {
+        const r = raidLog as Record<string, unknown>
+        useRaidLogStore.getState().importAll({ regular: (r.regular as never) ?? {}, pve: (r.pve as never) ?? {} })
+      }
       setMessage({ kind: 'ok', text: `Imported progress${drawings ? ', map drawings' : ''}${story ? ', story chapters' : ''} from ${file.name}.` })
     } catch (err) {
       setMessage({
@@ -141,6 +150,17 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
                 {confirmReset ? 'Click again to confirm' : `Reset ${gameMode === 'pve' ? 'PvE' : 'PvP'} progress`}
               </button>
             </div>
+          </section>
+
+          <section className="space-y-2">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Maps</h3>
+            <label className="flex items-start gap-2 text-sm">
+              <input type="checkbox" checked={autoUntick} onChange={(e) => setAutoUntick(e.target.checked)} className="mt-0.5 h-4 w-4" />
+              <span>
+                Untick completed quests on the map
+                <span className="block text-xs text-ink-muted">When a quest you show on the map gets completed (ticked by you or picked up from the game log), it is removed from the map by itself.</span>
+              </span>
+            </label>
           </section>
 
           <section className="space-y-2">

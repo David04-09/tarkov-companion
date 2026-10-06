@@ -283,30 +283,7 @@ export function DesktopSettingsSection() {
       </section>
 
       <section className="space-y-2">
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Overlay window</h3>
-        <p className="text-xs text-ink-muted">
-          A small always-on-top window with the current map, timers and item lookup. It is an ordinary window: use the game in
-          borderless windowed mode so it can sit on top. It never interacts with the game process.
-        </p>
-        <div className="flex flex-wrap items-center gap-2 text-xs">
-          <button type="button" onClick={() => void window.desktop?.toggleOverlay()} className="btn">Show / hide overlay</button>
-          <label className="flex items-center gap-1.5">
-            Hotkey
-            <input
-              type="text"
-              defaultValue={settings?.overlayHotkey ?? 'Control+Shift+T'}
-              onBlur={(e) => e.target.value.trim() && set({ overlayHotkey: e.target.value.trim() })}
-              aria-label="Overlay hotkey"
-              className="w-40 rounded border border-line bg-surface px-2 py-1 font-mono text-xs"
-            />
-          </label>
-          <label className="flex items-center gap-1.5">
-            Opacity
-            <input type="range" min={0.3} max={1} step={0.05} value={settings?.overlayOpacity ?? 0.9} onChange={(e) => set({ overlayOpacity: Number(e.target.value) })} aria-label="Overlay opacity" />
-            {Math.round((settings?.overlayOpacity ?? 0.9) * 100)}%
-          </label>
-        </div>
-        <p className="text-[11px] text-ink-dim">Hotkey format: Electron accelerator, e.g. Control+Shift+T or Alt+F2. Position and size are remembered.</p>
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Hotkey</h3>
         <label className="flex flex-wrap items-center gap-1.5 text-xs">
           Stash scanner hotkey
           <input

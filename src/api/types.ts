@@ -135,6 +135,12 @@ export interface RawTaskObjective {
   maxDurability?: number
   // Quest-item objectives reference data.questItems
   questItem?: string
+  /** mark objectives: the marker to place (MS2000 etc.). */
+  markerItem?: string
+  /** shoot objectives: weapons that count (ids, or {id} objects). */
+  usingWeapon?: (string | { id?: string })[]
+  /** shoot objectives: alternative outfits; each outfit = items worn together. */
+  wearing?: (string | { id?: string })[][]
   // buildWeapon objectives (Gunsmith): base weapon in `item`, parts that must be fitted,
   // part categories that must be present, and stat limits.
   containsAll?: string[]
@@ -358,7 +364,29 @@ export interface RawItem {
   weight: number
   categories?: string[]
   sellToTrader?: { trader: string; priceRUB: number }[]
-  buyFromTrader?: { trader: string; priceRUB: number; minTraderLevel?: number }[]
+  buyFromTrader?: { trader: string; priceRUB: number; minTraderLevel?: number; buyLimit?: number; taskUnlock?: string | null }[]
+  /** Type-specific properties; ammo has propertiesType "ItemPropertiesAmmo". */
+  properties?: RawItemProperties | null
+}
+
+/** Only the ammo fields are read; other property types are ignored. */
+export interface RawItemProperties {
+  propertiesType?: string
+  caliber?: string
+  ammoType?: string
+  damage?: number
+  projectileCount?: number
+  penetrationPower?: number
+  armorDamage?: number
+  fragmentationChance?: number
+  ricochetChance?: number
+  initialSpeed?: number
+  tracer?: boolean
+  tracerColor?: string
+  accuracyModifier?: number
+  recoilModifier?: number
+  lightBleedModifier?: number
+  heavyBleedModifier?: number
 }
 
 export interface RawItemsData {
@@ -443,6 +471,10 @@ export interface TraderPrice {
   traderId: string
   priceRUB: number
   minTraderLevel?: number
+  /** Trader sale offers only: units per player per restock (0/absent = unknown). */
+  buyLimit?: number
+  /** Trader sale offers only: task id that must be completed to unlock the offer. */
+  taskUnlock?: string | null
 }
 
 export interface Item {
@@ -467,6 +499,38 @@ export interface Item {
   /** Trader sale offers (what you pay), cheapest first. */
   buyFromTrader: TraderPrice[]
   updated: string | null
+  /** Ballistics, only on ammo rounds (not grenades or ammo packs). */
+  ammo?: AmmoStats
+}
+
+/** Ammo ballistics from the items doc's `properties` (ItemPropertiesAmmo). */
+export interface AmmoStats {
+  /** Game calibre id, e.g. "Caliber556x45NATO". */
+  caliber: string
+  /** "bullet", "buckshot", "grenade" or "flashbang". */
+  ammoType: string
+  /** Flesh damage per projectile. */
+  damage: number
+  /** Pellets per shot (1 for bullets, 8 for most buckshot). */
+  projectileCount: number
+  penetrationPower: number
+  /** Armour damage in percent (52 = 52 %). */
+  armorDamage: number
+  /** Chance 0..1. */
+  fragmentationChance: number
+  /** Chance 0..1. */
+  ricochetChance: number
+  /** Muzzle velocity in m/s. */
+  initialSpeed: number
+  tracer: boolean
+  tracerColor: string | null
+  /** Fraction, e.g. -0.05 = 5 % worse accuracy. */
+  accuracyModifier: number
+  /** Fraction, e.g. 0.05 = 5 % more recoil. */
+  recoilModifier: number
+  /** Fraction added to the bleed chance. */
+  lightBleedModifier: number
+  heavyBleedModifier: number
 }
 
 // ---------------------------------------------------------------------------
@@ -575,6 +639,12 @@ export interface TaskObjective {
   exitName: string | null
   /** Gunsmith-style build requirements; null for other objective types. */
   build: WeaponBuild | null
+  /** mark objectives: marker item to bring. */
+  markerItemId: string | null
+  /** shoot objectives: weapons that count (any one). */
+  usingWeaponIds: string[]
+  /** shoot objectives: alternative outfits (any one), each a list of items worn together. */
+  wearingIds: string[][]
 }
 
 export interface WeaponBuild {

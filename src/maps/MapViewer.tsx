@@ -193,6 +193,18 @@ function Imagery({ layer, floor, onState }: ImageryProps) {
   return null
 }
 
+/** Re-fits the map whenever its box changes size (quest panel hidden/shown, window resized). */
+function SizeWatcher() {
+  const map = useMap()
+  useEffect(() => {
+    const el = map.getContainer()
+    const ro = new ResizeObserver(() => map.invalidateSize({ pan: false }))
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [map])
+  return null
+}
+
 function FullscreenButton({ target }: { target: React.RefObject<HTMLDivElement | null> }) {
   const map = useMap()
   const [active, setActive] = useState(false)
@@ -287,6 +299,7 @@ export function MapViewer({ mapKey, layer, floorName, affineOverride, children }
           }}
         />
         <FullscreenButton target={containerRef} />
+        <SizeWatcher />
         {children}
       </MapContainer>
 

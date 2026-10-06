@@ -6,7 +6,11 @@
 import type { GameEvent, LogStatsData, SessionMode } from '../shared/desktop-api'
 
 export interface RaidRecord {
+  /** Short raid id from the end notice ("B3LTB2"), empty if not logged. */
+  raidId: string
   location: string
+  /** Time the raid ended (end notice). */
+  end: number
   /** Raid start (GameStarted) or, if the start was not logged, the raid-end time. */
   start: number
   /** Minutes from start to the end notification, when both were logged. */
@@ -53,7 +57,7 @@ export function pairRaids(events: GameEvent[]): RaidRecord[] {
       const startedAt = pending?.startedAt ?? null
       // A start more than 3 hours before the end belongs to another raid whose end was never logged.
       const minutes = startedAt !== null && e.at - startedAt < 3 * 3_600_000 ? (e.at - startedAt) / 60_000 : null
-      raids.push({ location, start: minutes !== null && startedAt !== null ? startedAt : e.at, minutes })
+      raids.push({ raidId: e.raidId, location, start: minutes !== null && startedAt !== null ? startedAt : e.at, end: e.at, minutes })
       pending = null
     }
   }

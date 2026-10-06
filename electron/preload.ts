@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { BackfillProgress, DesktopApi, DesktopSettings, GameEvent, UpdateStatus, WatcherState, WipeEvent } from '../src/shared/desktop-api'
+import type { BackfillProgress, DesktopApi, DesktopSettings, GameEvent, PlayerPosition, UpdateStatus, WatcherState, WipeEvent } from '../src/shared/desktop-api'
 
 function subscribe<T>(channel: string, cb: (payload: T) => void): () => void {
   const listener = (_e: Electron.IpcRendererEvent, payload: T) => cb(payload)
@@ -10,7 +10,6 @@ function subscribe<T>(channel: string, cb: (payload: T) => void): () => void {
 const api: DesktopApi = {
   platform: process.platform,
   appVersion: process.argv.find((a) => a.startsWith('--tc-version='))?.slice('--tc-version='.length) ?? '',
-  isOverlay: process.argv.includes('--tc-window=overlay'),
   getState: () => ipcRenderer.invoke('watcher:getState'),
   getSettings: () => ipcRenderer.invoke('settings:get'),
   setSettings: (patch: Partial<DesktopSettings>) => ipcRenderer.invoke('settings:set', patch),
@@ -19,8 +18,6 @@ const api: DesktopApi = {
   getRecentEvents: () => ipcRenderer.invoke('watcher:recent'),
   openLogsFolder: () => ipcRenderer.invoke('watcher:openFolder'),
   openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),
-  toggleOverlay: () => ipcRenderer.invoke('overlay:toggle'),
-  closeOverlay: () => ipcRenderer.invoke('overlay:close'),
   readAppResource: async (rel: string) => {
     const bytes = (await ipcRenderer.invoke('resource:read', rel)) as Uint8Array
     return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
@@ -34,6 +31,8 @@ const api: DesktopApi = {
   installUpdate: () => ipcRenderer.invoke('update:install'),
   getUpdateOutcome: () => ipcRenderer.invoke('update:outcome'),
   readLogStats: () => ipcRenderer.invoke('stats:read'),
+  getLatestPosition: () => ipcRenderer.invoke('position:latest'),
+  onPosition: (cb) => subscribe<PlayerPosition>('position:new', cb),
   runInstaller: (version) => ipcRenderer.invoke('update:runInstaller', version),
   onUpdateStatus: (cb) => subscribe<UpdateStatus>('update:status', cb),
   onEvent: (cb) => subscribe<GameEvent>('watcher:event', cb),

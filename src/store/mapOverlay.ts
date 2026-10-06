@@ -34,6 +34,8 @@ export interface MapOverlayState {
   lootGroups: Record<string, boolean>
   spawnToggles: Record<SpawnToggleKey, boolean>
   panelCollapsed: boolean
+  /** Quests shown on the map are unticked automatically once they are completed (Settings). */
+  autoUntickCompleted: boolean
   /** Set by the panel's Focus button; consumed by the map. */
   focusRequest: { taskId: string; nonce: number } | null
   setTaskChecked: (taskId: string, checked: boolean) => void
@@ -45,6 +47,7 @@ export interface MapOverlayState {
   setSpawnToggle: (key: SpawnToggleKey, on: boolean) => void
   setSpawnToggles: (keys: SpawnToggleKey[], on: boolean) => void
   setPanelCollapsed: (collapsed: boolean) => void
+  setAutoUntickCompleted: (on: boolean) => void
   requestFocus: (taskId: string) => void
 }
 
@@ -77,6 +80,7 @@ export const useMapOverlayStore = create<MapOverlayState>()(
       lootGroups: {},
       spawnToggles: {},
       panelCollapsed: false,
+      autoUntickCompleted: true,
       focusRequest: null,
       setTaskChecked: (taskId, checked) =>
         set((s) => {
@@ -112,6 +116,7 @@ export const useMapOverlayStore = create<MapOverlayState>()(
           return { spawnToggles: next }
         }),
       setPanelCollapsed: (panelCollapsed) => set({ panelCollapsed }),
+      setAutoUntickCompleted: (autoUntickCompleted) => set({ autoUntickCompleted }),
       requestFocus: (taskId) => set({ focusRequest: { taskId, nonce: Date.now() } }),
     }),
     {
@@ -125,6 +130,7 @@ export const useMapOverlayStore = create<MapOverlayState>()(
         lootGroups: s.lootGroups,
         spawnToggles: s.spawnToggles,
         panelCollapsed: s.panelCollapsed,
+        autoUntickCompleted: s.autoUntickCompleted,
       }),
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<MapOverlayState> & { layers?: Record<string, boolean> }
@@ -137,6 +143,7 @@ export const useMapOverlayStore = create<MapOverlayState>()(
           lootGroups: p.lootGroups ?? {},
           spawnToggles: p.spawnToggles ?? {},
           panelCollapsed: p.panelCollapsed ?? false,
+          autoUntickCompleted: p.autoUntickCompleted ?? true,
           layers,
           focusRequest: null,
         }

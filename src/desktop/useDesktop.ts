@@ -19,7 +19,6 @@ import { beep, useTimersStore } from './timers'
 import { useWipeBannerStore } from './wipe'
 
 export const isDesktop = (): boolean => typeof window !== 'undefined' && Boolean(window.desktop)
-export const isOverlayWindow = (): boolean => Boolean(window.desktop?.isOverlay)
 
 /** Log session mode -> the app's progress mode. PvP season shares the PvP profile. */
 export function modeToGameMode(mode: SessionMode, fallback: GameMode): GameMode {
@@ -260,10 +259,9 @@ export function DesktopBridge() {
             ? maps.find((m) => m.nameId.toLowerCase() === e.location.toLowerCase())
             : maps.find((m) => m.scenePath && m.scenePath.toLowerCase() === e.scenePath.toLowerCase())
         if (!map) return
-        // The overlay always follows the current raid; the main window only if the setting is on.
-        if (isOverlayWindow() || useDesktopStore.getState().settings?.openMapOnRaid) {
+        if (useDesktopStore.getState().settings?.openMapOnRaid) {
           useUiStore.getState().setLastMapKey(map.normalizedName)
-          if (!isOverlayWindow()) navigate('/maps')
+          navigate('/maps')
         }
       }
     })
@@ -285,7 +283,7 @@ export function DesktopBridge() {
   const setupDone = useLocalFlags((s) => s.setupDone)
   const backfillDone = useLocalFlags((s) => s.backfillDone)
   useEffect(() => {
-    if (!window.desktop || isOverlayWindow() || !logsPath || !setupDone || backfillDone) return
+    if (!window.desktop || !logsPath || !setupDone || backfillDone) return
     void runBackfill()
   }, [logsPath, setupDone, backfillDone])
 

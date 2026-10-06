@@ -2,6 +2,7 @@ import { assertCatalogSupports, getEndpointCatalog } from './catalog'
 import { fetchJson, type GameMode } from './client'
 import { fetchTranslated, type Translator } from './translate'
 import type {
+  AmmoStats,
   Craft,
   FactionName,
   GameData,
@@ -16,6 +17,7 @@ import type {
   ObjectiveLocation,
   PricePoint,
   QuestItem,
+  RawItemProperties,
   RawItemsData,
   RawMap,
   RawMapsData,
@@ -179,8 +181,13 @@ function adaptObjective(
     requiredKeys: (raw.requiredKeys ?? []).map((g) => (Array.isArray(g) ? g : [g]).filter(Boolean)),
     exitName: raw.exitName ? t(raw.exitName, raw.exitName) : null,
     build: adaptBuild(raw),
+    markerItemId: raw.markerItem ?? null,
+    usingWeaponIds: (raw.usingWeapon ?? []).map(idOf).filter(Boolean),
+    wearingIds: (raw.wearing ?? []).map((g) => (Array.isArray(g) ? g : [g]).map(idOf).filter(Boolean)).filter((g) => g.length > 0),
   }
 }
+
+const idOf = (x: string | { id?: string } | null | undefined): string => (typeof x === 'string' ? x : (x?.id ?? ''))
 
 function adaptBuild(raw: RawTaskObjective): WeaponBuild | null {
   if (raw.type !== 'buildWeapon') return null
@@ -335,6 +342,30 @@ export async function fetchGameData(gameMode: GameMode, signal?: AbortSignal): P
   }
 }
 
+const num = (v: unknown, fallback = 0): number => (typeof v === 'number' && Number.isFinite(v) ? v : fallback)
+
+/** Ballistics for ammo rounds; null for anything else (grenades, ammo packs, gear). */
+function adaptAmmo(p: RawItemProperties | null | undefined): AmmoStats | null {
+  if (!p || p.propertiesType !== 'ItemPropertiesAmmo' || typeof p.caliber !== 'string' || !p.caliber) return null
+  return {
+    caliber: p.caliber,
+    ammoType: p.ammoType ?? 'bullet',
+    damage: num(p.damage),
+    projectileCount: Math.max(1, num(p.projectileCount, 1)),
+    penetrationPower: num(p.penetrationPower),
+    armorDamage: num(p.armorDamage),
+    fragmentationChance: num(p.fragmentationChance),
+    ricochetChance: num(p.ricochetChance),
+    initialSpeed: num(p.initialSpeed),
+    tracer: p.tracer === true,
+    tracerColor: p.tracer === true && p.tracerColor ? p.tracerColor : null,
+    accuracyModifier: num(p.accuracyModifier),
+    recoilModifier: num(p.recoilModifier),
+    lightBleedModifier: num(p.lightBleedModifier),
+    heavyBleedModifier: num(p.heavyBleedModifier),
+  }
+}
+
 /** All items (name, short name, icon, prices) plus the level XP table, for one game mode. ~1.4 MB compressed. */
 export async function fetchItems(gameMode: GameMode, signal?: AbortSignal): Promise<ItemsBundle> {
   const { doc, t } = await fetchTranslated<RawItemsData>(gameMode, 'items', signal)
@@ -367,10 +398,18 @@ export async function fetchItems(gameMode: GameMode, signal?: AbortSignal): Prom
         .sort((a, b) => b.priceRUB - a.priceRUB),
       buyFromTrader: (raw.buyFromTrader ?? [])
         .filter((s) => s && typeof s.priceRUB === 'number')
-        .map((s) => ({ traderId: s.trader, priceRUB: s.priceRUB, minTraderLevel: s.minTraderLevel }))
+        .map((s) => ({
+          traderId: s.trader,
+          priceRUB: s.priceRUB,
+          minTraderLevel: s.minTraderLevel,
+          buyLimit: typeof s.buyLimit === 'number' ? s.buyLimit : undefined,
+          taskUnlock: s.taskUnlock ?? null,
+        }))
         .sort((a, b) => a.priceRUB - b.priceRUB),
       updated: raw.updated ?? null,
     }
+    const ammo = adaptAmmo(raw.properties)
+    if (ammo) item.ammo = ammo
     out[item.id] = item
   }
   const categoryNames: Record<string, string> = {}

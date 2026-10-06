@@ -116,12 +116,12 @@ export const LootLayer = memo(function LootLayer({ groups, clusterBelowZoom }: {
   )
 })
 
-/** Bottom-right legend for the loot groups currently shown. */
+/** Top-right legend (under the fullscreen button) for the loot groups currently shown. */
 export function LootLegend({ groups }: { groups: LootGroup[] }) {
   if (groups.length === 0) return null
   return (
-    <div className="leaflet-bottom leaflet-right">
-      <div className="leaflet-control !m-2 max-h-[40vh] max-w-[220px] overflow-y-auto rounded border border-line bg-surface-2/95 px-2.5 py-2 text-xs shadow-lg">
+    <div className="leaflet-top leaflet-right">
+      <div className="leaflet-control !mr-2 !mt-14 max-h-[34vh] max-w-[220px] overflow-y-auto rounded border border-line bg-surface-2/95 px-2.5 py-2 text-xs shadow-lg">
         <ul className="space-y-1">
           {groups.map((g) => (
             <li key={g.name} className="flex items-center gap-2">

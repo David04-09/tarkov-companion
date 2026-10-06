@@ -12,7 +12,7 @@ import { APP_VERSION } from '../lib/app-info'
 
 const ONE_DAY = 24 * 60 * 60 * 1000
 /** Bump whenever an adapter in queries.ts changes the shape of cached data. */
-const CACHE_SCHEMA = 3
+const CACHE_SCHEMA = 5
 /** Query key roots that are live data and must not be served from disk. */
 const LIVE_ROOTS = new Set(['prices', 'status', 'logStats'])
 
