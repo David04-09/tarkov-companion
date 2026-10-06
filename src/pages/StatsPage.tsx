@@ -234,7 +234,7 @@ export function StatsPage() {
             </Card>
           </div>
 
-          <RaidLog raids={stats.raids} mode={mode} mapName={mapName} />
+          <RaidLog raids={stats.raids} mode={mode} mapName={mapName} mapNames={[...new Set((gameData.data?.maps ?? []).map((m) => m.name))].sort()} />
 
           <section className="rounded-lg border border-line bg-surface-2 p-4">
             <div className="flex flex-wrap items-start gap-3">

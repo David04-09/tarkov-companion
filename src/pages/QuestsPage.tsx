@@ -26,6 +26,8 @@ import {
   type TaskStatus,
 } from '../lib/taskStatus'
 import { useProfile, useProgressStore } from '../store/progress'
+import { SegmentButton } from '../components/SegmentButton'
+import { QuestTreeView } from '../quests/QuestTree'
 
 type StatusFilter = 'all' | TaskStatus
 type SortKey = 'name' | 'trader' | 'map' | 'minPlayerLevel'
@@ -406,7 +408,48 @@ function QuestTable({
 // Page
 // ---------------------------------------------------------------------------
 
+type QuestsView = 'list' | 'tree'
+const VIEW_KEY = 'tc-quests-view'
+
+/** Quests tab: the filterable list, or the trader trees / Kappa and Lightkeeper paths. */
 export function QuestsPage() {
+  const [view, setViewState] = useState<QuestsView>(() => {
+    try {
+      return localStorage.getItem(VIEW_KEY) === 'tree' ? 'tree' : 'list'
+    } catch {
+      return 'list'
+    }
+  })
+  const setView = (v: QuestsView) => {
+    setViewState(v)
+    try {
+      localStorage.setItem(VIEW_KEY, v)
+    } catch {
+      // remembering the view is only a convenience
+    }
+  }
+  return (
+    <div>
+      <div className="mb-3 flex justify-end">
+        <div className="flex items-center gap-1 rounded border border-line bg-surface-2 p-0.5">
+          <SegmentButton label="List" active={view === 'list'} onClick={() => setView('list')} />
+          <SegmentButton label="Tree & Kappa path" active={view === 'tree'} onClick={() => setView('tree')} />
+        </div>
+      </div>
+      {view === 'list' ? (
+        <QuestList />
+      ) : (
+        <>
+          <h1 className="text-2xl font-semibold">Quest tree</h1>
+          <p className="mb-4 text-sm text-ink-muted">Each trader's quests as a chain, and everything still needed for Kappa or Lightkeeper.</p>
+          <QuestTreeView />
+        </>
+      )}
+    </div>
+  )
+}
+
+function QuestList() {
   const profile = useProfile()
   const query = useGameData()
   // Items are only needed for objective names/icons, so load them in the background.

@@ -146,6 +146,13 @@ export interface LogStatsData {
   resetAtByMode: Record<SessionMode, number | null>
 }
 
+/** One automatic progress backup (userData\backups). */
+export interface BackupInfo {
+  name: string
+  at: number
+  size: number
+}
+
 /** Player position from an in-game screenshot's file name (game coordinates, y = height). */
 export interface PlayerPosition {
   x: number
@@ -188,6 +195,11 @@ export interface DesktopApi {
   readLogStats: () => Promise<LogStatsData>
   /** Newest in-game screenshot position from the last 30 minutes, if any. */
   getLatestPosition: () => Promise<PlayerPosition | null>
+  /** Daily progress backups in the app's data folder. */
+  writeBackup: (json: string) => Promise<BackupInfo>
+  listBackups: () => Promise<BackupInfo[]>
+  readBackup: (name: string) => Promise<string>
+  openBackupsFolder: () => Promise<void>
   /** A new in-game screenshot was taken: the position from its file name. */
   onPosition: (cb: (p: PlayerPosition) => void) => () => void
   getRecentEvents: () => Promise<GameEvent[]>

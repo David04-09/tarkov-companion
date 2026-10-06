@@ -15,7 +15,8 @@ import { estimateLevelFromQuests, type LevelEstimate } from '../lib/levelEstimat
 import { CURRENCY_ITEM_IDS, remainingFor } from '../lib/needs'
 import { computeTaskStatuses, countStatuses, isFactionEligible } from '../lib/taskStatus'
 import { findMapConfig, resolveBaseLayer } from '../maps/mapConfig'
-import { buildMapTasks } from '../maps/overlay/mapTasks'
+import { buildMapTasks, type MapTask } from '../maps/overlay/mapTasks'
+import { buildBringList } from '../maps/overlay/bringList'
 import { buildSpawnModel } from '../maps/overlay/spawns'
 import { useInventoryStore } from '../store/inventory'
 import { useMapOverlayStore } from '../store/mapOverlay'
@@ -109,6 +110,7 @@ export function DashboardPage() {
   const favorites = useInventoryStore((s) => s.favoriteCraftIds)
   const setLastMapKey = useUiStore((s) => s.setLastMapKey)
   const setTasksChecked = useMapOverlayStore((s) => s.setTasksChecked)
+  const checkedTaskIds = useMapOverlayStore((s) => s.checkedTaskIds)
 
   const estimate = useMemo(
     () => (query.data && itemsQuery.data ? estimateLevelFromQuests(query.data.tasks, profile.completedTaskIds, itemsQuery.data.playerLevels) : null),
@@ -164,7 +166,8 @@ export function DashboardPage() {
 
   const tonight = useMemo(() => {
     if (!query.data || !derived) return []
-    const rows: { key: string; name: string; tasks: number; spots: number; taskIds: string[]; bosses: string[] }[] = []
+    const checked = new Set(checkedTaskIds)
+    const rows: { key: string; name: string; tasks: number; ticked: number; spots: number; taskIds: string[]; bosses: string[]; bringFrom: MapTask[] }[] = []
     for (const m of query.data.maps) {
       const cfg = findMapConfig(m.normalizedName)
       if (!cfg) continue
@@ -176,10 +179,13 @@ export function DashboardPage() {
         .filter((e) => e.spawnChance > 0 && (e.group !== 'goons' || spawnModel.goonsHere))
         .slice(0, 3)
         .map((e) => `${e.group === 'goons' ? 'Goons' : e.name} ${Math.round(e.spawnChance * 100)}%`)
-      rows.push({ key: m.normalizedName, name: m.name, tasks: mapTasks.length, spots: mapTasks.reduce((n, mt) => n + mt.placements.length, 0), taskIds: mapTasks.map((mt) => mt.task.id), bosses: [...new Set(bosses)] })
+      const tickedHere = mapTasks.filter((mt) => checked.has(mt.task.id))
+      rows.push({ key: m.normalizedName, name: m.name, tasks: mapTasks.length, ticked: tickedHere.length, spots: mapTasks.reduce((n, mt) => n + mt.placements.length, 0), taskIds: mapTasks.map((mt) => mt.task.id), bosses: [...new Set(bosses)], bringFrom: tickedHere.length ? tickedHere : mapTasks })
     }
-    return rows.sort((a, b) => b.tasks - a.tasks || b.spots - a.spots).slice(0, 3)
-  }, [query.data, derived])
+    // Maps with quests you ticked on the Maps tab come first, then the most available quests.
+    return rows.sort((a, b) => b.ticked - a.ticked || b.tasks - a.tasks || b.spots - a.spots).slice(0, 3)
+  }, [query.data, derived, checkedTaskIds])
+  const tonightBring = useMemo(() => (tonight[0] ? buildBringList(tonight[0].bringFrom) : []), [tonight])
 
   const itemName = (id: string) => itemsQuery.data?.items[id]?.name ?? '…'
 
@@ -232,13 +238,31 @@ export function DashboardPage() {
                   <MapIcon className={`h-4 w-4 shrink-0 ${i === 0 ? 'text-accent' : 'text-ink-dim'}`} />
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-sm font-medium">{m.name}</div>
-                    <div className="text-xs text-ink-muted">{m.tasks} available quest{m.tasks === 1 ? '' : 's'} · {m.spots} marked spot{m.spots === 1 ? '' : 's'}</div>
+                    <div className="text-xs text-ink-muted">{m.ticked > 0 ? `${m.ticked} ticked · ` : ''}{m.tasks} available quest{m.tasks === 1 ? '' : 's'} · {m.spots} marked spot{m.spots === 1 ? '' : 's'}</div>
                     {m.bosses.length > 0 && <div className="truncate text-[11px] text-[#f4a261]">Bosses: {m.bosses.join(' · ')}</div>}
                   </div>
-                  <button type="button" onClick={() => { setLastMapKey(m.key); setTasksChecked(m.taskIds, true); navigate('/maps') }} className="btn !px-2 !py-0.5 !text-[11px]">Open <ArrowRight className="h-3 w-3" /></button>
+                  <button type="button" onClick={() => { setLastMapKey(m.key); if (m.ticked === 0) setTasksChecked(m.taskIds, true); navigate('/maps') }} className="btn !px-2 !py-0.5 !text-[11px]">Open <ArrowRight className="h-3 w-3" /></button>
                 </li>
               ))}
             </ul>
+          )}
+          {tonight[0] && tonightBring.length > 0 && (
+            <div className="mt-2 border-t border-line pt-2">
+              <div className="mb-1 text-[11px] text-ink-dim">Bring to {tonight[0].name} ({tonight[0].ticked > 0 ? `${tonight[0].ticked} ticked quest${tonight[0].ticked === 1 ? '' : 's'}` : `all ${tonight[0].tasks} available quests`})</div>
+              <ul className="flex flex-wrap gap-1">
+                {tonightBring.slice(0, 10).map((e, i) => {
+                  const it = e.itemIds[0] ? itemsQuery.data?.items[e.itemIds[0]] : undefined
+                  return (
+                    <li key={i} title={`For: ${e.quests.join(', ')}`} className="flex items-center gap-1 rounded border border-line bg-surface px-1.5 py-0.5 text-[11px]">
+                      {it?.iconLink && <img src={it.iconLink} alt="" className="h-4 w-4 object-contain" />}
+                      <span className="max-w-32 truncate">{e.questItemName ?? it?.shortName ?? '…'}</span>
+                      {e.count > 1 && <span className="text-ink-dim">×{e.count}</span>}
+                    </li>
+                  )
+                })}
+                {tonightBring.length > 10 && <li className="px-1 text-[11px] text-ink-dim">+{tonightBring.length - 10} more on the map</li>}
+              </ul>
+            </div>
           )}
         </div>
 

@@ -14,6 +14,12 @@ import type {
   ItemsBundle,
   ItemsById,
   MapDetails,
+  ModSlot,
+  ModStats,
+  PresetInfo,
+  RawItem,
+  RawItemSlot,
+  WeaponStats,
   ObjectiveLocation,
   PricePoint,
   QuestItem,
@@ -366,6 +372,66 @@ function adaptAmmo(p: RawItemProperties | null | undefined): AmmoStats | null {
   }
 }
 
+/** Weapon/part slots; revolver cylinder chambers (camora_*) hold rounds, not parts, and are dropped. */
+function adaptSlots(slots: RawItemSlot[] | undefined): ModSlot[] {
+  const out: ModSlot[] = []
+  for (const s of slots ?? []) {
+    if (!s || typeof s.id !== 'string' || typeof s.nameId !== 'string' || s.nameId.startsWith('camora')) continue
+    const allowed = (s.filters?.allowedItems ?? []).filter((id) => typeof id === 'string')
+    if (!allowed.length) continue
+    out.push({ id: s.id, nameId: s.nameId, required: s.required === true, allowed })
+  }
+  return out
+}
+
+const MOD_PROPERTY_TYPES = new Set(['ItemPropertiesWeaponMod', 'ItemPropertiesScope', 'ItemPropertiesBarrel', 'ItemPropertiesMagazine'])
+
+/** Weapon-builder data: base stats on firearms, modifiers on parts, part lists on presets. */
+function adaptWeaponData(raw: RawItem, item: Item): void {
+  const p = raw.properties
+  if (!p) return
+  const conflicts = (raw.conflictingItems ?? []).filter((id) => typeof id === 'string')
+  if (p.propertiesType === 'ItemPropertiesWeapon' && raw.types?.includes('gun')) {
+    const weapon: WeaponStats = {
+      caliber: p.caliber ?? '',
+      ergonomics: num(p.ergonomics),
+      recoilVertical: num(p.recoilVertical),
+      recoilHorizontal: num(p.recoilHorizontal),
+      fireRate: num(p.fireRate),
+      effectiveDistance: num(p.effectiveDistance),
+      fireModes: Array.isArray(p.fireModes) ? p.fireModes : [],
+      weight: num(raw.weight),
+      slots: adaptSlots(p.slots),
+      defaultPreset: p.defaultPreset ?? null,
+      presets: Array.isArray(p.presets) ? p.presets : [],
+      conflicts,
+    }
+    item.weapon = weapon
+  } else if (p.propertiesType && MOD_PROPERTY_TYPES.has(p.propertiesType)) {
+    const mod: ModStats = {
+      ergonomics: num(p.ergonomics),
+      recoilModifier: num(p.recoilModifier),
+      accuracyModifier: num(p.accuracyModifier),
+      weight: num(raw.weight),
+      slots: adaptSlots(p.slots),
+      conflicts,
+    }
+    item.mod = mod
+  } else if (p.propertiesType === 'ItemPropertiesPreset' && typeof p.baseItem === 'string') {
+    const base = p.baseItem
+    const preset: PresetInfo = {
+      baseItem: base,
+      // Rounds loaded in the magazine are filtered out later (they are not parts).
+      parts: (raw.containsItems ?? []).map((c) => c?.item).filter((id): id is string => typeof id === 'string' && id !== base),
+      ergonomics: num(p.ergonomics),
+      recoilVertical: num(p.recoilVertical),
+      recoilHorizontal: num(p.recoilHorizontal),
+      isDefault: p.default === true,
+    }
+    item.preset = preset
+  }
+}
+
 /** All items (name, short name, icon, prices) plus the level XP table, for one game mode. ~1.4 MB compressed. */
 export async function fetchItems(gameMode: GameMode, signal?: AbortSignal): Promise<ItemsBundle> {
   const { doc, t } = await fetchTranslated<RawItemsData>(gameMode, 'items', signal)
@@ -410,6 +476,7 @@ export async function fetchItems(gameMode: GameMode, signal?: AbortSignal): Prom
     }
     const ammo = adaptAmmo(raw.properties)
     if (ammo) item.ammo = ammo
+    adaptWeaponData(raw, item)
     out[item.id] = item
   }
   const categoryNames: Record<string, string> = {}

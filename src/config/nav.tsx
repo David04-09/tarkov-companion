@@ -1,5 +1,5 @@
 import type { ComponentType } from 'react'
-import { BarChart3, BookOpen, Coins, Crosshair, Hammer, House, KeyRound, LayoutDashboard, Map, Package, ScrollText, Store, type LucideIcon } from 'lucide-react'
+import { BarChart3, BookOpen, Coins, Crosshair, Wrench, Hammer, House, KeyRound, LayoutDashboard, Map, Package, ScrollText, Store, type LucideIcon } from 'lucide-react'
 import { CraftsPage } from '../pages/CraftsPage'
 import { DashboardPage } from '../pages/DashboardPage'
 import { HideoutPage } from '../pages/HideoutPage'
@@ -11,6 +11,7 @@ import { StoryPage } from '../pages/StoryPage'
 import { StatsPage } from '../pages/StatsPage'
 import { MoneyPage } from '../pages/MoneyPage'
 import { AmmoPage } from '../pages/AmmoPage'
+import { WeaponsPage } from '../pages/WeaponsPage'
 import { FleaMarketPage } from '../pages/FleaMarketPage'
 
 export interface NavItem {
@@ -38,5 +39,6 @@ export const NAV_ITEMS: NavItem[] = [
   { path: '/flea', label: 'Flea Market', icon: Store, component: FleaMarketPage, fullBleed: true },
   { path: '/money', label: 'Money makers', icon: Coins, component: MoneyPage },
   { path: '/ammo', label: 'Ammo', icon: Crosshair, component: AmmoPage },
+  { path: '/weapons', label: 'Weapon builder', icon: Wrench, component: WeaponsPage },
   { path: '/stats', label: 'My stats', icon: BarChart3, component: StatsPage },
 ]

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { HealthAndBackups } from './HealthAndBackups'
 import { FolderOpen, FolderSearch, History, Loader2, Pause, Play, RotateCcw } from 'lucide-react'
 import { useGameData } from '../api/hooks'
 import { formatTimeAgo } from '../lib/format'
@@ -297,6 +298,7 @@ export function DesktopSettingsSection() {
         </label>
       </section>
 
+      <HealthAndBackups />
       <SyncHistorySection />
       <TimersSettings />
       <ArchivesSettings />

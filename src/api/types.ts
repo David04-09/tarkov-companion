@@ -367,6 +367,10 @@ export interface RawItem {
   buyFromTrader?: { trader: string; priceRUB: number; minTraderLevel?: number; buyLimit?: number; taskUnlock?: string | null }[]
   /** Type-specific properties; ammo has propertiesType "ItemPropertiesAmmo". */
   properties?: RawItemProperties | null
+  /** Items that cannot be fitted on the same weapon as this one. */
+  conflictingItems?: string[]
+  /** Presets only: the parts of the build (weapon, mods and loaded rounds). */
+  containsItems?: { item: string; count?: number }[]
 }
 
 /** Only the ammo fields are read; other property types are ignored. */
@@ -387,6 +391,28 @@ export interface RawItemProperties {
   recoilModifier?: number
   lightBleedModifier?: number
   heavyBleedModifier?: number
+  // Weapons (ItemPropertiesWeapon) and weapon parts (WeaponMod/Scope/Barrel/Magazine)
+  ergonomics?: number
+  recoilVertical?: number
+  recoilHorizontal?: number
+  fireRate?: number
+  effectiveDistance?: number
+  fireModes?: string[]
+  defaultPreset?: string | null
+  presets?: string[]
+  slots?: RawItemSlot[]
+  // Presets (ItemPropertiesPreset)
+  baseItem?: string
+  default?: boolean
+}
+
+/** A slot on a weapon or weapon part. */
+export interface RawItemSlot {
+  id: string
+  /** e.g. "mod_pistol_grip", "mod_scope_000". */
+  nameId: string
+  required?: boolean
+  filters?: { allowedItems?: string[]; allowedCategories?: string[] } | null
 }
 
 export interface RawItemsData {
@@ -501,6 +527,61 @@ export interface Item {
   updated: string | null
   /** Ballistics, only on ammo rounds (not grenades or ammo packs). */
   ammo?: AmmoStats
+  /** Base stats and slots, only on firearms (Weapon builder). */
+  weapon?: WeaponStats
+  /** Stats, slots and conflicts, only on weapon parts (Weapon builder). */
+  mod?: ModStats
+  /** Only on weapon presets (ready-made builds). */
+  preset?: PresetInfo
+}
+
+/** A slot on a weapon or part; `allowed` lists the item ids that fit. */
+export interface ModSlot {
+  id: string
+  nameId: string
+  required: boolean
+  allowed: string[]
+}
+
+export interface WeaponStats {
+  caliber: string
+  ergonomics: number
+  recoilVertical: number
+  recoilHorizontal: number
+  /** Rounds per minute. */
+  fireRate: number
+  /** Metres. */
+  effectiveDistance: number
+  fireModes: string[]
+  /** kg, bare weapon. */
+  weight: number
+  slots: ModSlot[]
+  defaultPreset: string | null
+  presets: string[]
+  conflicts: string[]
+}
+
+export interface ModStats {
+  /** Added to the weapon's ergonomics. */
+  ergonomics: number
+  /** Fraction, e.g. -0.2 = 20 % less recoil. */
+  recoilModifier: number
+  /** Fraction. */
+  accuracyModifier: number
+  /** kg. */
+  weight: number
+  slots: ModSlot[]
+  conflicts: string[]
+}
+
+export interface PresetInfo {
+  baseItem: string
+  /** Part ids in the preset (the weapon itself and loaded rounds removed). */
+  parts: string[]
+  ergonomics: number
+  recoilVertical: number
+  recoilHorizontal: number
+  isDefault: boolean
 }
 
 /** Ammo ballistics from the items doc's `properties` (ItemPropertiesAmmo). */

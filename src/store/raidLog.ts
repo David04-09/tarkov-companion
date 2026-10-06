@@ -26,21 +26,60 @@ export const RESULT_LABEL: Record<RaidResult, string> = {
   runthrough: 'Run-through',
 }
 
+/** A raid added by hand (the game did not log it on this PC). */
+export interface ManualRaid {
+  key: string
+  /** Map display name. */
+  location: string
+  at: number
+  minutes: number | null
+}
+
 interface RaidLogState {
   byMode: Record<GameMode, Record<string, RaidEntry>>
+  manual: Record<GameMode, ManualRaid[]>
+  /** Logged raids the user hid (wrong entries, e.g. a loading screen counted as a raid). */
+  hidden: Record<GameMode, string[]>
   setEntry: (mode: GameMode, key: string, patch: Partial<RaidEntry>) => void
-  importAll: (byMode: Record<GameMode, Record<string, RaidEntry>>) => void
+  addManual: (mode: GameMode, raid: Omit<ManualRaid, 'key'>, entry: RaidEntry) => void
+  removeManual: (mode: GameMode, key: string) => void
+  setHidden: (mode: GameMode, key: string, hidden: boolean) => void
+  importAll: (byMode: Record<GameMode, Record<string, RaidEntry>>, manual?: Record<GameMode, ManualRaid[]>, hidden?: Record<GameMode, string[]>) => void
 }
 
 export const useRaidLogStore = create<RaidLogState>()(
   persist(
     (set) => ({
       byMode: { regular: {}, pve: {} },
+      manual: { regular: [], pve: [] },
+      hidden: { regular: [], pve: [] },
+      addManual: (mode, raid, entry) =>
+        set((s) => {
+          const key = `manual:${raid.at}`
+          return {
+            manual: { ...s.manual, [mode]: [...(s.manual?.[mode] ?? []), { ...raid, key }] },
+            byMode: { ...s.byMode, [mode]: { ...s.byMode[mode], [key]: entry } },
+          }
+        }),
+      removeManual: (mode, key) => set((s) => ({ manual: { ...s.manual, [mode]: (s.manual?.[mode] ?? []).filter((r) => r.key !== key) } })),
+      setHidden: (mode, key, hidden) =>
+        set((s) => {
+          const list = (s.hidden?.[mode] ?? []).filter((k) => k !== key)
+          return { hidden: { ...s.hidden, [mode]: hidden ? [...list, key] : list } }
+        }),
       setEntry: (mode, key, patch) =>
         set((s) => ({ byMode: { ...s.byMode, [mode]: { ...s.byMode[mode], [key]: { ...s.byMode[mode][key], ...patch } } } })),
-      importAll: (byMode) => set({ byMode }),
+      importAll: (byMode, manual, hidden) => set({ byMode, manual: manual ?? { regular: [], pve: [] }, hidden: hidden ?? { regular: [], pve: [] } }),
     }),
-    { name: 'tarkov-companion-raid-log', version: 1 },
+    {
+      name: 'tarkov-companion-raid-log',
+      version: 1,
+      // Saves from 1.8.0 have no manual/hidden lists yet.
+      merge: (persisted, current) => {
+        const p = (persisted ?? {}) as Partial<RaidLogState>
+        return { ...current, byMode: p.byMode ?? current.byMode, manual: p.manual ?? current.manual, hidden: p.hidden ?? current.hidden }
+      },
+    },
   ),
 )
 

@@ -14,7 +14,7 @@ src/api        JSON API client (client.ts), types.ts (Raw* = wire shape, app typ
 src/store      progress.ts (quest progress), ui.ts (map prefs), mapOverlay.ts (checked tasks/layers), align.ts (dev tool pairs)
 src/lib        taskStatus.ts (available/locked/completed rules), levelEstimate.ts, format.ts
 src/config/nav.tsx   sidebar tabs = routes; add a tab by adding one line (fullBleed: true for edge-to-edge pages)
-src/pages      Dashboard, Quests, Story, Maps, ItemCollection, Keys, Hideout, Crafts, FleaMarket, Money, Ammo, Stats, AlignPage (/dev/align, dev only)
+src/pages      Dashboard, Quests (+ src/quests tree), Story, Maps, ItemCollection, Keys, Hideout, Crafts, FleaMarket, Money, Ammo, Weapons, Stats, AlignPage (/dev/align, dev only)
 src/maps       projection.ts (affine + Leaflet CRS), mapConfig.ts (base layers), MapViewer.tsx, overlay/* (quest markers, panel, layers)
 src/story      Story tab components (chapters, endings, quest time gates, timer watcher)
 src/desktop    renderer side of Electron bridge (useDesktop.ts, DesktopSettings.tsx, WatcherStatus.tsx)
@@ -115,6 +115,13 @@ src/data/mapConfig.json      vendored tarkov.dev map config (records source comm
 - Raids: the game logs no "matched" line and no UserMatchOver for many raids (Factory/Labs runs on 2026-10-02 had only mapLoading + GameStarted). `pairRaids` = one raid per map load followed by raidStarted (repeat starts without a new load ignored); the end notice only adds length; an end with no start still counts. Location falls back to the scene path; StatsPage maps nameId/name/scenePath to one map name and merges duplicates. Owner's logs: 68 raids since the reset vs 83 in game (the rest are not in this PC's logs).
 - Bring box shows no owned/missing key state (inventory isn't knowable). Dev tools: `npx tsx scripts/raid-audit.ts` (profiles, raid line counts, quest restarts), `npx tsx scripts/raid-seq.ts <YYYY-MM-DD>` (one day's raid lines), `npx tsx scripts/stats-audit.ts` (what the Stats tab computes).
 - Never put backticks inside `node -e "..."` in Bash: the shell runs them as commands. Write a .cjs file with the Write tool instead.
+
+## v1.9.0 (2026-10-07)
+- Weapon builder (src/pages/WeaponsPage.tsx, src/lib/weaponBuild.ts + tests, src/store/weaponBuilds.ts, localStorage tarkov-companion-weapon-builds): items adapter adds optional `Item.weapon` / `Item.mod` / `Item.preset` (`adaptWeaponData` after `adaptAmmo`); slots with allowedItems, nested mod slots, conflictingItems. Totals: ergo = base + sum of mod ergonomics; recoil = round(base x (1 + sum of recoilModifier)) — verified against all 399 presets. CACHE_SCHEMA is 6. Ignores conflictingSlotIds and revolver chambers; builds are shared between PvP/PvE.
+- Quest tree (src/quests/QuestTree.tsx, questGraph.ts + tests) behind the Quests tab's "List / Tree & Kappa path" switch (localStorage tc-quests-view). Layered layout by longest prerequisite chain, barycentre ordering, cross-trader stubs, zoom. Kappa path = kappaRequired (only 13 in the data; Collector's own closure is 12) + incomplete prerequisites; Lightkeeper path = lightkeeperRequired (7 in PvE, 0 in PvP) OR Lightkeeper's own quests, + prerequisites.
+- Raid log: hand-added raids (`raidLog.manual`, key manual:<ms>) and hidden logged raids (`raidLog.hidden`), store merge keeps 1.8.0 saves; after-raid card has PMC/Scav (RoleButtons) and closes when both are picked.
+- src/lib/progressFile.ts = the one progress file (quests + inventory + drawings + story + raid log incl. manual/hidden) for Settings export/import and backups. electron/backups.ts (+ test): userData\backups\progress-YYYY-MM-DD.json, newest 7 kept, names validated; IPC backup:write/list/read/openFolder. `AutoBackup` (Layout, desktop) writes once a day (20 s after start, checked every 6 h). Settings → App health + Backups (src/desktop/HealthAndBackups.tsx).
+- Dashboard "Tonight's raid": maps with ticked quests first; Bring chips for the top map (ticked quests, else all available).
 
 ## Status
 Done: everything above (incl. Spawns, packaging/updates, quest sync review/undo, wiki guides and the stash scanner, 2026-10-04) plus Dashboard, Quests, Maps (viewer, base layers, Lighthouse render, overlay, dev alignment tool), desktop app with tray and log watcher (parser + 10 tests, backfill, status light), level estimate, README.

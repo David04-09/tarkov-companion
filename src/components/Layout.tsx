@@ -15,6 +15,7 @@ import { StoryTimerWatcher } from '../story/StoryTimerWatcher'
 import { AutoUntickCompleted } from '../maps/AutoUntick'
 import { RaidResultPrompt } from '../stats/RaidResultPrompt'
 import { PositionListener } from '../maps/position'
+import { AutoBackup } from '../desktop/HealthAndBackups'
 import { Sidebar } from './Sidebar'
 
 export function Layout() {
@@ -40,6 +41,7 @@ export function Layout() {
       <AutoUntickCompleted />
       {isDesktop() && <RaidResultPrompt />}
       {isDesktop() && <PositionListener />}
+      {isDesktop() && <AutoBackup />}
       {showSetup && <FirstRunSetup />}
       {isDesktop() && <SyncReviewDialog />}
       {isDesktop() && <SyncToast />}

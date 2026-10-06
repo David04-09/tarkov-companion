@@ -14,6 +14,7 @@ import { detectLogsFolder } from './logs/locator'
 import { LogWatcher } from './logs/watcher'
 import { SettingsStore } from './settings'
 import { latestPosition, watchScreenshots } from './position'
+import { backupDir, listBackups, readBackup, writeBackup } from './backups'
 import { captureScreenUnderCursor, listGameScreenshots, readAppResource, readGameScreenshot, resourceResponse } from './capture'
 
 // Read-only access to the app's own bundled scanner/OCR files (the page is a local file and
@@ -347,6 +348,14 @@ function registerIpc() {
   ipcMain.handle('update:install', () => installUpdate())
   ipcMain.handle('update:outcome', () => getUpdateOutcome())
   ipcMain.handle('position:latest', () => latestPosition())
+  ipcMain.handle('backup:write', (_e, json: unknown) => writeBackup(app.getPath('userData'), String(json)))
+  ipcMain.handle('backup:list', () => listBackups(app.getPath('userData')))
+  ipcMain.handle('backup:read', (_e, name: unknown) => readBackup(app.getPath('userData'), String(name)))
+  ipcMain.handle('backup:openFolder', async () => {
+    const dir = backupDir(app.getPath('userData'))
+    fs.mkdirSync(dir, { recursive: true })
+    await shell.openPath(dir)
+  })
   ipcMain.handle('update:runInstaller', (_e, version: unknown) => {
     if (typeof version === 'string' && /^[0-9]+\.[0-9]+\.[0-9]+$/.test(version)) runInstallerManually(version)
   })

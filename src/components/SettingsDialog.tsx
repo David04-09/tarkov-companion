@@ -5,10 +5,8 @@ import { useEndpointCatalog } from '../api/hooks'
 import { JSON_API_BASE } from '../api/client'
 import { useProgressStore } from '../store/progress'
 import { DesktopSettingsSection } from '../desktop/DesktopSettings'
-import { parseDrawings, useDrawingsStore } from '../store/drawings'
-import { parseStory, useStoryStore } from '../store/story'
+import { buildProgressFile, importProgressFile } from '../lib/progressFile'
 import { useMapOverlayStore } from '../store/mapOverlay'
-import { useRaidLogStore } from '../store/raidLog'
 import { AboutSection } from './AboutSection'
 
 function downloadJson(filename: string, data: unknown) {
@@ -24,8 +22,6 @@ function downloadJson(filename: string, data: unknown) {
 }
 
 export function SettingsDialog({ onClose }: { onClose: () => void }) {
-  const exportProgress = useProgressStore((s) => s.exportProgress)
-  const importProgress = useProgressStore((s) => s.importProgress)
   const resetProgress = useProgressStore((s) => s.resetProgress)
   const gameMode = useProgressStore((s) => s.gameMode)
   const queryClient = useQueryClient()
@@ -46,24 +42,15 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const handleExport = () => {
     const date = new Date().toISOString().slice(0, 10)
     // Map drawings and story progress ride along with the progress file.
-    downloadJson(`tarkov-companion-progress-${date}.json`, { ...exportProgress(), drawings: useDrawingsStore.getState().byKey, story: useStoryStore.getState().byMode, raidLog: useRaidLogStore.getState().byMode })
-    setMessage({ kind: 'ok', text: 'Progress file downloaded (including map drawings, story chapters and your raid log).' })
+    downloadJson(`tarkov-companion-progress-${date}.json`, buildProgressFile())
+    setMessage({ kind: 'ok', text: 'Progress file downloaded (quests, item collection, keys, hideout, map drawings, story chapters and your raid log).' })
   }
 
   const handleImportFile = async (file: File) => {
     try {
       const parsed: unknown = JSON.parse(await file.text())
-      importProgress(parsed)
-      const drawings = parseDrawings((parsed as { drawings?: unknown }).drawings)
-      if (drawings) useDrawingsStore.getState().importAll(drawings)
-      const story = parseStory((parsed as { story?: unknown }).story)
-      if (story) useStoryStore.getState().importAll(story)
-      const raidLog = (parsed as { raidLog?: unknown }).raidLog
-      if (raidLog && typeof raidLog === 'object') {
-        const r = raidLog as Record<string, unknown>
-        useRaidLogStore.getState().importAll({ regular: (r.regular as never) ?? {}, pve: (r.pve as never) ?? {} })
-      }
-      setMessage({ kind: 'ok', text: `Imported progress${drawings ? ', map drawings' : ''}${story ? ', story chapters' : ''} from ${file.name}.` })
+      const restored = importProgressFile(parsed)
+      setMessage({ kind: 'ok', text: `Imported ${restored.join(', ')} from ${file.name}.` })
     } catch (err) {
       setMessage({
         kind: 'error',
