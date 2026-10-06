@@ -191,6 +191,7 @@ export class LogWatcher extends EventEmitter {
       finishedByMode: { regular: [], pve: [], seasonal: [], unknown: [] },
       currentProfileByMode: { regular: null, pve: null, seasonal: null, unknown: null },
       skippedOtherProfile: 0,
+      sessions: [],
     }
     if (!this.logsPath) return result
     const folders = listSessionFolders(this.logsPath)
@@ -199,9 +200,15 @@ export class LogWatcher extends EventEmitter {
       const interpreter = new GameLogInterpreter()
       const files = listLogFiles(folder.dir)
       const pending: { entries: ReturnType<typeof FileTail.readAll>; fileName: string }[] = []
+      let first = Infinity
+      let last = -Infinity
       for (const f of files) {
         result.files += 1
         const entries = FileTail.readAll(f.file)
+        for (const e of entries) {
+          if (e.at < first) first = e.at
+          if (e.at > last) last = e.at
+        }
         const fileName = path.basename(f.file)
         if (f.role === 'application') {
           // Application log first: establishes the mode timeline.
@@ -218,6 +225,7 @@ export class LogWatcher extends EventEmitter {
         }
       }
       result.folders += 1
+      if (Number.isFinite(first) && last >= first) result.sessions?.push({ start: first, end: last })
     })
     onProgress?.({ done: folders.length, total: folders.length, folder: '' })
     // "You" per mode = the profile selected most recently in that mode. Older profiles

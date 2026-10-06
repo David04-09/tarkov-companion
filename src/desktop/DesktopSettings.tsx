@@ -94,6 +94,8 @@ function describeEvent(e: GameEvent, taskName: (id: string) => string): string {
       return `Flea sale: ${e.count}× item …${e.itemId.slice(-6)} to ${e.buyer}`
     case 'fleaExpired':
       return `Flea offer expired: …${e.itemId.slice(-6)}`
+    case 'fleaRating':
+      return `Flea rating ${e.growing ? 'up' : 'down'}: ${e.rating.toFixed(2)}`
   }
 }
 

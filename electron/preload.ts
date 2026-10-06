@@ -33,6 +33,7 @@ const api: DesktopApi = {
   checkForUpdates: () => ipcRenderer.invoke('update:check'),
   installUpdate: () => ipcRenderer.invoke('update:install'),
   getUpdateOutcome: () => ipcRenderer.invoke('update:outcome'),
+  readLogStats: () => ipcRenderer.invoke('stats:read'),
   runInstaller: (version) => ipcRenderer.invoke('update:runInstaller', version),
   onUpdateStatus: (cb) => subscribe<UpdateStatus>('update:status', cb),
   onEvent: (cb) => subscribe<GameEvent>('watcher:event', cb),

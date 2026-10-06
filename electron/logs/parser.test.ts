@@ -251,3 +251,33 @@ describe('helpers', () => {
     expect(logFolderTime('something_else')).toBeNull()
   })
 })
+
+describe('flea market stats', () => {
+  it('reads the money a flea sale paid and rating changes', () => {
+    const log = [
+      '2026-09-12 20:49:12.677|1.1.5.0.47242|Info|push-notifications|Got notification | ChatMessageReceived',
+      '{',
+      '  "type": "new_message",',
+      '  "message": {',
+      '    "type": 4,',
+      '    "templateId": "5bdabfb886f7743e152e867e 0",',
+      '    "systemData": { "buyerNickname": "Buyer", "soldItem": "5d403f9186f7743cac3f229b", "itemCount": 2 },',
+      '    "items": { "data": [',
+      '      { "_id": "x", "_tpl": "5449016a4bdc2d6f028b456f", "upd": { "StackObjectsCount": 39999 } }',
+      '    ] }',
+      '  }',
+      '}',
+      '2026-09-12 20:50:05.363|1.1.5.0.47242|Info|push-notifications|Got notification | RagfairNewRating',
+      '{',
+      '  "type": "RagfairNewRating",',
+      '  "rating": 0.06,',
+      '  "isRatingGrowing": true',
+      '}',
+      '',
+    ].join('\n')
+    const it_ = new GameLogInterpreter()
+    const events = parseAll(log).flatMap((e) => it_.interpret(e, 'push-notifications_000.log', true))
+    expect(events[0]).toMatchObject({ kind: 'fleaSold', itemId: '5d403f9186f7743cac3f229b', count: 2, income: 39999, currency: 'RUB' })
+    expect(events[1]).toMatchObject({ kind: 'fleaRating', rating: 0.06, growing: true })
+  })
+})

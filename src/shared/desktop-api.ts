@@ -21,6 +21,7 @@ export type GameEventKind =
   | 'matchingAborted'
   | 'fleaSold'
   | 'fleaExpired'
+  | 'fleaRating'
 
 export interface GameEventBase {
   id: string
@@ -53,7 +54,8 @@ export type GameEvent = GameEventBase &
     | { kind: 'raidStarted' }
     | { kind: 'raidEnded'; location: string; raidId: string }
     | { kind: 'matchingAborted' }
-    | { kind: 'fleaSold'; itemId: string; count: number; buyer: string }
+    | { kind: 'fleaSold'; itemId: string; count: number; buyer: string; income: number; currency: 'RUB' | 'USD' | 'EUR' | null }
+    | { kind: 'fleaRating'; rating: number; growing: boolean }
     | { kind: 'fleaExpired'; itemId: string; count: number }
   )
 
@@ -130,7 +132,25 @@ export interface BackfillProgress {
   folder: string
 }
 
+/** One game launch (one log folder): first and last log time. */
+export interface PlaySession {
+  start: number
+  end: number
+}
+
+/** Everything the Stats tab needs, read from all log folders (read-only). */
+export interface LogStatsData {
+  events: GameEvent[]
+  sessions: PlaySession[]
+  accountId: string | null
+  /** Oldest and newest log folder times. */
+  from: number | null
+  to: number | null
+}
+
 export interface BackfillResult {
+  /** First/last log line time per log folder (game launch). */
+  sessions?: PlaySession[]
   folders: number
   files: number
   events: GameEvent[]
@@ -156,6 +176,8 @@ export interface DesktopApi {
   setSettings: (patch: Partial<DesktopSettings>) => Promise<DesktopSettings>
   pickLogsFolder: () => Promise<string | null>
   readPastLogs: () => Promise<BackfillResult>
+  /** Raids, flea sales and quest hand-ins from all log folders, for the Stats tab. */
+  readLogStats: () => Promise<LogStatsData>
   getRecentEvents: () => Promise<GameEvent[]>
   openLogsFolder: () => Promise<void>
   openExternal: (url: string) => Promise<void>

@@ -154,6 +154,12 @@ const MSG_TASK_FAILED = 11
 const MSG_TASK_FINISHED = 12
 const FLEA_SOLD_TEMPLATE = '5bdabfb886f7743e152e867e 0'
 const FLEA_EXPIRED_TEMPLATE = '5bdabfe486f7743e1665df6e 0'
+/** Money item templates in a flea sale's payment (the sale message carries what the buyer paid). */
+const MONEY_TPL: Record<string, 'RUB' | 'USD' | 'EUR'> = {
+  '5449016a4bdc2d6f028b456f': 'RUB',
+  '5696686a4bdc2da3298b456a': 'USD',
+  '569668774bdc2da2298b4568': 'EUR',
+}
 
 const PROFILE_RE = /(?:Select(?:ed)?Profile|PrepareSelectedProfileLocally|CompleteSelectedProfile) ProfileId:(\w+) AccountId:(\d+)/
 const SESSION_MODE_RE = /Session mode: ([^\s|]+)/
@@ -307,6 +313,12 @@ export class GameLogInterpreter {
       return out
     }
 
+    if (rest.includes('Got notification | RagfairNewRating')) {
+      const j = parseJson(entry.json) as { rating?: number; isRatingGrowing?: boolean } | null
+      if (typeof j?.rating === 'number') out.push({ ...base(), kind: 'fleaRating', rating: j.rating, growing: Boolean(j.isRatingGrowing) })
+      return out
+    }
+
     if (rest.includes('Got notification | ChatMessageReceived')) {
       const j = parseJson(entry.json) as ChatNotification | null
       const msg = j?.message
@@ -322,10 +334,19 @@ export class GameLogInterpreter {
         return out
       }
       if (msg.type === MSG_FLEA) {
-        const itemId = msg.systemData?.soldItem ?? msg.items?.data?.[0]?._tpl ?? ''
+        const itemId = msg.systemData?.soldItem ?? ''
         const count = msg.systemData?.itemCount ?? 0
         if (templateId === FLEA_SOLD_TEMPLATE) {
-          out.push({ ...base(), kind: 'fleaSold', itemId, count, buyer: msg.systemData?.buyerNickname ?? '' })
+          // What the buyer paid: money stacks attached to the message.
+          let income = 0
+          let currency: 'RUB' | 'USD' | 'EUR' | null = null
+          for (const d of msg.items?.data ?? []) {
+            const cur = d._tpl ? MONEY_TPL[d._tpl] : undefined
+            if (!cur) continue
+            currency = cur
+            income += Number(d.upd?.StackObjectsCount ?? 1) || 0
+          }
+          out.push({ ...base(), kind: 'fleaSold', itemId, count, buyer: msg.systemData?.buyerNickname ?? '', income, currency })
         } else if (templateId === FLEA_EXPIRED_TEMPLATE) {
           out.push({ ...base(), kind: 'fleaExpired', itemId, count })
         }
@@ -342,7 +363,7 @@ interface ChatNotification {
     templateId?: string
     uid?: string
     systemData?: { buyerNickname?: string; soldItem?: string; itemCount?: number }
-    items?: { data?: { _tpl?: string }[] }
+    items?: { data?: { _tpl?: string; upd?: { StackObjectsCount?: number } }[] }
   }
 }
 

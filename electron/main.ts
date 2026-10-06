@@ -9,7 +9,7 @@
 import { BrowserWindow, Menu, Tray, app, dialog, globalShortcut, ipcMain, nativeImage, protocol, shell } from 'electron'
 import fs from 'node:fs'
 import path from 'node:path'
-import type { DesktopSettings, GameEvent, WipeEvent } from '../src/shared/desktop-api'
+import type { DesktopSettings, GameEvent, LogStatsData, WipeEvent } from '../src/shared/desktop-api'
 import { detectLogsFolder } from './logs/locator'
 import { LogWatcher } from './logs/watcher'
 import { SettingsStore } from './settings'
@@ -127,6 +127,23 @@ function load(w: BrowserWindow, hash: string) {
   else void w.loadFile(target.file as string, { hash })
 }
 
+/**
+ * Windows only ever show the app itself: navigating to any other page (a link that slipped
+ * through, a redirect) is blocked, and web links open in the user's browser instead.
+ */
+function lockNavigation(w: BrowserWindow) {
+  const own = (url: string) => url.startsWith('file:') || (DEV_URL ? url.startsWith(DEV_URL) : false)
+  w.webContents.on('will-navigate', (e, url) => {
+    if (own(url)) return
+    e.preventDefault()
+    if (/^https?:/i.test(url)) void shell.openExternal(url)
+  })
+  w.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:/i.test(url)) void shell.openExternal(url)
+    return { action: 'deny' }
+  })
+}
+
 function createWindow(show: boolean) {
   const b = settings.get().window
   win = new BrowserWindow({
@@ -177,10 +194,7 @@ function createWindow(show: boolean) {
       quitting = true
     }
   })
-  win.webContents.setWindowOpenHandler(({ url }) => {
-    if (/^https?:/i.test(url)) void shell.openExternal(url)
-    return { action: 'deny' }
-  })
+  lockNavigation(win)
   load(win, '/')
 }
 
@@ -232,6 +246,7 @@ function toggleOverlay() {
   overlay.on('closed', () => {
     overlay = null
   })
+  lockNavigation(overlay)
   load(overlay, '/overlay')
 }
 
@@ -362,6 +377,19 @@ function registerIpc() {
       // not fatal
     }
     return result
+  })
+  // Stats tab: the same read-only pass over all log folders, without touching settings.
+  ipcMain.handle('stats:read', async (): Promise<LogStatsData> => {
+    const result = watcher.backfill()
+    const keep = new Set(['raidMatched', 'raidStarted', 'raidEnded', 'fleaSold', 'fleaExpired', 'fleaRating', 'taskFinished', 'taskStarted', 'taskFailed'])
+    const sessions = result.sessions ?? []
+    return {
+      events: result.events.filter((e) => keep.has(e.kind)),
+      sessions,
+      accountId: watcher.getState().accountId ?? null,
+      from: sessions.length ? Math.min(...sessions.map((s) => s.start)) : null,
+      to: sessions.length ? Math.max(...sessions.map((s) => s.end)) : null,
+    }
   })
   ipcMain.handle('watcher:openFolder', async () => {
     const p = watcher.getState().logsPath

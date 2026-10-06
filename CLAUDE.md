@@ -14,7 +14,7 @@ src/api        JSON API client (client.ts), types.ts (Raw* = wire shape, app typ
 src/store      progress.ts (quest progress), ui.ts (map prefs), mapOverlay.ts (checked tasks/layers), align.ts (dev tool pairs)
 src/lib        taskStatus.ts (available/locked/completed rules), levelEstimate.ts, format.ts
 src/config/nav.tsx   sidebar tabs = routes; add a tab by adding one line (fullBleed: true for edge-to-edge pages)
-src/pages      Dashboard, Quests, Story, Maps, ItemCollection, Keys, Hideout, Crafts, FleaMarket, Overlay (/overlay, desktop), AlignPage (/dev/align, dev only)
+src/pages      Dashboard, Quests, Story, Stats, Maps, ItemCollection, Keys, Hideout, Crafts, FleaMarket, Overlay (/overlay, desktop), AlignPage (/dev/align, dev only)
 src/maps       projection.ts (affine + Leaflet CRS), mapConfig.ts (base layers), MapViewer.tsx, overlay/* (quest markers, panel, layers)
 src/story      Story tab components (chapters, endings, quest time gates, timer watcher)
 src/desktop    renderer side of Electron bridge (useDesktop.ts, DesktopSettings.tsx, WatcherStatus.tsx)
@@ -96,6 +96,11 @@ src/data/mapConfig.json      vendored tarkov.dev map config (records source comm
 - `src/store/story.ts` (localStorage `tarkov-companion-story`, per game mode: done keys, timers {startedAt,minH,maxH,label,notified}, chosen path). Ticking the step before a wait starts its timer; `StoryTimerWatcher` (in Layout) sends one system Notification when the earliest time passes. Included in progress export/import (`story`), reset by `archiveAndReset` on wipe.
 - UI: `pages/StoryPage.tsx` (Chapters / Endings / Quest time gates; main line Tour → Falling Skies → The Ticket found from "previous/leads to"/start links, then side chapters A–Z; running-timer chips), `story/ChapterView.tsx`, `EndingsView.tsx`, `QuestGatesView.tsx` (tarkov.dev `availableDelaySeconds*` → `Task.availableDelay`, exact unlock time when the prerequisite hand-in came from the game log via syncHistory; `globalVariable` → `Task.storyGates` grouped per counter as "stages" — what raises the counters is not in any data, say so; `dialogue` → `Task.dialogueTraderIds`), `storyUtils.ts`. CACHE_SCHEMA bumped to 3 for the new Task fields.
 - Dev gotcha: after HMR, `import('/src/store/x.ts')` in the browser console gives a different module instance than the app's (`?t=` URL); import the URL from `performance.getEntriesByType('resource')`.
+
+## My stats tab (v1.7.0, 2026-10-07)
+- Player stats cannot come from BSG/tarkov.dev: player.tarkov.dev needs a Turnstile token bound to tarkov.dev and tarkov.dev pages send , so kills/deaths/survival/K-D are only reachable by opening  in the browser (button on the page). Everything else is computed from the game's own logs:  IPC (main.ts) runs  read-only (no settings/last-backfill writes), returns raid/flea/quest events + per-log-folder sessions (first/last line time, ) + accountId. Parser additions:  (money stacks in the sale message's items.data: RUB 5449016a…, USD 5696686a…, EUR 569668774…) and  (). Logs have no kills/deaths/raid result (UserMatchOver only has location/shortId).
+-  (+ tests):  (raidMatched → raidStarted → raidEnded, start > 3 h before the end = no length), per-map, per-day (30 days), flea income/top sellers/rating, quests;  with tiles and single-series SVG charts (accent colour, <title> tooltips).  is excluded from the persisted query cache (LIVE_ROOTS).
+- ToS/safety audit 2026-10-07 (EFT forum 2021-10-08: banned = software that replaces/overrides/modifies game files or data in memory; BSG's datamining statement = infiltrating game code/databases): app passes — no process/memory/input/file-write/BSG-server contact. Hardening done:  (will-navigate blocked, http(s) opened externally) on both windows. Left as known: no CSP in index.html, unsigned updates (trust = GitHub account).
 
 ## Status
 Done: everything above (incl. Spawns, packaging/updates, quest sync review/undo, wiki guides and the stash scanner, 2026-10-04) plus Dashboard, Quests, Maps (viewer, base layers, Lighthouse render, overlay, dev alignment tool), desktop app with tray and log watcher (parser + 10 tests, backfill, status light), level estimate, README.
