@@ -27,7 +27,7 @@ const events: GameEvent[] = [
   // Another mode: ignored.
   ev(T + 60 * MIN, { kind: 'raidEnded', location: 'Factory', raidId: 'D' }, 'regular'),
 ]
-const data: LogStatsData = { events, sessions: [{ start: T - 10 * MIN, end: T + 110 * MIN }], accountId: '1', from: T, to: T + 110 * MIN }
+const data: LogStatsData = { events, sessions: [{ start: T - 10 * MIN, end: T + 110 * MIN }], accountId: '1', from: T, to: T + 110 * MIN, resetAtByMode: { regular: null, pve: null, seasonal: null, unknown: null } }
 
 describe('log stats', () => {
   it('pairs raid starts and ends', () => {
@@ -47,6 +47,27 @@ describe('log stats', () => {
     expect(s.rating).toHaveLength(1)
     expect(s.questsFinished).toBe(1)
     expect(s.playMinutes).toBe(120)
+  })
+  it('counts raids that have no matched line or end notice (map load + start)', () => {
+    const raids = pairRaids([
+      ev(T, { kind: 'mapLoading', scenePath: 'maps/factory_day_preset.bundle' }),
+      ev(T + 1 * MIN, { kind: 'raidStarted' }),
+      ev(T + 1 * MIN, { kind: 'raidStarted' }),
+      ev(T + 20 * MIN, { kind: 'mapLoading', scenePath: 'maps/laboratory_preset.bundle' }),
+      ev(T + 21 * MIN, { kind: 'raidStarted' }),
+      ev(T + 50 * MIN, { kind: 'mapLoading', scenePath: 'maps/city_preset.bundle' }),
+      ev(T + 51 * MIN, { kind: 'raidMatched', location: 'TarkovStreets', raidId: 'X', online: true, gameMode: 'deathmatch' }),
+      ev(T + 52 * MIN, { kind: 'raidStarted' }),
+      ev(T + 90 * MIN, { kind: 'raidEnded', location: 'TarkovStreets', raidId: 'X' }),
+    ])
+    expect(raids.map((r) => [r.location, r.minutes])).toEqual([['maps/factory_day_preset.bundle', null], ['maps/laboratory_preset.bundle', null], ['TarkovStreets', 38]])
+  })
+  it('leaves out everything before the profile reset', () => {
+    const s = computeLogStats({ ...data, resetAtByMode: { regular: null, pve: T + 45 * MIN, seasonal: null, unknown: null } }, 'pve', null, 7, T + 2 * 60 * MIN)
+    expect(s.raids.map((r) => r.raidId)).toEqual(['C'])
+    expect(s.fleaSales).toBe(3)
+    const all = computeLogStats({ ...data, resetAtByMode: { regular: null, pve: T + 45 * MIN, seasonal: null, unknown: null } }, 'pve', null, 7, T + 2 * 60 * MIN, true)
+    expect(all.raids).toHaveLength(3)
   })
   it('formats durations', () => {
     expect(formatMinutes(45)).toBe('45 min')

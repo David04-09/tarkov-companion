@@ -23,6 +23,8 @@ export function SyncReviewDialog() {
   const [selected, setSelected] = useState<Set<string> | null>(null)
   const keyOf = (mode: GameMode, taskId: string) => `${mode}:${taskId}`
   const initial = useMemo(() => new Set((review?.items ?? []).filter((i) => !i.previouslyUndone).map((i) => keyOf(i.mode, i.taskId))), [review])
+  const [untick, setUntick] = useState<Set<string> | null>(null)
+  const initialUntick = useMemo(() => new Set((review?.stale ?? []).map((i) => keyOf(i.mode, i.taskId))), [review])
   if (!review) return null
   const sel = selected ?? initial
   const toggle = (k: string) => {
@@ -35,6 +37,13 @@ export function SyncReviewDialog() {
   const task = (id: string, mode?: GameMode) =>
     (mode ? queryClient.getQueryData<GameData>(gameDataKeys.mode(mode))?.tasksById[id] : undefined) ?? gameData.data?.tasksById[id]
   const modes = (['pve', 'regular'] as GameMode[]).filter((m) => review.items.some((i) => i.mode === m))
+  const unt = untick ?? initialUntick
+  const toggleUntick = (k: string) => {
+    const next = new Set(unt)
+    if (next.has(k)) next.delete(k)
+    else next.add(k)
+    setUntick(next)
+  }
   const done = review.alreadyDone.pve + review.alreadyDone.regular
 
   return (
@@ -58,6 +67,31 @@ export function SyncReviewDialog() {
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-3 text-sm">
+          {review.stale.length > 0 && (
+            <section className="mb-4 rounded border border-accent/50 bg-accent/5 p-2">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-accent">From before your profile reset · {review.stale.length}</h3>
+              <p className="mb-1.5 text-[11px] text-ink-muted">
+                These are ticked in the app, but you handed them in before your reset{(['pve', 'regular'] as GameMode[]).filter((m) => review.resetAt[m]).map((m) => ` (${MODE_LABEL[m]}: ${dateText(review.resetAt[m] as number)})`).join('')} and the game has made you start them again. Ticked ones below are unticked when you apply.
+              </p>
+              <ul className="divide-y divide-line rounded border border-line bg-surface">
+                {review.stale.map((i) => {
+                  const k = keyOf(i.mode, i.taskId)
+                  const t = task(i.taskId, i.mode)
+                  return (
+                    <li key={k}>
+                      <label className="flex items-center gap-2 px-2 py-1.5">
+                        <input type="checkbox" checked={unt.has(k)} onChange={() => toggleUntick(k)} className="h-4 w-4 shrink-0" />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate">{t?.name ?? `Quest …${i.taskId.slice(-6)}`}</span>
+                          <span className="block text-[11px] text-ink-dim">{MODE_LABEL[i.mode]} · handed in {dateText(i.at)}, before the reset · started again since</span>
+                        </span>
+                      </label>
+                    </li>
+                  )
+                })}
+              </ul>
+            </section>
+          )}
           {modes.map((mode) => {
             const list = review.items.filter((i) => i.mode === mode)
             return (
@@ -95,8 +129,8 @@ export function SyncReviewDialog() {
         <div className="flex flex-wrap items-center justify-end gap-2 border-t border-line px-5 py-3">
           <span className="mr-auto text-[11px] text-ink-dim">Every automatic tick can be undone later under Settings, Quest sync history.</span>
           <button type="button" onClick={dismissReview} className="btn">Skip</button>
-          <button type="button" onClick={() => applyReview(review, sel)} className="btn border-accent bg-accent text-surface hover:bg-accent">
-            Tick {[...sel].filter((k) => review.items.some((i) => keyOf(i.mode, i.taskId) === k)).length} quests
+          <button type="button" onClick={() => applyReview(review, sel, unt)} className="btn border-accent bg-accent text-surface hover:bg-accent">
+            Tick {[...sel].filter((k) => review.items.some((i) => keyOf(i.mode, i.taskId) === k)).length} quests{unt.size > 0 && review.stale.length > 0 ? `, untick ${[...unt].filter((k) => review.stale.some((i) => keyOf(i.mode, i.taskId) === k)).length}` : ''}
           </button>
         </div>
       </div>

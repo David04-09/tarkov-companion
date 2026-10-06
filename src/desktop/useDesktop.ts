@@ -123,6 +123,13 @@ export interface BackfillReview {
   skippedOtherProfile: number
   /** Quests the log shows as handed in that are already ticked. */
   alreadyDone: Record<GameMode, number>
+  /**
+   * Ticked in the app, but the logs show they were handed in before your last profile reset and
+   * started again after it (not finished again yet): offered for unticking.
+   */
+  stale: ReviewItem[]
+  /** Reset/wipe time per mode (shown in the review). */
+  resetAt: Record<GameMode, number | null>
 }
 
 /**
@@ -144,7 +151,34 @@ async function buildReview(result: BackfillResult): Promise<BackfillReview> {
   const latest = new Map<string, GameEvent>()
   for (const e of result.events) {
     if (e.kind === 'taskFinished') latest.set(`${e.mode}:${e.taskId}`, e)
-    if ((e.kind === 'taskStarted' || e.kind === 'taskFailed') && e.profileId === result.currentProfileByMode[e.mode]) applyGameEvent(e)
+    // Started/failed states only count from the current profile period (after the last reset).
+    const afterReset = e.at >= (result.resetAtByMode?.[e.mode] ?? -Infinity)
+    if ((e.kind === 'taskStarted' || e.kind === 'taskFailed') && afterReset && e.profileId === result.currentProfileByMode[e.mode]) applyGameEvent(e)
+  }
+  // Ticked quests from before the reset that the game made you start again.
+  const stale: ReviewItem[] = []
+  const resetAt: Record<GameMode, number | null> = { regular: null, pve: null }
+  for (const sessionMode of Object.keys(result.resetAtByMode ?? {}) as SessionMode[]) {
+    const reset = result.resetAtByMode?.[sessionMode]
+    if (!reset) continue
+    const mode = modeToGameMode(sessionMode, 'regular')
+    resetAt[mode] = Math.max(resetAt[mode] ?? 0, reset)
+    const before = new Map<string, GameEvent>()
+    const restarted = new Set<string>()
+    const finishedAfter = new Set<string>()
+    for (const e of result.events) {
+      if (e.mode !== sessionMode) continue
+      if (e.kind === 'taskFinished') {
+        if (e.at < reset) before.set(e.taskId, e)
+        else finishedAfter.add(e.taskId)
+      }
+      if (e.kind === 'taskStarted' && e.at >= reset) restarted.add(e.taskId)
+    }
+    for (const [taskId, ev] of before) {
+      if (!restarted.has(taskId) || finishedAfter.has(taskId)) continue
+      if (!progress.profiles[mode].completedTaskIds.has(taskId)) continue
+      stale.push({ mode, taskId, at: ev.at, file: ev.source.file, line: ev.source.line, previouslyUndone: false })
+    }
   }
   const items: ReviewItem[] = []
   for (const sessionMode of Object.keys(result.finishedByMode) as SessionMode[]) {
@@ -167,12 +201,13 @@ async function buildReview(result: BackfillResult): Promise<BackfillReview> {
     }
   }
   items.sort((a, b) => b.at - a.at)
-  return { items, folders: result.folders, files: result.files, skippedOtherProfile: result.skippedOtherProfile, alreadyDone }
+  return { items, folders: result.folders, files: result.files, skippedOtherProfile: result.skippedOtherProfile, alreadyDone, stale, resetAt }
 }
 
-/** Ticks the quests the user kept selected in the review. */
-export function applyReview(review: BackfillReview, selected: ReadonlySet<string>): BackfillSummary {
+/** Ticks the quests the user kept selected in the review (and unticks the selected stale ones). */
+export function applyReview(review: BackfillReview, selected: ReadonlySet<string>, untick: ReadonlySet<string> = new Set()): BackfillSummary {
   const progress = useProgressStore.getState()
+  for (const s of review.stale) if (untick.has(`${s.mode}:${s.taskId}`)) progress.setTaskCompletedFor(s.mode, s.taskId, false)
   const found: Record<GameMode, number> = { regular: review.alreadyDone.regular, pve: review.alreadyDone.pve }
   const added: Record<GameMode, number> = { regular: 0, pve: 0 }
   const picked = review.items.filter((i) => selected.has(`${i.mode}:${i.taskId}`))

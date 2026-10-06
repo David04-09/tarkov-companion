@@ -142,6 +142,8 @@ export interface LogStatsData {
   /** Oldest and newest log folder times. */
   from: number | null
   to: number | null
+  /** Start of the current wipe/profile reset per mode; earlier events belong to the old profile. */
+  resetAtByMode: Record<SessionMode, number | null>
 }
 
 /** Player position from an in-game screenshot's file name (game coordinates, y = height). */
@@ -159,6 +161,8 @@ export interface PlayerPosition {
 export interface BackfillResult {
   /** First/last log line time per log folder (game launch). */
   sessions?: PlaySession[]
+  /** Start of the current wipe/profile reset per mode (detected from quests restarting), or null. */
+  resetAtByMode?: Record<SessionMode, number | null>
   folders: number
   files: number
   events: GameEvent[]

@@ -6,11 +6,12 @@
 import type { GameEvent, LogStatsData, SessionMode } from '../shared/desktop-api'
 
 export interface RaidRecord {
-  /** Short raid id from the end notice ("B3LTB2"), empty if not logged. */
+  /** Short raid id ("B3LTB2"), empty if not logged. */
   raidId: string
+  /** Location name ("Shoreline") or, when only the map file was logged, its scene path ("maps/factory_day_preset.bundle"). */
   location: string
-  /** Time the raid ended (end notice). */
-  end: number
+  /** Time the raid ended (end notice), or null when the game logged no end. */
+  end: number | null
   /** Raid start (GameStarted) or, if the start was not logged, the raid-end time. */
   start: number
   /** Minutes from start to the end notification, when both were logged. */
@@ -43,29 +44,55 @@ const dayKey = (t: number) => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-/** Raids from matched/started/ended events in time order (one mode's events). */
+/**
+ * Raids in time order (one mode's events). A raid = a map being loaded and then started:
+ * not every raid gets a "matched" line or a "raid over" notice in the logs (on 2 Oct three
+ * Factory runs and a Labs run had neither), so starts are counted, and an end notice only adds
+ * the raid's length. An end notice with no logged start still counts (log folder cut off).
+ */
 export function pairRaids(events: GameEvent[]): RaidRecord[] {
   const raids: RaidRecord[] = []
-  let pending: { location: string; startedAt: number | null } | null = null
+  let scene: string | null = null
+  let sceneSinceStart = false
+  let matched: { location: string; raidId: string } | null = null
+  let open: RaidRecord | null = null
   for (const e of events) {
-    if (e.kind === 'raidMatched') pending = { location: e.location, startedAt: null }
-    else if (e.kind === 'raidStarted') {
-      if (!pending) pending = { location: '', startedAt: e.at }
-      else pending.startedAt = e.at
+    if (e.kind === 'mapLoading') {
+      scene = e.scenePath
+      sceneSinceStart = true
+      matched = null
+    } else if (e.kind === 'raidMatched') {
+      matched = { location: e.location, raidId: e.raidId }
+    } else if (e.kind === 'raidStarted') {
+      // A second "started" line without a new map load is the same raid.
+      if (open && !sceneSinceStart) continue
+      open = { raidId: matched?.raidId ?? '', location: matched?.location || scene || 'Unknown', start: e.at, end: null, minutes: null }
+      raids.push(open)
+      sceneSinceStart = false
     } else if (e.kind === 'raidEnded') {
-      const location = e.location || pending?.location || 'Unknown'
-      const startedAt = pending?.startedAt ?? null
-      // A start more than 3 hours before the end belongs to another raid whose end was never logged.
-      const minutes = startedAt !== null && e.at - startedAt < 3 * 3_600_000 ? (e.at - startedAt) / 60_000 : null
-      raids.push({ raidId: e.raidId, location, start: minutes !== null && startedAt !== null ? startedAt : e.at, end: e.at, minutes })
-      pending = null
+      const fits = open && open.end === null && e.at - open.start < 3 * 3_600_000 && (!open.raidId || !e.raidId || open.raidId === e.raidId)
+      if (open && fits) {
+        open.end = e.at
+        open.minutes = (e.at - open.start) / 60_000
+        if (!open.raidId) open.raidId = e.raidId
+        if (e.location && open.location.startsWith('maps/')) open.location = e.location
+      } else {
+        raids.push({ raidId: e.raidId, location: e.location || 'Unknown', start: e.at, end: e.at, minutes: null })
+      }
+      open = null
     }
   }
   return raids
 }
 
-export function computeLogStats(data: LogStatsData, mode: SessionMode, since: number | null, days = 30, now = Date.now()): LogStats {
-  const inRange = (t: number) => since === null || t >= since
+/**
+ * @param includeBeforeReset also count logs from before the latest wipe/profile reset (normally
+ *   they belong to the old profile and are left out).
+ */
+export function computeLogStats(data: LogStatsData, mode: SessionMode, since: number | null, days = 30, now = Date.now(), includeBeforeReset = false): LogStats {
+  const reset = includeBeforeReset ? null : (data.resetAtByMode?.[mode] ?? null)
+  const from = since === null ? reset : reset === null ? since : Math.max(since, reset)
+  const inRange = (t: number) => from === null || t >= from
   const events = data.events.filter((e) => e.mode === mode && inRange(e.at)).sort((a, b) => a.at - b.at)
   const raids = pairRaids(events)
 
@@ -118,7 +145,7 @@ export function computeLogStats(data: LogStatsData, mode: SessionMode, since: nu
 
   // Sessions are not tied to one mode (you can switch PvP/PvE in one launch): game-open time overall.
   const sessions = data.sessions.filter((s) => inRange(s.end))
-  const playMinutes = sessions.reduce((n, s) => n + Math.max(0, s.end - Math.max(s.start, since ?? s.start)) / 60_000, 0)
+  const playMinutes = sessions.reduce((n, s) => n + Math.max(0, s.end - Math.max(s.start, from ?? s.start)) / 60_000, 0)
 
   return {
     raids,

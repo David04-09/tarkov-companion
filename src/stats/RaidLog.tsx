@@ -40,8 +40,8 @@ export function RaidLog({ raids, mode, mapName }: { raids: RaidRecord[]; mode: G
   const setEntry = useRaidLogStore((s) => s.setEntry)
   const [onlyUnmarked, setOnlyUnmarked] = useState(false)
   const [shown, setShown] = useState(30)
-  const ordered = useMemo(() => [...raids].sort((a, b) => b.end - a.end), [raids])
-  const keyOf = (r: RaidRecord) => raidKey(r.raidId, r.end)
+  const ordered = useMemo(() => [...raids].sort((a, b) => (b.end ?? b.start) - (a.end ?? a.start)), [raids])
+  const keyOf = (r: RaidRecord) => raidKey(r.raidId, r.end ?? r.start)
   const all = survivalOf(ordered.map((r) => entries[keyOf(r)]))
   const byRole = (role: RaidRole) => survivalOf(ordered.filter((r) => entries[keyOf(r)]?.role === role).map((r) => entries[keyOf(r)]))
   const perMap = useMemo(() => {
@@ -85,7 +85,7 @@ export function RaidLog({ raids, mode, mapName }: { raids: RaidRecord[]; mode: G
             const e = entries[key]
             return (
               <li key={key} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-1.5 text-sm">
-                <span className="w-28 shrink-0 text-xs tabular-nums text-ink-muted">{new Date(r.end).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+                <span className="w-28 shrink-0 text-xs tabular-nums text-ink-muted">{new Date(r.end ?? r.start).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
                 <span className="w-32 shrink-0 truncate text-ink">{mapName(r.location)}</span>
                 <span className="w-16 shrink-0 text-xs tabular-nums text-ink-dim">{r.minutes !== null ? formatMinutes(r.minutes) : '–'}</span>
                 <ResultButtons value={e?.result} onPick={(result) => setEntry(mode, key, { result })} />

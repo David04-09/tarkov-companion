@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import L from 'leaflet'
-import { Backpack, Check, ChevronDown, ChevronUp, KeyRound } from 'lucide-react'
+import { Backpack, ChevronDown, ChevronUp, KeyRound } from 'lucide-react'
 import type { ItemsById } from '../../api/types'
 import { buildBringList, type BringKind } from './bringList'
 import type { MapTask } from './mapTasks'
@@ -18,7 +18,7 @@ const KIND_LABEL: Record<BringKind, string> = {
  * Bottom-right box on the map: everything the shown (ticked, not completed) quests on this
  * map need you to bring. Rendered as a Leaflet control so it sits inside the map.
  */
-export function BringBox({ mapTasks, items, ownedKeyIds }: { mapTasks: MapTask[]; items: ItemsById | undefined; ownedKeyIds: Set<string> }) {
+export function BringBox({ mapTasks, items }: { mapTasks: MapTask[]; items: ItemsById | undefined }) {
   const [open, setOpen] = useState(true)
   const ref = useRef<HTMLDivElement>(null)
   const list = useMemo(() => buildBringList(mapTasks), [mapTasks])
@@ -31,7 +31,6 @@ export function BringBox({ mapTasks, items, ownedKeyIds }: { mapTasks: MapTask[]
   }, [])
   if (mapTasks.length === 0) return null
   const name = (id: string) => items?.[id]?.shortName ?? items?.[id]?.name ?? '…'
-  const missingKeys = list.filter((e) => e.kind === 'key' && !e.itemIds.some((id) => ownedKeyIds.has(id))).length
   return (
     <div className="leaflet-bottom leaflet-right">
       <div ref={ref} className="leaflet-control !m-2 w-[270px] rounded border border-line bg-surface-2/95 text-xs shadow-lg">
@@ -39,7 +38,6 @@ export function BringBox({ mapTasks, items, ownedKeyIds }: { mapTasks: MapTask[]
           <Backpack className="h-4 w-4 shrink-0 text-accent" />
           <span className="flex-1 font-semibold text-ink">Bring for this raid</span>
           <span className="rounded bg-surface-3 px-1.5 tabular-nums text-ink-muted">{list.length}</span>
-          {missingKeys > 0 && <span className="rounded bg-danger/20 px-1.5 text-danger" title="Keys you have not marked as owned (Keys tab)">{missingKeys} key{missingKeys === 1 ? '' : 's'} missing</span>}
           {open ? <ChevronDown className="h-3.5 w-3.5 text-ink-dim" /> : <ChevronUp className="h-3.5 w-3.5 text-ink-dim" />}
         </button>
         {open && (
@@ -50,7 +48,6 @@ export function BringBox({ mapTasks, items, ownedKeyIds }: { mapTasks: MapTask[]
               <ul className="space-y-1">
                 {list.map((e, i) => {
                   const header = i === 0 || e.kind !== list[i - 1].kind ? KIND_LABEL[e.kind] : null
-                  const owned = e.kind === 'key' && e.itemIds.some((id) => ownedKeyIds.has(id))
                   const icon = e.itemIds.length ? items?.[e.itemIds[0]]?.iconLink : null
                   const label = e.questItemName ?? (e.kind === 'wear' ? `${e.itemIds.map(name).join(' + ')}${e.otherOutfits ? ` (or ${e.otherOutfits} other outfit${e.otherOutfits > 1 ? 's' : ''})` : ''}` : e.itemIds.length > 1 ? `${name(e.itemIds[0])} or ${e.itemIds.length - 1} other${e.itemIds.length > 2 ? 's' : ''}` : name(e.itemIds[0]))
                   return (
@@ -60,7 +57,6 @@ export function BringBox({ mapTasks, items, ownedKeyIds }: { mapTasks: MapTask[]
                         {icon ? <img src={icon} alt="" className="h-6 w-6 shrink-0 object-contain" /> : e.kind === 'key' ? <KeyRound className="h-4 w-4 shrink-0 text-ink-dim" /> : <span className="h-6 w-6 shrink-0" />}
                         <span className={`min-w-0 flex-1 truncate ${e.optional ? 'text-ink-muted' : 'text-ink'}`}>{label}{e.optional ? ' (optional)' : ''}</span>
                         {e.count > 1 && <span className="tabular-nums text-ink-muted">×{e.count}</span>}
-                        {e.kind === 'key' && (owned ? <Check className="h-3.5 w-3.5 text-success" aria-label="owned" /> : <span className="text-[10px] text-danger">missing</span>)}
                       </div>
                     </li>
                   )

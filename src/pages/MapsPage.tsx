@@ -163,7 +163,7 @@ export function MapsPage() {
             <Legend entries={shown} />
             <LootLegend groups={lootShown} />
             {position && position.mapKey === selected.key && <PositionLayer pos={position} />}
-            <BringBox mapTasks={shown.map((x) => x.mapTask).filter((m) => statuses[m.task.id] !== 'completed')} items={items} ownedKeyIds={ownedKeyIds} />
+            <BringBox mapTasks={shown.map((x) => x.mapTask).filter((m) => statuses[m.task.id] !== 'completed')} items={items} />
           </MapViewer>
         </div>
 

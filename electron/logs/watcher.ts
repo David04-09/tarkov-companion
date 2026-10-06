@@ -10,6 +10,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import type { BackfillProgress, BackfillResult, GameEvent, SessionMode, WatcherState } from '../../src/shared/desktop-api'
 import { GameLogInterpreter, logFileRole, logFolderTime } from './parser'
+import { detectResets } from './resets'
 import { FileTail } from './tailer'
 
 const POLL_MS = 750
@@ -237,12 +238,16 @@ export class LogWatcher extends EventEmitter {
       result.currentProfileByMode[ev.mode] = ev.profileId
       profilesSeen[ev.mode].add(ev.profileId)
     }
+    // Quests handed in before the latest reset/wipe belong to the old profile.
+    const resets = detectResets(ordered)
+    result.resetAtByMode = resets
     const finished: Record<SessionMode, Set<string>> = { regular: new Set(), pve: new Set(), seasonal: new Set(), unknown: new Set() }
     for (const ev of ordered) {
       if (ev.kind !== 'taskFinished') continue
       const current = result.currentProfileByMode[ev.mode]
       const mine = ev.profileId ? ev.profileId === current : profilesSeen[ev.mode].size <= 1
-      if (mine) finished[ev.mode].add(ev.taskId)
+      const afterReset = ev.at >= (resets[ev.mode] ?? -Infinity)
+      if (mine && afterReset) finished[ev.mode].add(ev.taskId)
       else result.skippedOtherProfile += 1
     }
     for (const mode of Object.keys(finished) as SessionMode[]) result.finishedByMode[mode] = [...finished[mode]]

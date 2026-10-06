@@ -327,7 +327,7 @@ function registerIpc() {
   // Stats tab: the same read-only pass over all log folders, without touching settings.
   ipcMain.handle('stats:read', async (): Promise<LogStatsData> => {
     const result = watcher.backfill()
-    const keep = new Set(['raidMatched', 'raidStarted', 'raidEnded', 'fleaSold', 'fleaExpired', 'fleaRating', 'taskFinished', 'taskStarted', 'taskFailed'])
+    const keep = new Set(['mapLoading', 'raidMatched', 'raidStarted', 'raidEnded', 'matchingAborted', 'fleaSold', 'fleaExpired', 'fleaRating', 'taskFinished', 'taskStarted', 'taskFailed'])
     const sessions = result.sessions ?? []
     return {
       events: result.events.filter((e) => keep.has(e.kind)),
@@ -335,6 +335,7 @@ function registerIpc() {
       accountId: watcher.getState().accountId ?? null,
       from: sessions.length ? Math.min(...sessions.map((s) => s.start)) : null,
       to: sessions.length ? Math.max(...sessions.map((s) => s.end)) : null,
+      resetAtByMode: result.resetAtByMode ?? { regular: null, pve: null, seasonal: null, unknown: null },
     }
   })
   ipcMain.handle('watcher:openFolder', async () => {
