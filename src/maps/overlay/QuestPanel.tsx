@@ -73,7 +73,7 @@ function TaskRow({ mt, status, color, checked, items, hasFloors }: { mt: MapTask
                     </div>
                     <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-ink-dim">
                       {mo.anywhere ? <span>Anywhere on this map</span> : <span>{mo.placements.length === 1 ? '1 spot' : `${mo.placements.length} possible spots`}{floors ? ` · ${floors}` : ''}</span>}
-                      {mo.keyIds.length > 0 && <KeyBadge keyIds={mo.keyIds} items={items} compact approximate={mo.keySource === 'nearby'} />}
+                      {mo.keyIds.length > 0 && <KeyBadge keyIds={mo.keyIds} items={items} compact />}
                     </div>
                   </div>
                 </li>

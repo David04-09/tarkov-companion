@@ -30,7 +30,7 @@ await closeOcr()
 console.log(`scan: ${found.length} items in ${Date.now() - t} ms`)
 for (const d of found) {
   const alt = d.alternatives.slice(0, 2).map((a) => `${names[a.itemId]}(${a.error.toFixed(1)})`).join(', ')
-  console.log(`  ${d.nameMatch ? 'N' : ' '} r${d.row} c${d.col} ${d.w}x${d.h}${d.rotated ? 'R' : ' '} ${names[d.itemId]?.padEnd(14)} err ${d.error.toFixed(1)}${d.byName ? ' BYNAME' : ''}${d.unexamined ? ' UNEXAMINED' : ''}   alt: ${alt}`)
+  console.log(`  ${d.nameMatch ? 'N' : ' '} r${d.row} c${d.col} ${d.w}x${d.h}${d.rotated ? 'R' : ' '} ${names[d.itemId]?.padEnd(14)} err ${d.error.toFixed(1)}${d.byName ? ' BYNAME' : ''}   alt: ${alt}`)
 }
 
 // Annotated image: grid lines + boxes with labels.

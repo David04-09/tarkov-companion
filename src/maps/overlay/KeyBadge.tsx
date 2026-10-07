@@ -11,13 +11,10 @@ export function KeyBadge({
   keyIds,
   items,
   compact = false,
-  approximate = false,
 }: {
   keyIds: string[]
   items: ItemsById | undefined
   compact?: boolean
-  /** Key was guessed from a locked door near the objective, not stated by the task data. */
-  approximate?: boolean
 }) {
   const [open, setOpen] = useState(false)
   if (keyIds.length === 0) return null
@@ -35,14 +32,11 @@ export function KeyBadge({
           e.stopPropagation()
           setOpen((o) => !o)
         }}
-        title={approximate ? `Nearby locked door (best guess): ${fullNames}` : fullNames}
-        className={`inline-flex items-center gap-1 rounded border bg-accent/10 text-accent hover:bg-accent/20 ${
-          approximate ? 'border-dashed border-accent/60' : 'border-accent/50'
-        } ${compact ? 'px-1 py-0 text-[10px]' : 'px-1.5 py-0.5 text-[11px]'}`}
+        title={fullNames}
+        className={`inline-flex items-center gap-1 rounded border border-accent/50 bg-accent/10 text-accent hover:bg-accent/20 ${compact ? 'px-1 py-0 text-[10px]' : 'px-1.5 py-0.5 text-[11px]'}`}
       >
         <Key className="h-3 w-3" aria-hidden />
         <span className="max-w-[160px] truncate">{label}</span>
-        {approximate && <span className="opacity-70">?</span>}
       </button>
       {open && (
         <span

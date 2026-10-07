@@ -39,8 +39,6 @@ interface Row {
   nameMatch: boolean
   /** A gun found by its printed name only: the box size is a guess. */
   byName?: boolean
-  /** Probably not examined in game yet (grey picture, no name). */
-  unexamined?: boolean
 }
 
 type Box = { x: number; y: number; w: number; h: number }
@@ -93,10 +91,9 @@ function buildRows(result: ScanResult): Row[] {
       row.learned = row.learned || Boolean(d.learned)
       row.nameMatch = row.nameMatch && Boolean(d.nameMatch)
       row.byName = row.byName || Boolean(d.byName)
-      row.unexamined = row.unexamined || Boolean(d.unexamined)
       for (const a of d.alternatives) if (!row.alternatives.includes(a.itemId)) row.alternatives.push(a.itemId)
     } else {
-      byItem.set(d.itemId, { key: d.itemId, itemId: d.itemId, count: 1, selected: true, spots: [i], error: d.error, alternatives: d.alternatives.map((a) => a.itemId), margin: marginOf(d), learned: Boolean(d.learned), nameMatch: Boolean(d.nameMatch), byName: d.byName, unexamined: d.unexamined })
+      byItem.set(d.itemId, { key: d.itemId, itemId: d.itemId, count: 1, selected: true, spots: [i], error: d.error, alternatives: d.alternatives.map((a) => a.itemId), margin: marginOf(d), learned: Boolean(d.learned), nameMatch: Boolean(d.nameMatch), byName: d.byName })
     }
   })
   return [...byItem.values()]
@@ -698,7 +695,6 @@ export function ScanDialog() {
                             <span className={`rounded border px-1 ${conf.cls}`}>{r.manual ? 'Chosen' : conf.label}</span>
                             {r.learned && <span className="rounded border border-info/50 px-1 text-info" title="Matched one of your saved corrections">Learned</span>}
                             {r.byName && <span className="rounded border border-info/50 px-1 text-info" title="A modded gun: no picture looks like it, but its name was read. The box size is a guess; fix it with Edit boxes if it covers other items.">Found by name</span>}
-                            {r.unexamined && <span className="rounded border border-accent/60 px-1 text-accent" title="Grey picture and no name: items you have not examined yet look like this. Examine it in game (right click → Inspect) and scan again.">Not examined?</span>}
                             {need ? (
                               <span className={need.remaining > 0 ? 'text-success' : 'text-ink-dim'}>{need.remaining > 0 ? `still need ${need.remaining}` : 'already have enough'}</span>
                             ) : (

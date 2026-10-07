@@ -419,14 +419,14 @@ function ScannerSection() {
   const [tint, setTint] = usePref('scanTint')
   return (
     <Section id="scanner" title="Stash scanner" icon={ScanSearch} keywords="scanner screenshot stash tick apply add replace keep sell tint">
-      <Row label="Tick automatically" hint="Which recognised items start ticked for adding to Item Collection.">
+      <Row label="Tick automatically" hint='Which recognised items start ticked for adding to Item Collection. By default only "Sure" matches; "Likely" and "Check" ones wait for you to confirm them.'>
         <Segmented
           value={ticking}
           onChange={setTicking}
           label="Tick automatically"
           options={[
-            { value: 'needed', label: 'Needed, unless unsure' },
             { value: 'sure', label: 'Needed and sure' },
+            { value: 'needed', label: 'Needed, also "Likely"' },
             { value: 'none', label: 'Nothing' },
           ]}
         />

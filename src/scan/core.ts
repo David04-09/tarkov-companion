@@ -583,8 +583,6 @@ export interface Detection {
   clipped?: boolean
   /** A gun found by its printed name only (a custom build no picture matches): the box size is a guess. */
   byName?: boolean
-  /** No printed name and a grey, colourless picture: probably an item not examined in game yet. */
-  unexamined?: boolean
 }
 
 /** A reference taken from a real screenshot after the user corrected a match. */
@@ -998,21 +996,6 @@ function growGuns(out: Detection[], grid: Grid, labels: Map<string, Label>, inde
   return gone.size ? out.filter((o) => !gone.has(o)) : out
 }
 
-/**
- * Items not examined yet show a dark grey silhouette and no name, so no picture matches them.
- * Flag poor, nameless matches whose pixels are nearly colourless and dark (a hint only).
- */
-function looksUnexamined(img: Rgba, grid: Grid, d: { col: number; row: number; w: number; h: number }): boolean {
-  const v = sampleRegion(img, grid.ox + d.col * grid.pitch, grid.oy + d.row * grid.pitch, d.w * grid.pitch + 1, d.h * grid.pitch + 1, d.w * FP, d.h * FP)
-  let chroma = 0
-  let light = 0
-  const n = v.length / 3
-  for (let i = 0; i < v.length; i += 3) {
-    chroma += Math.max(v[i], v[i + 1], v[i + 2]) - Math.min(v[i], v[i + 1], v[i + 2])
-    light += (v[i] + v[i + 1] + v[i + 2]) / 3
-  }
-  return chroma / n < 8 && light / n < 70
-}
 
 /** Looks for items on the grid; returns non-overlapping detections, best first. */
 export function scanGrid(img: Rgba, grid: Grid, candidates: Map<string, Candidate[]>, index: FingerprintIndex, opts: ScanOptions = {}, onProgress?: (done: number, total: number) => void): Detection[] {
@@ -1245,7 +1228,6 @@ export function scanGrid(img: Rgba, grid: Grid, candidates: Map<string, Candidat
     out.push(d)
   }
   const grown = growGuns(out, grid, labels, index, empty, taken)
-  for (const d of grown) if (!d.nameMatch && d.error >= 18 && !labels.has(`${d.row},${d.col + d.w - 1}`) && looksUnexamined(img, grid, d)) d.unexamined = true
   onProgress?.(total, total)
   return grown.sort((a, b) => a.row - b.row || a.col - b.col)
 }

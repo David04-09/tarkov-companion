@@ -1,4 +1,4 @@
-import type { GameData, MapLock, Position, Task, TaskObjective } from '../../api/types'
+import type { GameData, Position, Task, TaskObjective } from '../../api/types'
 import type { BaseLayerConfig } from '../mapConfig'
 import { floorForPosition } from './floors'
 
@@ -20,10 +20,12 @@ export interface MapObjective {
   placements: Placement[]
   /** True for "do this anywhere on the map" objectives (no coordinates). */
   anywhere: boolean
-  /** Key item ids needed to reach this objective (from requiredKeys or nearby locks). */
+  /**
+   * Key item ids the quest data lists for this objective (requiredKeys). Keys are never guessed
+   * from locked doors near the objective: a nearby door is not proof that you need its key.
+   */
   keyIds: string[]
-  /** "explicit" = from the task data; "nearby" = guessed from a locked door within a few metres. */
-  keySource: 'explicit' | 'nearby' | null
+  keySource: 'explicit' | null
 }
 
 export interface MapTask {
@@ -35,26 +37,6 @@ export interface MapTask {
   keyIds: string[]
 }
 
-/** Horizontal / vertical distance within which a lock counts as guarding an objective. */
-const LOCK_RADIUS_M = 7
-const LOCK_HEIGHT_M = 3
-
-function nearbyLockKeys(positions: Position[], locks: MapLock[]): string[] {
-  const out = new Set<string>()
-  for (const lock of locks) {
-    for (const p of positions) {
-      if (
-        Math.hypot(lock.position.x - p.x, lock.position.z - p.z) <= LOCK_RADIUS_M &&
-        Math.abs(lock.position.y - p.y) <= LOCK_HEIGHT_M
-      ) {
-        out.add(lock.keyId)
-        break
-      }
-    }
-  }
-  return [...out]
-}
-
 /**
  * Tasks with at least one objective on `mapId`, with every objective's
  * positions resolved (zones, item spawn points, named extracts) and keys
@@ -62,7 +44,6 @@ function nearbyLockKeys(positions: Position[], locks: MapLock[]): string[] {
  */
 export function buildMapTasks(data: GameData, mapId: string, layer: BaseLayerConfig): MapTask[] {
   const details = data.mapDetails[mapId]
-  const locks = details?.locks ?? []
   const extractsByName = new Map<string, (typeof details.extracts)[number]>()
   for (const e of details?.extracts ?? []) extractsByName.set(e.name.toLowerCase(), e)
 
@@ -114,18 +95,8 @@ export function buildMapTasks(data: GameData, mapId: string, layer: BaseLayerCon
       const anywhere = placements.length === 0 && (onThisMap || unlocated)
       if (placements.length === 0 && !anywhere) continue
 
-      let keyIds: string[]
-      let keySource: MapObjective['keySource'] = null
-      if (o.requiredKeys.length > 0) {
-        keyIds = [...new Set(o.requiredKeys.flat())]
-        keySource = 'explicit'
-      } else {
-        keyIds = nearbyLockKeys(
-          placements.map((p) => p.position),
-          locks,
-        )
-        if (keyIds.length > 0) keySource = 'nearby'
-      }
+      const keyIds = [...new Set(o.requiredKeys.flat())]
+      const keySource: MapObjective['keySource'] = keyIds.length > 0 ? 'explicit' : null
       objectives.push({ objective: o, placements, anywhere, keyIds, keySource })
     }
     if (objectives.length === 0) continue

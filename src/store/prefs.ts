@@ -95,7 +95,7 @@ export const DEFAULT_PREFS: Prefs = {
   bringBoxOpen: true,
   questPanelOpen: true,
   showMapCredits: true,
-  scanTicking: 'needed',
+  scanTicking: 'sure',
   scanApplyMode: 'add',
   scanTint: true,
   autoSwitchGameMode: true,
@@ -167,9 +167,14 @@ export const usePrefs = create<PrefsState>()(
     }),
     {
       name: 'tarkov-companion-prefs',
-      version: 1,
+      version: 2,
       partialize: (s) => cleanPrefs(s),
-      migrate: (persisted) => cleanPrefs(persisted),
+      // v2: the scanner ticks only "Sure" matches by default (v1 also ticked "Likely" ones).
+      migrate: (persisted, version) => {
+        const p = cleanPrefs(persisted)
+        if (version < 2 && p.scanTicking === 'needed') p.scanTicking = 'sure'
+        return p
+      },
       merge: (persisted, current) => ({ ...current, ...cleanPrefs(persisted) }),
     },
   ),

@@ -58,7 +58,7 @@ export function ObjectivePopup({
 
       {mo.keyIds.length > 0 && (
         <div className="mt-1.5">
-          <KeyBadge keyIds={mo.keyIds} items={items.data?.items} approximate={mo.keySource === 'nearby'} />
+          <KeyBadge keyIds={mo.keyIds} items={items.data?.items} />
         </div>
       )}
 
