@@ -323,6 +323,7 @@ export async function fetchGameData(gameMode: GameMode, signal?: AbortSignal): P
   for (const rawMap of Object.values(mapsRes.doc.data.maps)) {
     mapDetails[rawMap.id] = adaptMapDetails(rawMap, mapsRes.t, { names: mobNames, normalized: mobNormalized })
   }
+  dropPlaceholderTrunks(mapDetails)
   const latestGoon = (mapsRes.doc.data.goonReports ?? [])
     .map((g) => ({ mapId: g.map, at: Number(g.timestamp) }))
     .filter((g) => g.mapId && Number.isFinite(g.at))
@@ -585,4 +586,16 @@ export async function fetchCrafts(gameMode: GameMode, signal?: AbortSignal): Pro
 export async function fetchServerStatus(signal?: AbortSignal): Promise<RawStatusDoc['data']> {
   const doc = await fetchJson<RawStatusDoc>('/status', signal)
   return doc.data
+}
+
+/**
+ * Car trunks in the game files carry a placeholder key: the Factory emergency exit key "opens"
+ * 19 trunks across Lighthouse, Streets, Shoreline and Ground Zero, a cottage safe key 6. Real
+ * car keys open one or two trunks. Trunk locks of a key with more than this many are dropped.
+ */
+const MAX_REAL_TRUNKS = 3
+function dropPlaceholderTrunks(mapDetails: Record<string, MapDetails>) {
+  const trunks = new Map<string, number>()
+  for (const d of Object.values(mapDetails)) for (const l of d.locks) if (l.lockType === 'trunk') trunks.set(l.keyId, (trunks.get(l.keyId) ?? 0) + 1)
+  for (const d of Object.values(mapDetails)) d.locks = d.locks.filter((l) => l.lockType !== 'trunk' || (trunks.get(l.keyId) ?? 0) <= MAX_REAL_TRUNKS)
 }

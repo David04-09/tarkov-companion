@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
-import { KeyRound, Search } from 'lucide-react'
+import { ChevronRight, KeyRound, Search } from 'lucide-react'
+import { KeyDetails } from '../keys/KeyDetails'
 import { useGameData, useItems } from '../api/hooks'
 import type { Item } from '../api/types'
 import { ErrorPanel, LoadingPanel } from '../components/DataState'
@@ -29,6 +30,7 @@ export function KeysPage() {
   const [map, setMap] = useState('all')
   const [owned, setOwned] = useState<'all' | 'owned' | 'missing'>('all')
   const [neededOnly, setNeededOnly] = useState(false)
+  const [openId, setOpenId] = useState<string | null>(null)
 
   const rows = useMemo<KeyRow[]>(() => {
     if (!gameData.data || !items.data) return []
@@ -84,6 +86,7 @@ export function KeysPage() {
   if (items.isError && !items.data) return <ErrorPanel error={items.error} onRetry={() => void items.refetch()} />
 
   const ownedCount = rows.filter((r) => ownedSet.has(r.item.id)).length
+  const openRow = openId ? rows.find((r) => r.item.id === openId) : undefined
 
   return (
     <div>
@@ -91,7 +94,7 @@ export function KeysPage() {
         <div>
           <h1 className="text-2xl font-semibold">Keys</h1>
           <p className="text-sm text-ink-muted">
-            {ownedCount} of {rows.length} keys owned ({gameMode === 'pve' ? 'PvE' : 'PvP'}). Owned keys show green on the map's locked-door layer.
+            {ownedCount} of {rows.length} keys owned ({gameMode === 'pve' ? 'PvE' : 'PvP'}). Owned keys show green on the map's locked-door layer. Click a key for its door on the map, pictures, what is behind it and whether it is worth it.
           </p>
         </div>
       </div>
@@ -131,14 +134,15 @@ export function KeysPage() {
             {filtered.map((r) => {
               const isOwned = ownedSet.has(r.item.id)
               return (
-                <tr key={r.item.id} className="hover:bg-surface-3">
-                  <td className="px-3 py-1.5">
+                <tr key={r.item.id} onClick={() => setOpenId(r.item.id)} className="cursor-pointer hover:bg-surface-3" title="Show where it opens and what is behind it">
+                  <td className="px-3 py-1.5" onClick={(e) => e.stopPropagation()}>
                     <input type="checkbox" checked={isOwned} onChange={(e) => setKeyOwned(gameMode, r.item.id, e.target.checked)} aria-label={`Own ${r.item.name}`} className="h-4 w-4" />
                   </td>
                   <td className="px-3 py-1.5">
                     <div className="flex items-center gap-2">
                       {r.item.iconLink ? <img src={r.item.iconLink} alt="" className="h-7 w-7 object-contain" loading="lazy" /> : <KeyRound className="h-5 w-5 text-ink-dim" />}
                       <span className={isOwned ? 'text-success' : ''}>{r.item.name}</span>
+                      <ChevronRight className="ml-auto h-4 w-4 shrink-0 text-ink-dim" aria-hidden />
                     </div>
                   </td>
                   <td className="px-3 py-1.5 text-xs text-ink-muted">
@@ -157,6 +161,15 @@ export function KeysPage() {
         </table>
         {filtered.length === 0 && <p className="px-4 py-10 text-center text-sm text-ink-muted">No keys match these filters.</p>}
       </div>
+      {openRow && gameData.data && (
+        <KeyDetails
+          row={openRow}
+          data={gameData.data}
+          owned={ownedSet.has(openRow.item.id)}
+          onToggleOwned={(v) => setKeyOwned(gameMode, openRow.item.id, v)}
+          onClose={() => setOpenId(null)}
+        />
+      )}
     </div>
   )
 }
