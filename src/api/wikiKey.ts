@@ -18,14 +18,18 @@ export interface KeyWiki {
   /** What is behind the lock, one line per entry ("1x Weapon box (6x2)"). */
   behind: string[]
   behindImages: GuideImage[]
+  /** Where the key itself is found ("## Shoreline" lines start a map). */
+  keyText: string[]
+  keyImages: GuideImage[]
   notes: string[]
 }
 
 const textOf = (el: Element | null | undefined) => (el?.textContent ?? '').replace(/\s+/g, ' ').trim()
 
-type Part = 'lock' | 'behind' | 'notes' | null
+type Part = 'lock' | 'behind' | 'key' | 'notes' | null
 function partOf(heading: string): Part {
   if (/lock locations?/i.test(heading)) return 'lock'
+  if (/^key locations?$/i.test(heading)) return 'key'
   if (/behind the lock/i.test(heading)) return 'behind'
   if (/^notes?$/i.test(heading)) return 'notes'
   return null
@@ -34,7 +38,7 @@ function partOf(heading: string): Part {
 export function parseKeyWiki(html: string, pageUrl: string): KeyWiki {
   const doc = new DOMParser().parseFromString(`<div id="root">${html}</div>`, 'text/html')
   const root = doc.getElementById('root') ?? doc.body
-  const out: KeyWiki = { pageUrl, lockText: [], lockImages: [], behind: [], behindImages: [], notes: [] }
+  const out: KeyWiki = { pageUrl, lockText: [], lockImages: [], behind: [], behindImages: [], keyText: [], keyImages: [], notes: [] }
   const seen = new Set<string>()
   let part: Part = null
 
@@ -44,13 +48,15 @@ export function parseKeyWiki(html: string, pageUrl: string): KeyWiki {
     const { full, thumb } = imageUrls(src)
     if (seen.has(full)) return
     seen.add(full)
-    const image = { full, thumb, caption: caption || img.getAttribute('alt') || '', section: part === 'behind' ? 'Behind the lock' : 'Lock location' }
+    const section = part === 'behind' ? 'Behind the lock' : part === 'key' ? 'Where the key is found' : 'Lock location'
+    const image = { full, thumb, caption: caption || img.getAttribute('alt') || '', section }
     if (part === 'behind') out.behindImages.push(image)
     else if (part === 'lock') out.lockImages.push(image)
+    else if (part === 'key') out.keyImages.push(image)
   }
   const addText = (t: string) => {
     if (t.length < 3) return
-    const list = part === 'lock' ? out.lockText : part === 'behind' ? out.behind : out.notes
+    const list = part === 'lock' ? out.lockText : part === 'behind' ? out.behind : part === 'key' ? out.keyText : out.notes
     if (!list.includes(t)) list.push(t)
   }
 
@@ -61,6 +67,12 @@ export function parseKeyWiki(html: string, pageUrl: string): KeyWiki {
       continue
     }
     if (!part) continue
+    // Key Location is split per map ("Shoreline", "Customs"): keep those as headings.
+    if (part === 'key' && /^H[3-4]$/.test(node.tagName)) {
+      const t = textOf(node.querySelector('.mw-headline') ?? node).replace(/\[\s*\]$/, '')
+      if (t) out.keyText.push(`## ${t}`)
+      continue
+    }
     // The "Keys & Keycards" navigation box at the bottom lists every key: not part of this one.
     if (node.closest('table, .navbox, aside, .va-navbox-border')) continue
     if (node.matches('li.gallerybox')) {
@@ -105,7 +117,7 @@ async function fetchKeyWiki(title: string, signal?: AbortSignal): Promise<KeyWik
 export function useKeyWiki(wikiLink: string | null | undefined, enabled = true) {
   const title = wikiTitle(wikiLink)
   return useQuery({
-    queryKey: ['keyWiki', title, 1] as const,
+    queryKey: ['keyWiki', title, 2] as const,
     queryFn: ({ signal }) => fetchKeyWiki(title as string, signal),
     enabled: enabled && Boolean(title),
     staleTime: 7 * DAY,

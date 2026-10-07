@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import L from 'leaflet'
-import { Marker, Tooltip, useMap } from 'react-leaflet'
+import { CircleMarker, Marker, Tooltip, useMap } from 'react-leaflet'
 import { CheckCircle2, ExternalLink, HelpCircle, KeyRound, Loader2, ScrollText, X, XCircle } from 'lucide-react'
-import type { GameData, Item, MapLock } from '../api/types'
+import type { GameData, Item, MapLock, Position } from '../api/types'
 import { useKeyWiki } from '../api/wikiKey'
 import type { GuideImage } from '../api/wikiGuide'
 import { Lightbox } from '../components/QuestGuide'
 import { formatRoubles } from '../lib/format'
 import { keyVerdict } from '../lib/keyVerdict'
+import { keySpawnsByMap } from '../lib/keySpawns'
 import { MapViewer } from '../maps/MapViewer'
 import { findMapConfig, resolveBaseLayer, type BaseLayerConfig } from '../maps/mapConfig'
 import { floorForPosition } from '../maps/overlay/floors'
@@ -32,38 +33,72 @@ function locksByMap(data: GameData, keyId: string) {
   return out
 }
 
-/** Zooms to the lock(s) once the map is ready. */
-function FitLocks({ locks, layer }: { locks: MapLock[]; layer: BaseLayerConfig }) {
+/** Zooms to the marked spots once the map is ready. */
+function FitPoints({ points, layer }: { points: Position[]; layer: BaseLayerConfig }) {
   const map = useMap()
   useEffect(() => {
-    const pts = locks.map((l) => L.latLng(l.position.z, l.position.x))
+    const pts = points.map((p) => L.latLng(p.z, p.x))
     // One step out from full detail: the building and its surroundings, not just the door.
     if (pts.length === 1) map.setView(pts[0], Math.min(map.getMaxZoom(), layer.maxZoom - 0.5), { animate: false })
     else map.fitBounds(L.latLngBounds(pts).pad(0.6), { animate: false, maxZoom: layer.maxZoom - 0.5 })
-  }, [map, locks, layer])
+  }, [map, points, layer])
   return null
 }
 
-function KeyMap({ normalizedName, configKey, locks, keyName }: { normalizedName: string; configKey: string; locks: MapLock[]; keyName: string }) {
+interface KeyMarker {
+  id: string
+  position: Position
+  kind: 'lock' | 'spawn'
+  label: string
+}
+
+const SPAWN_STYLE = { color: '#0b0b0b', weight: 1.5, fillColor: '#22c55e', fillOpacity: 0.95 }
+
+function KeyMap({ normalizedName, configKey, markers }: { normalizedName: string; configKey: string; markers: KeyMarker[] }) {
   const preferred = useUiStore((s) => s.baseLayerByMap[configKey])
+  const points = useMemo(() => markers.map((m) => m.position), [markers])
   const cfg = findMapConfig(normalizedName)
-  if (!cfg) return null
+  if (!cfg || !markers.length) return null
   const layer = resolveBaseLayer(cfg, preferred)
-  const floor = floorForPosition(layer, locks[0].position)
+  const floor = floorForPosition(layer, markers[0].position)
+  const permanent = markers.length <= 3
   return (
     <div className="h-72 overflow-hidden rounded border border-line">
-      <MapViewer mapKey={`key:${configKey}:${locks.map((l) => l.id).join(',')}`} layer={layer} floorName={floor}>
-        <FitLocks locks={locks} layer={layer} />
-        {locks.map((l) => (
-          <Marker key={l.id} position={[l.position.z, l.position.x]} icon={layerIcon('lock', '#f59e0b')} zIndexOffset={1000}>
-            <Tooltip direction="top" offset={[0, -10]} permanent={locks.length <= 3}>
-              {keyName.replace(/ key$/i, '')}
-              {l.lockType && l.lockType !== 'door' ? ` (${l.lockType})` : ''}
-              {l.needsPower ? ' · needs power' : ''}
-            </Tooltip>
-          </Marker>
-        ))}
+      <MapViewer mapKey={`key:${configKey}:${markers.map((m) => m.id).join(',')}`} layer={layer} floorName={floor}>
+        <FitPoints points={points} layer={layer} />
+        {markers.map((m) =>
+          m.kind === 'lock' ? (
+            <Marker key={m.id} position={[m.position.z, m.position.x]} icon={layerIcon('lock', '#f59e0b')} zIndexOffset={1000}>
+              <Tooltip direction="top" offset={[0, -10]} permanent={permanent}>
+                {m.label}
+              </Tooltip>
+            </Marker>
+          ) : (
+            <CircleMarker key={m.id} center={[m.position.z, m.position.x]} radius={7} pathOptions={SPAWN_STYLE}>
+              <Tooltip direction="top" offset={[0, -6]} permanent={permanent}>
+                {m.label}
+              </Tooltip>
+            </CircleMarker>
+          ),
+        )}
       </MapViewer>
+    </div>
+  )
+}
+
+const lockMarkers = (locks: MapLock[], keyName: string): KeyMarker[] =>
+  locks.map((l) => ({
+    id: l.id,
+    position: l.position,
+    kind: 'lock',
+    label: `${keyName.replace(/ key$/i, '')}${l.lockType && l.lockType !== 'door' ? ` (${l.lockType})` : ''}${l.needsPower ? ' · needs power' : ''}`,
+  }))
+
+/** Wiki lines where "## Shoreline" starts a map. */
+function WikiLines({ lines }: { lines: string[] }) {
+  return (
+    <div className="space-y-1 text-sm">
+      {lines.map((t, i) => (t.startsWith('## ') ? <p key={i} className="pt-1 text-xs font-semibold uppercase tracking-wide text-ink-muted">{t.slice(3)}</p> : <p key={i}>{t}</p>))}
     </div>
   )
 }
@@ -94,8 +129,16 @@ export function KeyDetails({ row, data, owned, onToggleOwned, onClose }: { row: 
   const wiki = useKeyWiki(row.item.wikiLink)
   const maps = useMemo(() => locksByMap(data, row.item.id), [data, row.item.id])
   const [mapIndex, setMapIndex] = useState(0)
+  const spawnMaps = useMemo(() => keySpawnsByMap(data, row.item.id, (n) => findMapConfig(n)?.key), [data, row.item.id])
+  const [spawnIndex, setSpawnIndex] = useState(0)
+  const spawnShown = spawnMaps[Math.min(spawnIndex, spawnMaps.length - 1)]
+  const spawnMarkers = useMemo<KeyMarker[]>(
+    () => (spawnShown ? spawnShown.points.map((p, i) => ({ id: `s${i}`, position: p, kind: 'spawn', label: 'Key can spawn here' })) : []),
+    [spawnShown],
+  )
+  const traderNames = useMemo(() => new Map(data.traders.map((t) => [t.id, t.name])), [data.traders])
   const [lightbox, setLightbox] = useState<number | null>(null)
-  const allImages = useMemo(() => [...(wiki.data?.lockImages ?? []), ...(wiki.data?.behindImages ?? [])], [wiki.data])
+  const allImages = useMemo(() => [...(wiki.data?.lockImages ?? []), ...(wiki.data?.keyImages ?? []), ...(wiki.data?.behindImages ?? [])], [wiki.data])
   const verdict = keyVerdict({ behind: wiki.data ? wiki.data.behind : wiki.isError ? [] : null, questNames: row.quests.map((q) => q.name) })
   const style = VERDICT_STYLE[wiki.isPending && verdict.kind !== 'quest' ? 'unknown' : verdict.kind]
   const shown = maps[Math.min(mapIndex, maps.length - 1)]
@@ -160,7 +203,7 @@ export function KeyDetails({ row, data, owned, onToggleOwned, onClose }: { row: 
             )}
             {shown ? (
               <>
-                <KeyMap key={shown.configKey} normalizedName={shown.normalizedName} configKey={shown.configKey} locks={shown.locks} keyName={row.item.name} />
+                <KeyMap key={shown.configKey} normalizedName={shown.normalizedName} configKey={shown.configKey} markers={lockMarkers(shown.locks, row.item.name)} />
                 <p className="text-xs text-ink-muted">
                   {shown.mapName}: {shown.locks.length} lock{shown.locks.length > 1 ? 's' : ''} for this key (from tarkov.dev's map data).
                 </p>
@@ -170,6 +213,45 @@ export function KeyDetails({ row, data, owned, onToggleOwned, onClose }: { row: 
             )}
             {wiki.data?.lockText.map((t) => <p key={t} className="text-sm">{t}</p>)}
             <Thumbs images={wiki.data?.lockImages ?? []} onOpen={openImage} />
+          </section>
+
+          <section className="space-y-2">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Where to find the key</h3>
+            {spawnMaps.length > 1 && (
+              <div className="flex flex-wrap gap-1">
+                {spawnMaps.map((m, i) => (
+                  <button key={m.configKey} type="button" onClick={() => setSpawnIndex(i)} className={`rounded border px-2 py-0.5 text-xs ${i === Math.min(spawnIndex, spawnMaps.length - 1) ? 'border-success bg-success/15 text-success' : 'border-line text-ink-muted hover:text-ink'}`}>
+                    {m.mapName} ({m.points.length})
+                  </button>
+                ))}
+              </div>
+            )}
+            {spawnShown ? (
+              <>
+                <KeyMap key={`spawn-${spawnShown.configKey}`} normalizedName={spawnShown.normalizedName} configKey={spawnShown.configKey} markers={spawnMarkers} />
+                <p className="text-xs text-ink-muted">
+                  {spawnShown.mapName}: {spawnShown.points.length} loose-loot spot{spawnShown.points.length > 1 ? 's' : ''} where this key can spawn (green). From the game's loot data via tarkov.dev; how likely each spot is, is not in the data.
+                </p>
+              </>
+            ) : (
+              <p className="text-xs text-ink-dim">tarkov.dev's loot data has no loose-loot spot for this key.</p>
+            )}
+            {wiki.data && wiki.data.keyText.length > 0 && (
+              <div className="rounded border border-line bg-surface p-2">
+                <p className="mb-1 text-[11px] text-ink-dim">The EFT Wiki says:</p>
+                <WikiLines lines={wiki.data.keyText} />
+              </div>
+            )}
+            <Thumbs images={wiki.data?.keyImages ?? []} onOpen={openImage} />
+            {row.item.buyFromTrader.length > 0 && (
+              <p className="text-sm">
+                Sold by{' '}
+                {row.item.buyFromTrader
+                  .map((b) => `${traderNames.get(b.traderId) ?? 'a trader'}${b.minTraderLevel ? ` (loyalty ${b.minTraderLevel})` : ''} for ${formatRoubles(b.priceRUB)}`)
+                  .join(', ')}
+                .
+              </p>
+            )}
           </section>
 
           <section className="space-y-2">
