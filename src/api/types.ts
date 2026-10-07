@@ -349,6 +349,8 @@ export interface RawItem {
   normalizedName: string
   iconLink: string | null
   gridImageLink?: string | null
+  /** 512 px picture (the Weapon builder shows it for weapons, parts and presets). */
+  image512pxLink?: string | null
   wikiLink?: string | null
   basePrice: number
   avg24hPrice: number | null
@@ -533,6 +535,10 @@ export interface Item {
   mod?: ModStats
   /** Only on weapon presets (ready-made builds). */
   preset?: PresetInfo
+  /** Inventory-grid picture; only on weapons, parts and presets (Weapon builder). */
+  gridImageLink?: string
+  /** Large 512 px picture; only on weapons, parts and presets (Weapon builder). */
+  image512Link?: string
 }
 
 /** A slot on a weapon or part; `allowed` lists the item ids that fit. */

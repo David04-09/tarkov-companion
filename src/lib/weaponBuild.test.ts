@@ -7,7 +7,11 @@ import {
   findConflict,
   flattenBuild,
   installedIds,
+  arrangeSlots,
+  matchingPreset,
   missingRequired,
+  partOptions,
+  slotSide,
   presetToBuild,
   setPart,
   slotLabel,
@@ -180,5 +184,35 @@ describe('preset placement search', () => {
     expect(unplaced).toEqual([])
     expect(parts.top.itemId).toBe('scope')
     expect(parts.side.slots['m-sight'].itemId).toBe('dot')
+  })
+})
+
+describe('modding view helpers', () => {
+  it('finds the preset that has exactly the installed parts', () => {
+    const { parts } = presetToBuild(items.preset, items)
+    expect(matchingPreset(rifle, parts, items)?.id).toBe('preset')
+    expect(matchingPreset(rifle, setPart(parts, ['s-mag'], null, items), items)).toBeNull()
+  })
+
+  it('lists parts for a slot with conflicts last and the replaced part ignored', () => {
+    const parts = setPart(setPart({}, ['s-hg'], 'hg', items), ['s-hg', 's-fg'], 'fg', items)
+    const installed = ['rifle', ...installedIds(parts)]
+    const grips = partOptions(rifle.weapon!.slots[0], undefined, installed, items, price, '', 'ergonomics')
+    expect(grips.map((o) => `${o.item.id}:${o.conflict?.id ?? ''}`)).toEqual(['grip:', 'grip2:fg'])
+    const hgs = partOptions(rifle.weapon!.slots[1], parts['s-hg'], installed, items, price, 'hg2', 'name')
+    expect(hgs.map((o) => o.item.id)).toEqual(['hg2'])
+  })
+
+  it('puts slots around the picture like the game', () => {
+    expect(slotSide('mod_muzzle')).toBe('left')
+    expect(slotSide('mod_stock_001')).toBe('right')
+    expect(slotSide('mod_magazine')).toBe('bottom')
+    expect(slotSide('mod_scope_000')).toBe('top')
+    const many = ['mod_muzzle', 'mod_barrel', 'mod_gas_block', 'mod_handguard', 'mod_launcher', 'mod_pistol_grip'].map((n, i) => slot(`x${i}`, n, []))
+    const sides = arrangeSlots(many)
+    expect(sides.left.map((s) => s.nameId)).toEqual(['mod_muzzle', 'mod_barrel', 'mod_gas_block'])
+    expect(sides.right.map((s) => s.nameId)).toEqual(['mod_pistol_grip'])
+    expect(sides.bottom.map((s) => s.nameId)).toEqual(['mod_handguard', 'mod_launcher'])
+    expect(Object.values(sides).flat()).toHaveLength(many.length)
   })
 })

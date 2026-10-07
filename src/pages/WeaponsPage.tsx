@@ -23,18 +23,21 @@ import {
   buildAsText,
   buildConflicts,
   buildTotals,
-  findConflict,
   flattenBuild,
   formatErgo,
   formatPercent,
   installedIds,
+  partOptions,
   presetToBuild,
   setPart,
-  slotCandidates,
   weaponPresets,
   type BuildParts,
   type FlatSlot,
+  type PartSort,
+  type SlotPath,
 } from '../lib/weaponBuild'
+import { readBuilderView, writeBuilderView, type BuilderView } from '../weapons/builderView'
+import { ModdingView } from '../weapons/ModdingView'
 import { useProgressStore } from '../store/progress'
 import { useWeaponBuildsStore, type SavedBuild } from '../store/weaponBuilds'
 
@@ -303,9 +306,15 @@ function Builder({
     const r = presetToBuild(p, items)
     replace(r.parts, r.unplaced)
   }
-  const choose = (f: FlatSlot, itemId: string | null) => {
-    setParts((prev) => setPart(prev, f.path, itemId, items))
+  const choosePath = (path: SlotPath, itemId: string | null) => {
+    setParts((prev) => setPart(prev, path, itemId, items))
     setOpenPath(null)
+  }
+  const choose = (f: FlatSlot, itemId: string | null) => choosePath(f.path, itemId)
+  const [view, setView] = useState<BuilderView>(readBuilderView)
+  const switchView = (v: BuilderView) => {
+    setView(v)
+    writeBuilderView(v)
   }
   const save = () => {
     if (active) {
@@ -429,8 +438,25 @@ function Builder({
       <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
         {/* Slot tree */}
         <div className="min-w-0 rounded-lg border border-line bg-surface-2">
-          <h2 className="border-b border-line px-3 py-2 text-sm font-semibold">Parts</h2>
-          {flat.length === 0 ? (
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-3 py-2">
+            <h2 className="text-sm font-semibold">Parts</h2>
+            <div role="group" aria-label="Builder view" className="inline-flex overflow-hidden rounded border border-line text-xs">
+              {(['modding', 'list'] as const).map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => switchView(v)}
+                  aria-pressed={view === v}
+                  className={`px-2.5 py-1 ${view === v ? 'bg-accent/20 text-accent' : 'bg-surface-3 text-ink-muted hover:text-ink'}`}
+                >
+                  {v === 'modding' ? 'Modding view' : 'List view'}
+                </button>
+              ))}
+            </div>
+          </div>
+          {flat.length > 0 && view === 'modding' ? (
+            <ModdingView weapon={weapon} items={items} parts={parts} installed={installed} onChoose={choosePath} />
+          ) : flat.length === 0 ? (
             <p className="px-3 py-8 text-center text-sm text-ink-muted">This weapon has no slots for parts.</p>
           ) : (
             <ul className="divide-y divide-line">
@@ -545,7 +571,6 @@ function Stat({ label, value, sub, subTone = 'text-ink-dim', hint }: { label: st
 // One slot + its part picker
 // ---------------------------------------------------------------------------
 
-type PickerSort = 'name' | 'ergonomics' | 'recoil' | 'price'
 
 function ModStatsInline({ item }: { item: Item }) {
   const m = item.mod
@@ -627,31 +652,13 @@ function PartPicker({
   indent: number
 }) {
   const [search, setSearch] = useState('')
-  const [sort, setSort] = useState<PickerSort>('name')
+  const [sort, setSort] = useState<PartSort>('name')
 
-  // Parts that would be removed by a swap do not block the new part.
-  const ignore = useMemo(() => {
-    const s = new Set<string>()
-    if (flat.node) {
-      s.add(flat.node.itemId)
-      for (const id of installedIds(flat.node.slots)) s.add(id)
-    }
-    return s
-  }, [flat.node])
-
-  const rows = useMemo(() => {
-    const needle = search.trim().toLowerCase()
-    const list = slotCandidates(flat.slot, items)
-      .filter((it) => !needle || it.name.toLowerCase().includes(needle) || it.shortName.toLowerCase().includes(needle))
-      .map((it) => ({ item: it, price: acquireCost(it), conflict: findConflict(it.id, installed, items, ignore) }))
-    const by: Record<PickerSort, (a: (typeof list)[number], b: (typeof list)[number]) => number> = {
-      name: (a, b) => a.item.name.localeCompare(b.item.name),
-      ergonomics: (a, b) => (b.item.mod?.ergonomics ?? 0) - (a.item.mod?.ergonomics ?? 0),
-      recoil: (a, b) => (a.item.mod?.recoilModifier ?? 0) - (b.item.mod?.recoilModifier ?? 0),
-      price: (a, b) => (a.price ?? Infinity) - (b.price ?? Infinity),
-    }
-    return list.sort((a, b) => Number(a.conflict != null) - Number(b.conflict != null) || by[sort](a, b) || a.item.name.localeCompare(b.item.name))
-  }, [flat.slot, items, installed, ignore, search, sort])
+  // Parts that would be removed by a swap do not block the new part (partOptions handles it).
+  const rows = useMemo(
+    () => partOptions(flat.slot, flat.node, installed, items, acquireCost, search, sort),
+    [flat.slot, flat.node, items, installed, search, sort],
+  )
 
   return (
     <div
@@ -674,7 +681,7 @@ function PartPicker({
             className={`${selectClass} w-full pl-8`}
           />
         </label>
-        <select value={sort} onChange={(e) => setSort(e.target.value as PickerSort)} aria-label="Sort parts" className={selectClass}>
+        <select value={sort} onChange={(e) => setSort(e.target.value as PartSort)} aria-label="Sort parts" className={selectClass}>
           <option value="name">By name</option>
           <option value="ergonomics">Best ergonomics</option>
           <option value="recoil">Least recoil</option>

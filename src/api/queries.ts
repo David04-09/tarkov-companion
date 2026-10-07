@@ -430,6 +430,11 @@ function adaptWeaponData(raw: RawItem, item: Item): void {
     }
     item.preset = preset
   }
+  // Pictures for the Weapon builder's Modding view (only these items, to keep the cache small).
+  if (item.weapon || item.mod || item.preset) {
+    if (raw.gridImageLink) item.gridImageLink = raw.gridImageLink
+    if (raw.image512pxLink) item.image512Link = raw.image512pxLink
+  }
 }
 
 /** All items (name, short name, icon, prices) plus the level XP table, for one game mode. ~1.4 MB compressed. */

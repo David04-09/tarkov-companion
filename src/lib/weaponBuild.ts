@@ -375,6 +375,102 @@ export function weaponPresets(weapon: Item, items: ItemsById): Item[] {
   return list.sort((a, b) => Number(b.id === def) - Number(a.id === def) || a.name.localeCompare(b.name))
 }
 
+/**
+ * The tarkov.dev preset whose parts are exactly the installed parts (same ids,
+ * same counts; loaded rounds ignored), or null. Used to show the preset's picture.
+ */
+export function matchingPreset(weapon: Item, parts: BuildParts, items: ItemsById): Item | null {
+  const key = (ids: string[]) => [...ids].sort().join(',')
+  const mine = key(installedIds(parts))
+  for (const p of weaponPresets(weapon, items)) {
+    if (key(p.preset!.parts.filter((id) => items[id]?.mod)) === mine) return p
+  }
+  return null
+}
+
+// ---------------------------------------------------------------------------
+// Part picker rows (shared by the List view and the Modding view)
+// ---------------------------------------------------------------------------
+
+export type PartSort = 'name' | 'ergonomics' | 'recoil' | 'price'
+
+export interface PartOption {
+  item: Item
+  price: number | null
+  /** An installed part this one cannot be fitted with. */
+  conflict: Item | null
+}
+
+/**
+ * Parts that fit `slot`, filtered by `search` and sorted (conflicting parts last).
+ * `node` = what is in the slot now: it and everything on it are being replaced,
+ * so they do not block a new part.
+ */
+export function partOptions(
+  slot: ModSlot,
+  node: BuildNode | undefined,
+  installed: string[],
+  items: ItemsById,
+  priceOf: (item: Item) => number | null,
+  search: string,
+  sort: PartSort,
+): PartOption[] {
+  const ignore = new Set<string>()
+  if (node) {
+    ignore.add(node.itemId)
+    for (const id of installedIds(node.slots)) ignore.add(id)
+  }
+  const needle = search.trim().toLowerCase()
+  const list = slotCandidates(slot, items)
+    .filter((it) => !needle || it.name.toLowerCase().includes(needle) || it.shortName.toLowerCase().includes(needle))
+    .map((it) => ({ item: it, price: priceOf(it), conflict: findConflict(it.id, installed, items, ignore) }))
+  const by: Record<PartSort, (a: PartOption, b: PartOption) => number> = {
+    name: (a, b) => a.item.name.localeCompare(b.item.name),
+    ergonomics: (a, b) => (b.item.mod?.ergonomics ?? 0) - (a.item.mod?.ergonomics ?? 0),
+    recoil: (a, b) => (a.item.mod?.recoilModifier ?? 0) - (b.item.mod?.recoilModifier ?? 0),
+    price: (a, b) => (a.price ?? Infinity) - (b.price ?? Infinity),
+  }
+  return list.sort((a, b) => Number(a.conflict != null) - Number(b.conflict != null) || by[sort](a, b) || a.item.name.localeCompare(b.item.name))
+}
+
+// ---------------------------------------------------------------------------
+// Modding view layout
+// ---------------------------------------------------------------------------
+
+export type SlotSide = 'top' | 'left' | 'right' | 'bottom'
+
+/** Where a slot sits around the picture, like the game (the muzzle points left). */
+export function slotSide(nameId: string): SlotSide {
+  const k = nameId.toLowerCase().replace(/^mod_/, '')
+  if (/^(muzzle|barrel|gas_block|handguard|launcher|foregrip|bipod|sight_front)/.test(k)) return 'left'
+  if (/^(stock|pistol_?grip|reciever|receiver|charge|hammer|trigger|catch)/.test(k)) return 'right'
+  if (/^(magazine|tactical|flashlight|equipment)/.test(k)) return 'bottom'
+  return 'top'
+}
+
+/** Most tiles a left/right column holds before the rest move to the top/bottom rows. */
+export const SIDE_COLUMN_MAX = 3
+
+/**
+ * Splits slots into the four sides. Columns hold at most SIDE_COLUMN_MAX tiles
+ * (the extra go to the bottom row); rows with more than 4 tiles hand extras to
+ * a column with room so the picture stays surrounded. Slot order is kept within each side.
+ */
+export function arrangeSlots(slots: ModSlot[]): Record<SlotSide, ModSlot[]> {
+  const out: Record<SlotSide, ModSlot[]> = { top: [], left: [], right: [], bottom: [] }
+  for (const s of slots) out[slotSide(s.nameId)].push(s)
+  for (const side of ['left', 'right'] as const) {
+    while (out[side].length > SIDE_COLUMN_MAX) out.bottom.unshift(out[side].pop()!)
+  }
+  // Rows with more than 4 tiles give the extras to an empty column.
+  for (const row of ['top', 'bottom'] as const) {
+    for (const side of ['right', 'left'] as const) {
+      while (out[row].length > 4 && out[side].length < SIDE_COLUMN_MAX) out[side].push(out[row].pop()!)
+    }
+  }
+  return out
+}
+
 // ---------------------------------------------------------------------------
 // Text export
 // ---------------------------------------------------------------------------
