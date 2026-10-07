@@ -180,3 +180,7 @@ src/
 | `npm run build` | Type-check and build the production bundle into `dist/` |
 | `npm run preview` | Serve the production build locally |
 | `npm run lint` | Run the linter |
+
+## Licence
+
+Free to use, change and share for any **noncommercial** purpose under the [PolyForm Noncommercial License 1.0.0](LICENSE.md); selling it or using it commercially is not allowed. Third-party libraries, data and imagery keep their own licences ([THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt)); the Lighthouse map tiles are CC BY-NC-SA 4.0 by re3mr. Escape from Tarkov and its content belong to Battlestate Games; this project is not affiliated with or endorsed by Battlestate Games. Security reports: see [SECURITY.md](SECURITY.md).
