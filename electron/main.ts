@@ -8,7 +8,6 @@
  */
 import { BrowserWindow, Menu, Tray, app, dialog, globalShortcut, ipcMain, nativeImage, protocol, session, shell } from 'electron'
 import type { IpcMainInvokeEvent } from 'electron'
-import { pathToFileURL } from 'node:url'
 import fs from 'node:fs'
 import path from 'node:path'
 import type { DesktopSettings, GameEvent, LogStatsData, WipeEvent } from '../src/shared/desktop-api'
@@ -23,7 +22,7 @@ import { captureScreenUnderCursor, listGameScreenshots, readAppResource, readGam
 // Chromium cannot fetch() file:// URLs). Must be registered before the app is ready.
 protocol.registerSchemesAsPrivileged([{ scheme: 'tcres', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } }])
 import { checkForUpdates, getUpdateOutcome, getUpdateStatus, installUpdate, runInstallerManually, setUpdateMode, setupUpdater } from './updater'
-import { cleanSettingsPatch, isSafeDirectory, isTrustedSender, isWebUrl, lockPermissions } from './security'
+import { cleanSettingsPatch, isSafeDirectory, isSameFileUrl, isTrustedSender, isWebUrl, lockPermissions } from './security'
 import { PACK_NAMES, ensurePack } from './packs'
 import type { PackName } from '../src/shared/desktop-api'
 
@@ -178,8 +177,9 @@ function lockNavigation(w: BrowserWindow) {
 /** The app's own page: exactly its index.html (any #route), or the dev server. Not any local file. */
 function isOwnUrl(url: string): boolean {
   if (DEV_URL) return url.startsWith(DEV_URL)
-  const own = pathToFileURL(resourcePath('dist', 'index.html')).href
-  return url.split('#')[0].split('?')[0].toLowerCase() === own.toLowerCase()
+  // Compared as real paths: a text compare refused everything when Windows used the short 8.3
+  // folder name on one side (the portable app unpacked in %TEMP%, fixed in 1.14.1).
+  return isSameFileUrl(url, resourcePath('dist', 'index.html'))
 }
 
 function createWindow(show: boolean) {

@@ -5,6 +5,7 @@
  */
 import fs from 'node:fs'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import type { Session, WebContents } from 'electron'
 import type { DesktopSettings } from '../src/shared/desktop-api'
 
@@ -94,6 +95,36 @@ export function lockPermissions(session: Session) {
 export function isTrustedSender(sender: WebContents, isOwnUrl: (url: string) => boolean): boolean {
   try {
     return !sender.isDestroyed() && isOwnUrl(sender.getURL())
+  } catch {
+    return false
+  }
+}
+
+/**
+ * One spelling per file: Windows may name the same folder in its short 8.3 form
+ * ("C:\Users\DAVID-~1\...", e.g. the portable app unpacked in %TEMP%) or in full. The longest
+ * existing part of the path is resolved to its real name (paths inside app.asar are not real
+ * folders), then everything is lower-cased (Windows paths ignore case).
+ */
+export function canonicalPath(p: string): string {
+  const parts = path.resolve(p).split(path.sep)
+  for (let i = parts.length; i > 1; i--) {
+    const head = parts.slice(0, i).join(path.sep)
+    try {
+      const real = fs.realpathSync.native(head)
+      return path.join(real, ...parts.slice(i)).toLowerCase()
+    } catch {
+      // not a real file or folder (yet): try the parent
+    }
+  }
+  return path.resolve(p).toLowerCase()
+}
+
+/** True when a file: URL points at the same file as `filePath` (any #route or ?query ignored). */
+export function isSameFileUrl(url: string, filePath: string): boolean {
+  if (!url.startsWith('file:')) return false
+  try {
+    return canonicalPath(fileURLToPath(url.split('#')[0].split('?')[0])) === canonicalPath(filePath)
   } catch {
     return false
   }

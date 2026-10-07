@@ -1,6 +1,9 @@
 import os from 'node:os'
 import { describe, expect, it } from 'vitest'
-import { cleanSettingsPatch, isAccelerator, isSafeDirectory, isScreenshotName, isWebUrl } from './security'
+import fs from 'node:fs'
+import path from 'node:path'
+import { pathToFileURL } from 'node:url'
+import { canonicalPath, cleanSettingsPatch, isAccelerator, isSafeDirectory, isSameFileUrl, isScreenshotName, isWebUrl } from './security'
 
 describe('settings from the page', () => {
   it('keeps only known fields with valid values', () => {
@@ -63,5 +66,21 @@ describe('checks', () => {
     expect(isSafeDirectory(os.tmpdir())).toBe(true)
     expect(isSafeDirectory('C:\\definitely\\not\\here\\12345')).toBe(false)
     expect(isSafeDirectory(undefined)).toBe(false)
+  })
+})
+
+describe('own page check', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tc-own-'))
+  const page = path.join(dir, 'app.asar', 'dist', 'index.html')
+  it('matches the same file however Windows spells the folder', () => {
+    // os.tmpdir() is often the short 8.3 form ("DAVID-~1"); realpath gives the long one.
+    const long = path.join(fs.realpathSync.native(dir), 'app.asar', 'dist', 'index.html')
+    expect(canonicalPath(page)).toBe(canonicalPath(long))
+    expect(isSameFileUrl(pathToFileURL(long).href + '#/maps', page)).toBe(true)
+    expect(isSameFileUrl(pathToFileURL(page).href.toUpperCase().replace('FILE:', 'file:'), page)).toBe(true)
+  })
+  it('refuses other files and schemes', () => {
+    expect(isSameFileUrl(pathToFileURL(path.join(dir, 'other.html')).href, page)).toBe(false)
+    expect(isSameFileUrl('https://example.com/index.html', page)).toBe(false)
   })
 })
