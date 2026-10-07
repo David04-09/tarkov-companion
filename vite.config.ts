@@ -2,10 +2,12 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { defineConfig, type Plugin } from 'vite'
 import electron from 'vite-plugin-electron/simple'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 
 const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as { version: string; repository?: { url?: string } }
 const repoUrl = (pkg.repository?.url ?? '').replace(/^git+/, '').replace(/.git$/, '')
+// Content pack hashes (scripts/build-packs.mjs); null when packs were not built (development).
+const packsManifest = existsSync('electron/packs.generated.json') ? readFileSync('electron/packs.generated.json', 'utf8') : 'null'
 
 /**
  * Content-Security-Policy for built pages (the dev server injects inline scripts for hot
@@ -18,7 +20,7 @@ const CSP = [
   "script-src 'self' file: tcres: blob: 'wasm-unsafe-eval'",
   "worker-src 'self' file: tcres: blob:",
   "style-src 'self' file: 'unsafe-inline'",
-  "img-src 'self' file: data: blob: https://assets.tarkov.dev https://static.wikia.nocookie.net",
+  "img-src 'self' file: tcres: data: blob: https://assets.tarkov.dev https://static.wikia.nocookie.net",
   "font-src 'self' file: data:",
   "connect-src 'self' file: tcres: blob: data: https://json.tarkov.dev https://assets.tarkov.dev https://escapefromtarkov.fandom.com",
   "media-src 'self' file: data:",
@@ -57,6 +59,7 @@ export default defineConfig(({ mode }) => {
               main: {
                 entry: 'electron/main.ts',
                 vite: {
+                  define: { __TC_PACKS__: packsManifest },
                   build: {
                     outDir: 'dist-electron',
                     lib: { entry: 'electron/main.ts', formats: ['cjs'], fileName: () => 'main.cjs' },

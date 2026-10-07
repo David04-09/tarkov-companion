@@ -184,4 +184,17 @@ src/
 
 ## Licence
 
-Free to use, change and share for any **noncommercial** purpose under the [PolyForm Noncommercial License 1.0.0](LICENSE.md); selling it or using it commercially is not allowed. Third-party libraries, data and imagery keep their own licences ([THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt)); the Lighthouse map tiles are CC BY-NC-SA 4.0 by re3mr. Escape from Tarkov and its content belong to Battlestate Games; this project is not affiliated with or endorsed by Battlestate Games. Security reports: see [SECURITY.md](SECURITY.md).
+Copyright (C) 2026 David04-09. Tarkov Companion is free software: you can use, study, share and change it under the [GNU General Public License v3](LICENSE) or (at your option) any later version. Anyone who shares a copy, changed or not, must share its source code under the same licence. It comes with no warranty.
+
+Not part of the program, and not covered by the GPL: the Lighthouse map tiles (CC BY-NC-SA 4.0 by re3mr) and the stash scanner data made from Battlestate Games' item pictures. The desktop app downloads both from this project's releases the first time they are needed. Third-party libraries, data and imagery keep their own licences ([THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt)). Escape from Tarkov and its content belong to Battlestate Games; this project is not affiliated with or endorsed by Battlestate Games.
+
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org).
+
+- Committers and reviewers: [David04-09](https://github.com/David04-09) (owner). Changes from anyone else are reviewed by the owner before they are merged.
+- Approvers: [David04-09](https://github.com/David04-09). Every release is approved by hand before it is signed.
+- Releases are built only by this repository's GitHub Actions workflow ([release.yml](.github/workflows/release.yml)) from a version tag; nothing is signed that was not built there.
+- Privacy: see [PRIVACY.md](PRIVACY.md).
+
+Security reports: see [SECURITY.md](SECURITY.md).

@@ -24,6 +24,8 @@ import { captureScreenUnderCursor, listGameScreenshots, readAppResource, readGam
 protocol.registerSchemesAsPrivileged([{ scheme: 'tcres', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } }])
 import { checkForUpdates, getUpdateOutcome, getUpdateStatus, installUpdate, runInstallerManually, setUpdateMode, setupUpdater } from './updater'
 import { cleanSettingsPatch, isSafeDirectory, isTrustedSender, isWebUrl, lockPermissions } from './security'
+import { PACK_NAMES, ensurePack } from './packs'
+import type { PackName } from '../src/shared/desktop-api'
 
 const DEV_URL = process.env.VITE_DEV_SERVER_URL
 /** Same as build.appId in package.json (the installer gives the shortcuts this id). The installer
@@ -333,6 +335,10 @@ function registerIpc() {
       return fn(e, ...args)
     })
   handle('watcher:getState', () => watcher.getState())
+  handle('pack:ensure', async (_e, name: unknown) => {
+    if (!PACK_NAMES.includes(name as PackName)) throw new Error('Unknown pack')
+    await ensurePack(name as PackName, (p) => broadcast('pack:progress', p))
+  })
   handle('settings:get', () => settings.getPublic())
   handle('settings:set', (_e, patch: unknown) => updateSettings(cleanSettingsPatch(patch)))
   handle('watcher:recent', () => watcher.getRecentEvents())

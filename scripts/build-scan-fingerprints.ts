@@ -93,7 +93,9 @@ if (fs.existsSync('scan-corrections')) {
   console.log(`${corrections.length} shipped corrections`)
 }
 
-const header: FingerprintHeader = { version: 1, fp: FP, generated: new Date().toISOString(), items: [] }
+// No timestamp: the same items must give the same file (the desktop app downloads it as a pack and
+// only fetches it again when its content changes).
+const header: FingerprintHeader = { version: 1, fp: FP, generated: '', items: [] }
 const total = results.reduce((n, r) => n + r.px.length, 0) + corrections.reduce((n, r) => n + r.px.length, 0)
 const pixels = new Uint8Array(total)
 let o = 0

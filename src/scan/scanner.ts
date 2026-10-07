@@ -20,7 +20,11 @@ const pending = new Map<number, { resolve: (r: ScanResult) => void; reject: (e: 
 const identifying = new Map<number, { resolve: (m: IdentifyMatch[]) => void; reject: (e: Error) => void }>()
 
 async function loadFile(name: string): Promise<ArrayBuffer> {
-  if (window.desktop?.readAppResource) return window.desktop.readAppResource(`scan/${name}`)
+  if (window.desktop?.readAppResource) {
+    // Installed app: the scanner data is a content pack downloaded on first use.
+    await window.desktop.ensurePack('scan')
+    return window.desktop.readAppResource(`scan/${name}`)
+  }
   const res = await fetch(`${import.meta.env.BASE_URL}scan/${name}`, { cache: "no-cache" })
   if (!res.ok) throw new Error(`Scanner data missing (${name}, HTTP ${res.status}). Run "npm run scan:fingerprints".`)
   return res.arrayBuffer()

@@ -23,9 +23,10 @@ If you find a security problem (for example a way for a web page, a map file or 
 | Remote map drawings | SVG maps from tarkov.dev are rebuilt from an allow-list of drawing elements (no scripts, event handlers or external links) before they are shown (`src/lib/sanitizeSvg.ts`). |
 | Wiki content | Story and guide pages are rebuilt from an allow-list of plain HTML tags; no scripts, styles or attributes are copied (`src/api/storyWiki.ts`). |
 | Imported files | Progress, backup and scanner-correction files are size-limited, parsed without object-tampering keys and validated field by field. |
-| Builds | Released by GitHub Actions from tagged commits; third-party actions are pinned to exact commits; the bundled text-recognition model is checked against a fixed SHA-256. |
+| Builds | Released by GitHub Actions from tagged commits; third-party actions are pinned to exact commits; the bundled text-recognition model is checked against a fixed SHA-256. Code signing through SignPath Foundation, with every release approved by hand (see the README's code signing policy). |
+| Content packs | The Lighthouse map tiles and the stash scanner data are separate downloads from this version's GitHub release. Their SHA-256 is compiled into the (signed) program; a pack that does not match exactly is refused and nothing is installed. Packs contain only pictures and numbers, never code. |
 
 ## Known limits
 
-- **Updates are not code-signed yet.** Downloads come over HTTPS from this repository's GitHub Releases and are checked against the release's SHA-512 list, so their safety rests on the GitHub account. Windows SmartScreen may warn about the installer for the same reason.
+- **Until signing is live, builds are unsigned.** Downloads come over HTTPS from this repository's GitHub Releases and are checked against the release's SHA-512 list, so their safety rests on the GitHub account. Windows SmartScreen may warn about an unsigned installer.
 - The web version runs in your normal browser and is protected by the same Content-Security-Policy.

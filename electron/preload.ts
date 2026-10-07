@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { BackfillProgress, DesktopApi, DesktopSettings, GameEvent, PlayerPosition, UpdateStatus, WatcherState, WipeEvent } from '../src/shared/desktop-api'
+import type { BackfillProgress, DesktopApi, DesktopSettings, GameEvent, PackName, PackProgress, PlayerPosition, UpdateStatus, WatcherState, WipeEvent } from '../src/shared/desktop-api'
 
 function subscribe<T>(channel: string, cb: (payload: T) => void): () => void {
   const listener = (_e: Electron.IpcRendererEvent, payload: T) => cb(payload)
@@ -11,6 +11,8 @@ const api: DesktopApi = {
   platform: process.platform,
   appVersion: process.argv.find((a) => a.startsWith('--tc-version='))?.slice('--tc-version='.length) ?? '',
   getState: () => ipcRenderer.invoke('watcher:getState'),
+  ensurePack: (name: PackName) => ipcRenderer.invoke('pack:ensure', name),
+  onPackProgress: (cb) => subscribe<PackProgress>('pack:progress', cb),
   getSettings: () => ipcRenderer.invoke('settings:get'),
   setSettings: (patch: Partial<DesktopSettings>) => ipcRenderer.invoke('settings:set', patch),
   pickLogsFolder: () => ipcRenderer.invoke('watcher:pickFolder'),

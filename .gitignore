@@ -51,3 +51,7 @@ public/ocr/
 
 # Tesseract model downloaded by older OCR test runs (the app ships public/ocr)
 /eng.traineddata
+
+# Content packs (npm run packs): uploaded with each release, never committed
+/release-packs/
+/electron/packs.generated.json

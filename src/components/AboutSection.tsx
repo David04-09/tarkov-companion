@@ -103,7 +103,7 @@ export function AboutSection() {
           <li>The stash scanner works on an ordinary Windows screenshot, like the Snipping Tool, Discord or OBS.</li>
         </ul>
       </div>
-      <p className="text-xs text-ink-muted">Free for noncommercial use (PolyForm Noncommercial 1.0.0; selling it is not allowed). Built with help from these projects:</p>
+      <p className="text-xs text-ink-muted">Free software under the GNU GPL v3 (or later); no warranty. Built with help from these projects:</p>
       <ul className="space-y-1 text-xs">
         {CREDITS.map((c) => (
           <li key={c.name} className="rounded border border-line bg-surface px-2 py-1">

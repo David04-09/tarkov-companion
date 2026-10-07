@@ -7,6 +7,7 @@
 import { app, desktopCapturer, screen } from 'electron'
 import fs from 'node:fs'
 import { isScreenshotName } from './security'
+import { installedPackDir, packsEnabled } from './packs'
 import path from 'node:path'
 
 /** Captures the display under the mouse at full resolution, as PNG bytes. */
@@ -52,17 +53,25 @@ export function readGameScreenshot(name: string): Uint8Array {
   return new Uint8Array(fs.readFileSync(path.join(gameScreenshotsDir(), name)))
 }
 
-const RESOURCE_DIRS = ['scan', 'ocr']
+const RESOURCE_DIRS = ['scan', 'ocr', 'tiles']
+/** Folders that come from a downloaded content pack in installed builds (see packs.ts). */
+const PACKED: Record<string, 'lighthouse' | 'scan'> = { tiles: 'lighthouse', scan: 'scan' }
 
 function resourcePath(rel: string, devServer: boolean): string {
   const clean = path.normalize(rel).replace(/^([/\\])+/, '')
   const top = clean.split(/[/\\]/)[0]
   if (!RESOURCE_DIRS.includes(top) || clean.includes('..')) throw new Error('Not allowed')
+  const pack = PACKED[top]
+  if (pack && !devServer && packsEnabled()) {
+    const dir = installedPackDir(pack)
+    if (!dir) throw new Error('Not downloaded yet')
+    return path.join(dir, clean)
+  }
   const base = devServer ? path.join(__dirname, '..', 'public') : path.join(__dirname, '..', 'dist')
   return path.join(base, clean)
 }
 
-const MIME: Record<string, string> = { '.js': 'text/javascript', '.json': 'application/json', '.gz': 'application/gzip', '.bin': 'application/octet-stream', '.wasm': 'application/wasm' }
+const MIME: Record<string, string> = { '.png': 'image/png', '.js': 'text/javascript', '.json': 'application/json', '.gz': 'application/gzip', '.bin': 'application/octet-stream', '.wasm': 'application/wasm' }
 
 /** tcres://app/<dir>/<file> -> the bundled file, read-only, scanner and OCR folders only. */
 export function resourceResponse(url: string, devServer: boolean): Response {
@@ -80,6 +89,5 @@ export function resourceResponse(url: string, devServer: boolean): Response {
 export function readAppResource(rel: string, devServer: boolean): Uint8Array {
   const clean = path.normalize(rel).replace(/^([/\\])+/, '')
   if ((!clean.startsWith(`scan${path.sep}`) && !clean.startsWith('scan/')) || clean.includes('..')) throw new Error('Not allowed')
-  const base = devServer ? path.join(__dirname, '..', 'public') : path.join(__dirname, '..', 'dist')
-  return new Uint8Array(fs.readFileSync(path.join(base, clean)))
+  return new Uint8Array(fs.readFileSync(resourcePath(clean, devServer)))
 }

@@ -1,7 +1,7 @@
 {
   "name": "tarkov-companion",
   "private": true,
-  "version": "1.13.1",
+  "version": "1.14.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,7 +11,7 @@
     "tiles:lighthouse": "node scripts/tile-lighthouse.mjs",
     "dev:desktop": "vite --mode desktop",
     "build:desktop": "tsc -b && vite build --mode desktop",
-    "dist:desktop": "npm run build:desktop && electron-builder --win nsis portable --publish never",
+    "dist:desktop": "npm run packs && npm run build:desktop && electron-builder --win nsis portable --publish never",
     "test": "vitest run",
     "scan:logs": "tsx scripts/scan-logs.ts",
     "tiles:fetch": "node scripts/fetch-lighthouse-source.mjs",
@@ -19,7 +19,8 @@
     "scan:check": "tsx scripts/scan-check-corrections.ts",
     "scan:test": "tsx scripts/scan-test.ts",
     "ocr:assets": "node scripts/fetch-ocr-assets.mjs",
-    "notices": "node scripts/build-notices.mjs"
+    "notices": "node scripts/build-notices.mjs",
+    "packs": "node scripts/build-packs.mjs"
   },
   "dependencies": {
     "electron-updater": "^6.8.9"
@@ -66,13 +67,15 @@
   "build": {
     "appId": "io.github.david04-09.tarkov-companion",
     "productName": "Tarkov Companion",
-    "copyright": "Copyright (c) 2026 David04-09. Free for noncommercial use (PolyForm Noncommercial 1.0.0). Not affiliated with Battlestate Games.",
+    "copyright": "Copyright (C) 2026 David04-09. Free software under the GNU GPL v3 or later. Not affiliated with Battlestate Games.",
     "directories": {
       "output": "release",
       "buildResources": "build"
     },
     "files": [
       "dist/**",
+      "!dist/tiles/**",
+      "!dist/scan/**",
       "dist-electron/**",
       "build/icon.png",
       "build/tray.png",
@@ -127,8 +130,8 @@
         "to": "THIRD_PARTY_NOTICES.txt"
       },
       {
-        "from": "LICENSE.md",
-        "to": "LICENSE.md"
+        "from": "LICENSE",
+        "to": "LICENSE.txt"
       }
     ]
   },
@@ -137,5 +140,5 @@
     "type": "git",
     "url": "https://github.com/David04-09/tarkov-companion.git"
   },
-  "license": "PolyForm-Noncommercial-1.0.0"
+  "license": "GPL-3.0-or-later"
 }
