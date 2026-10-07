@@ -1,5 +1,5 @@
 import { lazy, type ComponentType } from 'react'
-import { BarChart3, BookOpen, Coins, Crosshair, Wrench, Hammer, House, KeyRound, LayoutDashboard, Map, Package, ScrollText, Store, type LucideIcon } from 'lucide-react'
+import { BarChart3, BookOpen, Megaphone, Coins, Crosshair, Wrench, Hammer, House, KeyRound, LayoutDashboard, Map, Package, ScrollText, Store, type LucideIcon } from 'lucide-react'
 
 export interface NavItem {
   path: string
@@ -25,6 +25,7 @@ export const NAV_ITEMS: NavItem[] = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard, component: page(() => import('../pages/DashboardPage'), 'DashboardPage') },
   { path: '/quests', label: 'Quests', icon: ScrollText, component: page(() => import('../pages/QuestsPage'), 'QuestsPage') },
   { path: '/story', label: 'Story', icon: BookOpen, component: page(() => import('../pages/StoryPage'), 'StoryPage') },
+  { path: '/events', label: 'Events & patches', icon: Megaphone, component: page(() => import('../pages/EventsPage'), 'EventsPage') },
   { path: '/maps', label: 'Maps', icon: Map, component: page(() => import('../pages/MapsPage'), 'MapsPage'), fullBleed: true },
   { path: '/items', label: 'Item Collection', icon: Package, component: page(() => import('../pages/ItemCollectionPage'), 'ItemCollectionPage') },
   { path: '/keys', label: 'Keys', icon: KeyRound, component: page(() => import('../pages/KeysPage'), 'KeysPage') },

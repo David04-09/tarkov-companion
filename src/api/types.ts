@@ -457,7 +457,18 @@ export interface RawStatusDoc {
   data: {
     generalStatus: ServiceStatus
     currentStatuses: ServiceStatus[]
+    /** Battlestate's status notices (maintenance, outages); solveTime is set once over. */
+    messages?: StatusMessage[]
   }
+}
+
+export interface StatusMessage {
+  _id?: string
+  content: string
+  type: number
+  time: string
+  solveTime?: string | null
+  statusCode: string
 }
 
 // ---------------------------------------------------------------------------

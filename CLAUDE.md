@@ -14,7 +14,7 @@ src/api        JSON API client (client.ts), types.ts (Raw* = wire shape, app typ
 src/store      progress.ts (quest progress), prefs.ts (Settings page), ui.ts (map prefs), mapOverlay.ts (checked tasks/layers), guarded.ts (safe persist merge), align.ts (dev tool pairs)
 src/lib        taskStatus.ts (available/locked/completed rules), levelEstimate.ts, format.ts
 src/config/nav.tsx   sidebar tabs = routes; add a tab by adding one line (fullBleed: true for edge-to-edge pages)
-src/pages      Dashboard, Quests (+ src/quests tree), Story, Maps, ItemCollection, Keys, Hideout, Crafts, FleaMarket, Money, Ammo, Weapons, Stats, Settings, AlignPage (/dev/align, dev only)
+src/pages      Dashboard, Quests (+ src/quests tree), Story, Events, Maps, ItemCollection, Keys, Hideout, Crafts, FleaMarket, Money, Ammo, Weapons, Stats, Settings, AlignPage (/dev/align, dev only)
 src/maps       projection.ts (affine + Leaflet CRS), mapConfig.ts (base layers), MapViewer.tsx, overlay/* (quest markers, panel, layers)
 src/story      Story tab components (chapters, endings, quest time gates, timer watcher)
 src/desktop    renderer side of Electron bridge (useDesktop.ts, DesktopSettings.tsx, WatcherStatus.tsx)
@@ -150,6 +150,11 @@ src/data/mapConfig.json      vendored tarkov.dev map config (records source comm
 - release.yml: dist:desktop builds packs; packs are attached to the release. Signing steps run only when secret SIGNPATH_API_TOKEN exists (vars SIGNPATH_ORGANIZATION_ID / _PROJECT_SLUG / _POLICY_SLUG): upload installer + portable as an artifact, signpath/github-action-submit-signing-request (pinned v1.3, waits up to 5.5 h for the owner's approval; job timeout 360 min), copy signed exes back, `scripts/refresh-update-info.mjs` rebuilds latest.yml sha512/size and the blockmap with electron-builder's own buildBlockMap. After the first signed release: set publisherName and re-enable verifyUpdateCodeSignature.
 
 - v1.14.1: portable fix. `isOwnUrl` compared file URLs as text, so when Windows spelled a folder in its short 8.3 form (the portable exe unpacks to %TEMP%, here C:UsersDAVID-~1…) every IPC call was refused ("Refused") from 1.12.0 to 1.14.0; installed builds were fine. Now `isSameFileUrl`/`canonicalPath` (security.ts, tested with the real short tmpdir) resolve real paths. Test packaged builds from a short-path folder too, and close the unpacked app of a portable test (killing the launcher leaves it running).
+
+## v1.15.0 Events & patches tab (2026-10-07)
+- `/events` (src/pages/EventsPage.tsx): game server status (json.tarkov.dev /status = Battlestate's status: generalStatus, currentStatuses, messages with time/solveTime; `StatusMessage` type), events and latest patch fixes, all refreshing by themselves (wiki queries every 3 h).
+- src/api/wikiNews.ts: wiki "Events" page, one <h2> per event (newest first). The wiki has ONE "This section describes past events." banner: events above it are current, everything below is history (older past events are NOT individually marked). Without the banner nothing is called current (`knowsCurrent`). Wiki "Changelog": prop=sections, then the newest level-2 sections fetched one by one (section=N), same-version duplicates merged; blocks keep a heading path ("Customs · Fixes"). Only text and image links are kept.
+- Owner's decisions: graphics/settings tab skipped (no official per-setting source; blog guides disagree; the app cannot take in-game screenshots); bugs = official only (fixed bugs from patch notes + server notices), no community reports and no unofficial troubleshooting lists. Links: status.escapefromtarkov.com, escapefromtarkov.com/news, escapefromtarkov.com/support.
 
 ## Status
 Done: everything above (incl. Spawns, packaging/updates, quest sync review/undo, wiki guides and the stash scanner, 2026-10-04) plus Dashboard, Quests, Maps (viewer, base layers, Lighthouse render, overlay, dev alignment tool), desktop app with tray and log watcher (parser + 10 tests, backfill, status light), level estimate, README.
