@@ -4,7 +4,7 @@
 import fs from 'node:fs'
 import sharp from 'sharp'
 import { closeOcr, readWordsNode } from './ocr-node'
-import { buildCandidates, chooseGrid, detectGrid, refineGrid, indexFromParts, scanGrid, type FingerprintHeader } from '../src/scan/core'
+import { buildCandidates, chooseGrid, detectGrid, identifyRegion, refineGrid, indexFromParts, scanGrid, type FingerprintHeader } from '../src/scan/core'
 
 const file = process.argv.slice(2).find((a) => !a.startsWith('--')) as string
 if (!file) throw new Error('usage: scan-test <screenshot>')
@@ -30,7 +30,7 @@ await closeOcr()
 console.log(`scan: ${found.length} items in ${Date.now() - t} ms`)
 for (const d of found) {
   const alt = d.alternatives.slice(0, 2).map((a) => `${names[a.itemId]}(${a.error.toFixed(1)})`).join(', ')
-  console.log(`  ${d.nameMatch ? 'N' : ' '} r${d.row} c${d.col} ${d.w}x${d.h}${d.rotated ? 'R' : ' '} ${names[d.itemId]?.padEnd(14)} err ${d.error.toFixed(1)}   alt: ${alt}`)
+  console.log(`  ${d.nameMatch ? 'N' : ' '} r${d.row} c${d.col} ${d.w}x${d.h}${d.rotated ? 'R' : ' '} ${names[d.itemId]?.padEnd(14)} err ${d.error.toFixed(1)}${d.byName ? ' BYNAME' : ''}${d.unexamined ? ' UNEXAMINED' : ''}   alt: ${alt}`)
 }
 
 // Annotated image: grid lines + boxes with labels.
@@ -49,3 +49,23 @@ svg.push('</svg>')
 const outFile = file.replace(/\.png$/i, '') + '.scan.png'
 await sharp(file).composite([{ input: Buffer.from(svg.join('')), top: 0, left: 0 }]).png().toFile(outFile)
 console.log(`annotated: ${outFile}`)
+
+// Test images made by scan-gun-test come with the answer: report how many guns were found.
+const expFile = file.replace(/\.png$/i, '.expected.json')
+if (fs.existsSync(expFile)) {
+  const expected = JSON.parse(fs.readFileSync(expFile, 'utf8')) as { name: string; baseId: string; col: number; row: number; w: number; h: number }[]
+  let right = 0
+  for (const e of expected) {
+    const exact = found.find((d) => d.itemId === e.baseId && d.col === e.col && d.row === e.row && d.w === e.w && d.h === e.h)
+    const inside = found.filter((d) => d.col < e.col + e.w && d.col + d.w > e.col && d.row < e.row + e.h && d.row + d.h > e.row)
+    if (exact) right++
+    console.log(`  ${exact ? 'OK  ' : 'MISS'} ${e.name} r${e.row} c${e.col} ${e.w}x${e.h}${exact ? '' : ' -> ' + inside.map((d) => `${names[d.itemId]} r${d.row} c${d.col} ${d.w}x${d.h}${d.byName ? ' byName' : ''}`).join('; ')}`)
+  }
+  console.log(`guns: ${right}/${expected.length} right`)
+}
+// --box=row,col,w,h prints the best items for one box (like the scan dialog's box editor).
+const boxArg = process.argv.find((a) => a.startsWith('--box='))
+if (boxArg) {
+  const [row, col, w, h] = boxArg.slice(6).split(',').map(Number)
+  for (const m of identifyRegion(img, grid, candidates, { row, col, w, h }, words, 8)) console.log(`  box: ${names[m.itemId]} ${m.error.toFixed(1)}${m.nameMatch ? ' N' : ''}${m.rotated ? ' R' : ''}`)
+}

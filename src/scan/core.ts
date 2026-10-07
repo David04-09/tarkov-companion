@@ -324,6 +324,38 @@ export function pitchFromWords(words: OcrWord[] | undefined): { pitch: number; s
 }
 
 /**
+ * Where the grid lines are, from the item names: a name ends 2.6% of a cell left of its slot's
+ * right line and starts 6.2% of a cell below its top line (measured on five screenshots, all
+ * within 0.5%). Line analysis alone can pick a wrong offset when big dark items (guns) draw
+ * strong edges of their own.
+ */
+const NAME_RIGHT_INSET = 0.026
+const NAME_TOP_INSET = 0.062
+function offsetsFromWords(words: OcrWord[] | undefined, pitch: number): { ox: number; oy: number; agree: number } | null {
+  const good = (words ?? []).filter((w) => w.conf >= 60 && normName(w.text).length >= 3)
+  if (good.length < 3) return null
+  let agree = 1
+  const phase = (vals: number[]) => {
+    let c = 0
+    let sn = 0
+    for (const v of vals) {
+      c += Math.cos((2 * Math.PI * v) / pitch)
+      sn += Math.sin((2 * Math.PI * v) / pitch)
+    }
+    const r = Math.hypot(c, sn) / vals.length
+    if (r < 0.8) return null
+    agree = Math.min(agree, r)
+    return (((Math.atan2(sn, c) / (2 * Math.PI)) * pitch) % pitch + pitch) % pitch
+  }
+  // Only the last word of a name ("Hand drill") touches the slot's right edge.
+  const last = good.filter((w) => !(words ?? []).some((o) => o !== w && Math.abs(o.y0 - w.y0) < 0.15 * pitch && o.x0 >= w.x1 - 2 && o.x0 - w.x1 < 0.15 * pitch))
+  if (last.length < 3) return null
+  const ox = phase(last.map((w) => w.x1 + NAME_RIGHT_INSET * pitch))
+  const oy = phase(good.map((w) => w.y0 - NAME_TOP_INSET * pitch))
+  return ox === null || oy === null ? null : { ox, oy, agree }
+}
+
+/**
  * @param preferred cell size from the previous confident scan. Snips differ in size but the
  *   game's cell size only changes with resolution/UI scale, so the remembered size is tried
  *   too and kept whenever it fits this image about as well as the freshly detected one.
@@ -402,9 +434,20 @@ export function chooseGrid(img: Rgba, candidates: Map<string, Candidate[]>, word
   }
 
   let best = { pitch: proposals[0] ?? 64, ox: 0, oy: 0, score: Infinity }
+  // A cell size at which the names do not line up is wrong when another size lines them up.
+  const namedAt = new Map(proposals.map((q) => [q, offsetsFromWords(words, q)]))
+  const bestAgree = Math.max(0, ...[...namedAt.values()].map((n) => n?.agree ?? 0))
   for (const q of proposals) {
-    for (const ox of offsetCandidates(px, q, 3)) {
-      for (const oy of offsetCandidates(py, q, 3)) {
+    // Names line up best at the true size (a 1.7% wrong size drifts them by a quarter cell over 14 columns).
+    if (bestAgree && (namedAt.get(q)?.agree ?? 0) < bestAgree - 0.03) continue
+    // Names agreeing on the line positions beat the line analysis (dark gun pictures have
+    // strong edges of their own and fit 1x1 pictures under a wrong grid about as well).
+    const named = namedAt.get(q) ?? null
+    const near = (o: number, n: number) => Math.min(Math.abs(o - n), q - Math.abs(o - n)) < 0.08 * q
+    const oxs = named ? [named.ox, ...offsetCandidates(px, q, 3).filter((o) => near(o, named.ox))] : offsetCandidates(px, q, 3)
+    const oys = named ? [named.oy, ...offsetCandidates(py, q, 3).filter((o) => near(o, named.oy))] : offsetCandidates(py, q, 3)
+    for (const ox of oxs) {
+      for (const oy of oys) {
         const sc = scoreGrid(q, ox, oy)
         if (sc < best.score) best = { pitch: q, ox, oy, score: sc }
       }
@@ -516,6 +559,8 @@ export interface FingerprintIndex {
   corrections?: Uint8Array
   /** English short name per entry (what the game prints on the item), for the name check. */
   names?: string[]
+  /** 1 = a gun (base weapon or one of its ready-made builds). */
+  guns?: Uint8Array
 }
 
 export interface Detection {
@@ -536,6 +581,10 @@ export interface Detection {
   nameMatch?: boolean
   /** Only partly visible (cut off by the bottom of the screenshot); h is the visible part. */
   clipped?: boolean
+  /** A gun found by its printed name only (a custom build no picture matches): the box size is a guess. */
+  byName?: boolean
+  /** No printed name and a grey, colourless picture: probably an item not examined in game yet. */
+  unexamined?: boolean
 }
 
 /** A reference taken from a real screenshot after the user corrected a match. */
@@ -598,6 +647,17 @@ interface Candidate {
   /** Pixels that belong to the item itself (icon + name), not its slot background; null if too few. */
   iconMask: Uint8Array | null
   iconMean: [number, number, number]
+  /** A gun picture (mostly dark background, which reads as empty slots). */
+  gun?: boolean
+  /** Guns: the weapon's own pixels. Half of a gun's score comes from these, so plain dark
+   *  background (an empty stash patch) does not pass for a gun picture. */
+  gunMask?: Uint8Array | null
+}
+
+/** Guns are judged half on the whole picture, half on the weapon's own pixels. */
+function gunAdjusted(err: number, region: Float32Array, c: Candidate): number {
+  if (!c.gunMask || !Number.isFinite(err)) return err
+  return (err + distance(region, c.fp, c.gunMask)) / 2
 }
 
 /** Extra error added to background-free matches, so a full match is preferred when both fit. */
@@ -608,7 +668,7 @@ const ICON_PENALTY = 4
  * (estimated from the ring just inside the frame). Lets a match survive a tinted or
  * highlighted slot (e.g. a grey "BrokenLCD" slot vs the dark-blue reference).
  */
-function iconMaskFor(fp: Uint8Array | Float32Array, w: number, h: number, base: Uint8Array): Uint8Array | null {
+function iconMaskFor(fp: Uint8Array | Float32Array, w: number, h: number, base: Uint8Array, minShare = 0.4): Uint8Array | null {
   const W = w * FP
   const H = h * FP
   const ring: number[][] = [[], [], []]
@@ -634,7 +694,7 @@ function iconMaskFor(fp: Uint8Array | Float32Array, w: number, h: number, base: 
     }
   }
   // Tiny icons would match random textures: only use this for substantial items.
-  return n >= Math.max(24, total * 0.4) ? mask : null
+  return n >= Math.max(24, total * minShare) ? mask : null
 }
 
 function meanColor(v: Uint8Array | Float32Array, mask: Uint8Array): [number, number, number] {
@@ -673,7 +733,8 @@ export function buildCandidates(index: FingerprintIndex, opts: ScanOptions = {})
       const iconMask = rotated ? null : iconMaskFor(f, cw, ch, base)
       const src = index.corrections?.[i] ?? 0
       const name = index.names?.[i] ? normName(index.names[i]) : undefined
-      push(cw, ch, { name, idx: i, itemId: index.ids[i], learned: src === 1 || src === 2, negative: src === 3, bonus: src === 1 ? LEARNED_BONUS : src === 2 ? CONFIRMED_BONUS : 0, rotated, fp: f, mean: meanColor(f, base), iconMask, iconMean: iconMask ? meanColor(f, iconMask) : [0, 0, 0] })
+      const gun = index.guns?.[i] === 1
+      push(cw, ch, { gun, gunMask: gun ? iconMaskFor(f, cw, ch, base, 0.05) : null, name, idx: i, itemId: index.ids[i], learned: src === 1 || src === 2, negative: src === 3, bonus: src === 1 ? LEARNED_BONUS : src === 2 ? CONFIRMED_BONUS : 0, rotated, fp: f, mean: meanColor(f, base), iconMask, iconMean: iconMask ? meanColor(f, iconMask) : [0, 0, 0] })
     }
     add(w, h, false, fp)
     // Shipped user memories are already in on-screen orientation.
@@ -754,9 +815,24 @@ export function nameSimilarity(a: string, b: string): number {
   return 1 - prev[n] / Math.max(m, n)
 }
 
+/** A printed name. alt = the same words read with a wider word gap ("USP" + "45" → "USP .45"). */
+type Label = { text: string; conf: number; alt?: string }
+const labelSim = (label: Label, name: string): number => Math.max(nameSimilarity(label.text, name), label.alt ? nameSimilarity(label.alt, name) : 0)
+
 /** Words in the top-right corner of a slot, keyed "row,col" (the slot the name belongs to). */
-function nameLabels(words: OcrWord[] | undefined, grid: Grid): Map<string, { text: string; conf: number }> {
-  const out = new Map<string, { text: string; conf: number }>()
+function nameLabels(words: OcrWord[] | undefined, grid: Grid): Map<string, Label> {
+  const out = labelsWithGap(words, grid, 0.1)
+  // Spaces before a dot or digit come out wider; a wider gap would glue neighbouring reads that
+  // are fine apart ("SurvL"), so the wide reading is only an alternative.
+  for (const [key, wide] of labelsWithGap(words, grid, 0.13)) {
+    const l = out.get(key)
+    if (l && wide.text !== l.text) l.alt = wide.text
+  }
+  return out
+}
+
+function labelsWithGap(words: OcrWord[] | undefined, grid: Grid, gap: number): Map<string, Label> {
+  const out = new Map<string, Label>()
   // Names with spaces ("F scdr", "Hand drill") come back as separate words: join neighbours on
   // one line. Words of one line differ by a pixel or two in height, so group them into lines
   // first and read each line left to right (sorting by height alone let "Awl" further along the
@@ -776,7 +852,7 @@ function nameLabels(words: OcrWord[] | undefined, grid: Grid): Map<string, { tex
     const slotOf = (x: number) => Math.floor((x - grid.ox) / grid.pitch - 0.02)
     // Never glue a clean read to junk read off the item's picture ("FENA" + "Poster").
     const junkPair = Math.min(prev?.conf ?? 0, w.conf) < 40 && Math.max(prev?.conf ?? 0, w.conf) >= 60
-    if (prev && !junkPair && Math.abs(prev.y0 - w.y0) < 0.15 * grid.pitch && w.x0 >= prev.x1 - 2 && w.x0 - prev.x1 < 0.1 * grid.pitch && slotOf(prev.x1) === slotOf(w.x1)) {
+    if (prev && !junkPair && Math.abs(prev.y0 - w.y0) < 0.15 * grid.pitch && w.x0 >= prev.x1 - 2 && w.x0 - prev.x1 < gap * grid.pitch && slotOf(prev.x1) === slotOf(w.x1)) {
       merged[merged.length - 1] = { text: prev.text + w.text, conf: Math.min(prev.conf, w.conf), x0: prev.x0, y0: Math.min(prev.y0, w.y0), x1: w.x1, y1: Math.max(prev.y1, w.y1) }
     } else merged.push({ ...w })
   }
@@ -824,8 +900,122 @@ export function emptyCells(img: Rgba, grid: Grid): boolean[][] {
   return cells.map((r) => r.map((c) => c.sd < 10 && distance(c.v, tpl, mask) < 6))
 }
 
+/**
+ * Guns by their printed name. A modded gun has a size and look no picture has (every stock,
+ * scope and magazine changes it), but the game still prints the base weapon's short name in
+ * its top-right corner. For a confidently read gun name with no picture match at that corner,
+ * offer boxes of every plausible gun size anchored there: no empty slots and no other item's
+ * name inside. Bigger boxes rank slightly better; the greedy pass keeps whatever fits around
+ * the other items. Marked byName so the dialog asks the user to check the size.
+ */
+const GUN_NAME_MATCH = 0.85
+const BY_NAME_ERROR = 21
+function gunsByName(grid: Grid, labels: Map<string, Label>, index: FingerprintIndex, empty: boolean[][], found: Detection[]): Detection[] {
+  if (!index.guns || !index.names) return []
+  const gunNames = new Map<string, string>()
+  index.ids.forEach((id, i) => {
+    if (index.guns?.[i] && index.names?.[i]) gunNames.set(normName(index.names[i]), id)
+  })
+  const out: Detection[] = []
+  for (const [key, label] of labels) {
+    if (label.conf < 50 || label.text.length < 3) continue
+    let best: { id: string; sim: number } | null = null
+    for (const [name, id] of gunNames) {
+      const sim = labelSim(label, name)
+      if (sim >= GUN_NAME_MATCH && (!best || sim > best.sim)) best = { id, sim }
+    }
+    if (!best) continue
+    const [row, rightCol] = key.split(',').map(Number)
+    // A picture already matched this gun at this corner: nothing to add.
+    if (found.some((d) => d.itemId === best.id && d.row === row && d.col + d.w - 1 === rightCol && d.error <= 18)) continue
+    for (let h = 1; h <= 3; h++) {
+      for (let w = 2; w <= 8; w++) {
+        const col = rightCol - w + 1
+        if (col < 0 || row + h > grid.rows) continue
+        let ok = true
+        for (let y = row; y < row + h && ok; y++) {
+          for (let x = col; x < col + w && ok; x++) {
+            if (empty[y][x]) ok = false
+            else if ((y !== row || x !== rightCol) && labels.has(`${y},${x}`)) ok = false
+          }
+        }
+        if (!ok) continue
+        out.push({ itemId: best.id, col, row, w, h, rotated: false, error: BY_NAME_ERROR - 0.2 * w * h, alternatives: [], nameMatch: true, byName: true })
+      }
+    }
+  }
+  return out
+}
+
+/**
+ * A modded gun is often a cell or two longer (stock, suppressor) or a row taller (magazine)
+ * than any picture of it. When a named gun has unclaimed, not-empty cells right next to it
+ * (left along its whole height, or below along its whole width) with no other item's name
+ * in them, they are part of the gun.
+ */
+function growGuns(out: Detection[], grid: Grid, labels: Map<string, Label>, index: FingerprintIndex, empty: boolean[][], taken: Set<string>): Detection[] {
+  const gunIds = new Set(index.ids.filter((_, i) => index.guns?.[i]))
+  const gone = new Set<Detection>()
+  // Nameless pieces of a gun get matched to other guns' pictures (or weakly to anything).
+  const piece = (o: Detection) => !o.nameMatch && !labels.has(`${o.row},${o.col + o.w - 1}`) && (gunIds.has(o.itemId) || o.error >= 12)
+  const owner = (x: number, y: number) => out.find((o) => !gone.has(o) && x >= o.col && x < o.col + o.w && y >= o.row && y < o.row + o.h)
+  // The cells may be added when they are unclaimed or held by pieces lying wholly inside them.
+  const grab = (d: Detection, cells: [number, number][]): boolean => {
+    if (!cells.length || cells.some(([x, y]) => x < 0 || y >= grid.rows || labels.has(`${y},${x}`))) return false
+    if (!cells.some(([x, y]) => !empty[y][x])) return false
+    const inBlock = (o: Detection) => {
+      for (let y = o.row; y < o.row + o.h; y++) for (let x = o.col; x < o.col + o.w; x++) if (!cells.some(([cx, cy]) => cx === x && cy === y)) return false
+      return true
+    }
+    const holders = new Set<Detection>()
+    for (const [x, y] of cells) {
+      if (!taken.has(`${x},${y}`)) continue
+      const o = owner(x, y)
+      if (!o || o === d || !piece(o) || !inBlock(o)) return false
+      holders.add(o)
+    }
+    for (const o of holders) gone.add(o)
+    for (const [x, y] of cells) taken.add(`${x},${y}`)
+    return true
+  }
+  for (const d of out) {
+    if (gone.has(d) || !d.nameMatch || d.clipped || !gunIds.has(d.itemId)) continue
+    for (let k = 0; k < 3; k++) {
+      const left: [number, number][] = []
+      for (let y = d.row; y < d.row + d.h; y++) left.push([d.col - 1, y])
+      if (!grab(d, left)) break
+      d.col -= 1
+      d.w += 1
+      d.byName = true
+    }
+    const below: [number, number][] = []
+    for (let x = d.col; x < d.col + d.w; x++) below.push([x, d.row + d.h])
+    if (d.h < 3 && d.row + d.h < grid.rows && below.filter(([x, y]) => !empty[y][x]).length * 2 >= below.length && grab(d, below)) {
+      d.h += 1
+      d.byName = true
+    }
+  }
+  return gone.size ? out.filter((o) => !gone.has(o)) : out
+}
+
+/**
+ * Items not examined yet show a dark grey silhouette and no name, so no picture matches them.
+ * Flag poor, nameless matches whose pixels are nearly colourless and dark (a hint only).
+ */
+function looksUnexamined(img: Rgba, grid: Grid, d: { col: number; row: number; w: number; h: number }): boolean {
+  const v = sampleRegion(img, grid.ox + d.col * grid.pitch, grid.oy + d.row * grid.pitch, d.w * grid.pitch + 1, d.h * grid.pitch + 1, d.w * FP, d.h * FP)
+  let chroma = 0
+  let light = 0
+  const n = v.length / 3
+  for (let i = 0; i < v.length; i += 3) {
+    chroma += Math.max(v[i], v[i + 1], v[i + 2]) - Math.min(v[i], v[i + 1], v[i + 2])
+    light += (v[i] + v[i + 1] + v[i + 2]) / 3
+  }
+  return chroma / n < 8 && light / n < 70
+}
+
 /** Looks for items on the grid; returns non-overlapping detections, best first. */
-export function scanGrid(img: Rgba, grid: Grid, candidates: Map<string, Candidate[]>, _index: FingerprintIndex, opts: ScanOptions = {}, onProgress?: (done: number, total: number) => void): Detection[] {
+export function scanGrid(img: Rgba, grid: Grid, candidates: Map<string, Candidate[]>, index: FingerprintIndex, opts: ScanOptions = {}, onProgress?: (done: number, total: number) => void): Detection[] {
   const maxError = opts.maxError ?? 28
   const footprints = [...candidates.keys()].map((k) => k.split('x').map(Number) as [number, number])
   const raw: Detection[] = []
@@ -848,14 +1038,19 @@ export function scanGrid(img: Rgba, grid: Grid, candidates: Map<string, Candidat
       }
       for (const [w, h] of footprints) {
         if (col + w > grid.cols || row + h > grid.rows) continue
-        // An item never covers an empty slot.
-        let coversEmpty = false
-        for (let y = row; y < row + h && !coversEmpty; y++) for (let x = col; x < col + w; x++) if (empty[y][x]) coversEmpty = true
-        if (coversEmpty) continue
+        // An item never covers an empty slot, except guns: a gun's picture is mostly the plain
+        // dark background around a thin weapon, so its slots read as empty. Guns may cover up
+        // to half empty-looking slots (only gun pictures are tried there).
+        let emptyCount = 0
+        for (let y = row; y < row + h; y++) for (let x = col; x < col + w; x++) if (empty[y][x]) emptyCount++
+        if (emptyCount && (w * h < 2 || emptyCount * 2 > w * h)) continue
+        const gunsOnly = emptyCount > 0
         const x0 = grid.ox + col * grid.pitch
         const y0 = grid.oy + row * grid.pitch
         const region = sampleRegion(img, x0, y0, w * grid.pitch + 1, h * grid.pitch + 1, w * FP, h * FP)
-        const list = candidates.get(`${w}x${h}`) ?? []
+        const all = candidates.get(`${w}x${h}`) ?? []
+        const list = gunsOnly ? all.filter((c) => c.gun) : all
+        if (!list.length) continue
         const top: { itemId: string; learned: boolean; rotated: boolean; error: number; name?: string; nameMatch?: boolean }[] = []
         let cutoff = maxError * 1.5
         const regionMean = { plain: meanColor(region, maskFor(w, h, false)), rot: meanColor(region, maskFor(w, h, true)) }
@@ -882,6 +1077,7 @@ export function scanGrid(img: Rgba, grid: Grid, candidates: Map<string, Candidat
               if (iconErr < err) err = iconErr
             }
           }
+          err = gunAdjusted(err, region, c)
           if (err === Infinity) continue
           const dNot = rejectedAt.get(c.itemId)
           if (dNot !== undefined && (dNot < NOT_RADIUS || dNot <= err)) continue
@@ -900,14 +1096,15 @@ export function scanGrid(img: Rgba, grid: Grid, candidates: Map<string, Candidat
           for (const c of list) {
             if (c.negative || !c.name || rejectedAt.has(c.itemId)) continue
             if (top.some((t) => t.itemId === c.itemId && t.rotated === c.rotated)) continue
-            if (nameSimilarity(label.text, c.name) < matchAt) continue
+            if (labelSim(label, c.name) < matchAt) continue
             let err = distance(region, c.fp, maskFor(w, h, c.rotated))
             if (c.iconMask) err = Math.min(err, distance(region, c.fp, c.iconMask) + ICON_PENALTY)
+            err = gunAdjusted(err, region, c)
             if (c.bonus) err = Math.max(0, err - c.bonus)
             top.push({ itemId: c.itemId, learned: c.learned, rotated: c.rotated, error: err, name: c.name })
           }
           // Exact names score fully, near misses ("Scdr." vs "F scdr.") less.
-          const sims = top.map((t) => (t.name ? nameSimilarity(label.text, t.name) : 0))
+          const sims = top.map((t) => (t.name ? labelSim(label, t.name) : 0))
           const someoneMatches = sims.some((x) => x >= matchAt)
           top.forEach((t, i) => {
             const sim = sims[i]
@@ -952,7 +1149,7 @@ export function scanGrid(img: Rgba, grid: Grid, candidates: Map<string, Candidat
       const mask = compareMask(w, visible, false)
       for (const c of candidates.get(`${w}x${h}`) ?? []) {
         if (c.negative || c.rotated || !c.name) continue
-        const sim = nameSimilarity(label.text, c.name)
+        const sim = labelSim(label, c.name)
         if (sim < 0.85) continue
         const err = distance(region, c.fp.subarray(0, w * FP * visible * FP * 3), mask)
         if (err > maxError * 1.5) continue
@@ -980,7 +1177,7 @@ export function scanGrid(img: Rgba, grid: Grid, candidates: Map<string, Candidat
     if (label.conf < 50 || label.text.length < 3) continue
     const sims = new Map<string, number>()
     for (const [name, ids] of nameIds) {
-      const sim = nameSimilarity(label.text, name)
+      const sim = labelSim(label, name)
       if (sim >= ANCHOR_MATCH) for (const id of ids) sims.set(id, Math.max(sims.get(id) ?? 0, sim))
     }
     if (!sims.size) continue
@@ -1000,6 +1197,7 @@ export function scanGrid(img: Rgba, grid: Grid, candidates: Map<string, Candidat
         if (already.has(id)) continue
         let err = distance(region, c.fp, maskFor(w, h, c.rotated))
         if (c.iconMask) err = Math.min(err, distance(region, c.fp, c.iconMask) + ICON_PENALTY)
+        err = gunAdjusted(err, region, c)
         if (c.bonus) err = Math.max(0, err - c.bonus)
         if (err > maxError * 1.5) continue
         already.add(id)
@@ -1008,8 +1206,10 @@ export function scanGrid(img: Rgba, grid: Grid, candidates: Map<string, Candidat
       }
     }
   }
+  raw.push(...gunsByName(grid, labels, index, empty, raw))
   if (anchors.size) {
     for (const d of raw) {
+      if (d.byName) continue
       if (d.clipped) continue
       let conflict = false
       for (let y = d.row; y < d.row + d.h && !conflict; y++) {
@@ -1044,8 +1244,10 @@ export function scanGrid(img: Rgba, grid: Grid, candidates: Map<string, Candidat
     for (let y = d.row; y < d.row + d.h; y++) for (let x = d.col; x < d.col + d.w; x++) taken.add(`${x},${y}`)
     out.push(d)
   }
+  const grown = growGuns(out, grid, labels, index, empty, taken)
+  for (const d of grown) if (!d.nameMatch && d.error >= 18 && !labels.has(`${d.row},${d.col + d.w - 1}`) && looksUnexamined(img, grid, d)) d.unexamined = true
   onProgress?.(total, total)
-  return out.sort((a, b) => a.row - b.row || a.col - b.col)
+  return grown.sort((a, b) => a.row - b.row || a.col - b.col)
 }
 
 /**
@@ -1072,10 +1274,11 @@ export function identifyRegion(
     if (c.negative) continue
     let err = distance(region, c.fp, c.rotated ? masks.rot : masks.plain)
     if (c.iconMask) err = Math.min(err, distance(region, c.fp, c.iconMask) + ICON_PENALTY)
+    err = gunAdjusted(err, region, c)
     if (c.bonus) err = Math.max(0, err - c.bonus)
     let nameMatch = false
     if (label && c.name) {
-      const sim = nameSimilarity(label.text, c.name)
+      const sim = labelSim(label, c.name)
       if (sim >= (label.conf < 40 ? 0.9 : NAME_MATCH)) {
         err = Math.max(0, err - NAME_BONUS * (sim - 0.5) * 2)
         nameMatch = true
@@ -1093,7 +1296,7 @@ export interface FingerprintHeader {
   fp: number
   generated: string
   /** src = user memories shipped with the app (see scan-corrections/). */
-  items: { id: string; w: number; h: number; o: number; src?: 'correction' | 'confirmed' | 'not'; n?: string }[]
+  items: { id: string; w: number; h: number; o: number; src?: 'correction' | 'confirmed' | 'not'; n?: string; g?: 1 }[]
 }
 
 export function indexFromParts(header: FingerprintHeader, pixels: Uint8Array): FingerprintIndex {
@@ -1106,6 +1309,7 @@ export function indexFromParts(header: FingerprintHeader, pixels: Uint8Array): F
     pixels,
     corrections: Uint8Array.from(header.items, (it) => (it.src === 'correction' ? 1 : it.src === 'confirmed' ? 2 : it.src === 'not' ? 3 : 0)),
     names: header.items.map((it) => it.n ?? ''),
+    guns: Uint8Array.from(header.items, (it) => (it.g ? 1 : 0)),
   }
   header.items.forEach((it, i) => {
     index.widths[i] = it.w

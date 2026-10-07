@@ -18,13 +18,19 @@ interface RawItem {
   gridImageLink?: string
   shortName?: string
   types?: string[]
+  properties?: { baseItem?: string }
 }
 
 const res = (await (await fetch('https://json.tarkov.dev/regular/items')).json()) as { data: { items: Record<string, RawItem> } }
 const en = (await (await fetch('https://json.tarkov.dev/regular/items_en')).json()) as { data?: Record<string, string> } & Record<string, string>
 const shortNames = (en.data ?? en) as Record<string, string>
-// Presets duplicate their base weapon's look; skip them (the base weapon still matches).
-const items = Object.values(res.data.items).filter((i) => i.gridImageLink && !(i.types ?? []).includes('preset'))
+// Weapons: the base item's picture is the bare receiver (AK-74N: 4x1), but a gun in the stash
+// is assembled (the default AK-74N is 5x2). Every preset is a ready-made build with its own
+// picture and size, so presets ship too, labelled as their base weapon (same printed name).
+const all = res.data.items
+const items = Object.values(all).filter((i) => i.gridImageLink && (!(i.types ?? []).includes('preset') || all[i.properties?.baseItem ?? '']))
+const baseOf = (i: RawItem) => ((i.types ?? []).includes('preset') ? all[i.properties?.baseItem ?? ''] : i)
+const isGun = (i: RawItem) => (baseOf(i).types ?? []).includes('gun')
 fs.mkdirSync(CACHE, { recursive: true })
 fs.mkdirSync(OUT_DIR, { recursive: true })
 console.log(`${items.length} items with grid images`)
@@ -46,7 +52,7 @@ async function gridImage(item: RawItem): Promise<Buffer | null> {
   return null
 }
 
-const results: { id: string; w: number; h: number; px: Uint8Array; n: string }[] = []
+const results: { id: string; w: number; h: number; px: Uint8Array; n: string; g: boolean }[] = []
 let next = 0
 let failed = 0
 async function worker() {
@@ -61,7 +67,8 @@ async function worker() {
     const h = item.height || 1
     const { data, info } = await sharp(buf).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
     const fp = sampleRegion({ width: info.width, height: info.height, data }, 0, 0, info.width, info.height, w * FP, h * FP)
-    results.push({ id: item.id, w, h, px: Uint8Array.from(fp, (v) => Math.round(v)), n: shortNames[item.shortName ?? ''] ?? '' })
+    const base = baseOf(item)
+    results.push({ id: base.id, w, h, px: Uint8Array.from(fp, (v) => Math.round(v)), n: shortNames[base.shortName ?? ''] ?? '', g: isGun(item) })
     if (results.length % 500 === 0) console.log(`  ${results.length} / ${items.length}`)
   }
 }
@@ -90,7 +97,7 @@ const total = results.reduce((n, r) => n + r.px.length, 0) + corrections.reduce(
 const pixels = new Uint8Array(total)
 let o = 0
 for (const r of results) {
-  header.items.push({ id: r.id, w: r.w, h: r.h, o, n: r.n || undefined })
+  header.items.push({ id: r.id, w: r.w, h: r.h, o, n: r.n || undefined, g: r.g ? 1 : undefined })
   pixels.set(r.px, o)
   o += r.px.length
 }
