@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Camera, Check, Crop, Palette, FolderOpen, ImageUp, Loader2, Minus, Move, Plus, ScanSearch, Search, Trash2, X } from 'lucide-react'
+import { Camera, Check, Crop, Palette, FolderOpen, ImageUp, Loader2, Minus, Move, Plus, ScanSearch, Search, Trash2, X, Undo2 } from 'lucide-react'
 import { useNeeds } from '../hooks/useNeeds'
 import { remainingFor, type NeedSource } from '../lib/needs'
 import { sellValue } from '../lib/economy'
@@ -16,6 +16,7 @@ import { learnedFingerprints, recordFromCorrection, recordFromSpot, useLearnedSt
 import { LearnedPanel } from './LearnedPanel'
 import { readWords, warmUpOcr } from './ocr'
 import { imageFromClipboard, useScanStore } from './scanStore'
+import { undoLastApply } from './undoApply'
 import { prefs } from '../store/prefs'
 
 interface Row {
@@ -205,6 +206,7 @@ export function ScanDialog() {
     setUrl(u)
     setCrop(null)
     setApplied(null)
+    setUndoNote(null)
     appliedRef.current = false
     setLearnNote(null)
     const probe = new Image()
@@ -316,7 +318,11 @@ export function ScanDialog() {
         const det = dets[spot]
         if (!det || det.removed || det.edited || det.itemId !== r.itemId) continue
         const rec = await recordFromSpot(image, result.grid, det, det.w, det.h, r.itemId, 'confirmed').catch(() => null)
-        if (rec) await useLearnedStore.getState().add(rec)
+        if (rec) {
+          await useLearnedStore.getState().add(rec)
+          // Undo also forgets these.
+          useScanStore.getState().addLearnedId(rec.id)
+        }
       }
     }
   }
@@ -324,7 +330,6 @@ export function ScanDialog() {
   const apply = () => {
     if (appliedRef.current) return
     appliedRef.current = true
-    void rememberConfirmations()
     let n = 0
     const totals = new Map<string, number>()
     for (const r of rows) {
@@ -332,12 +337,28 @@ export function ScanDialog() {
       const target = needFor.get(r.itemId)?.needId ?? r.itemId
       totals.set(target, (totals.get(target) ?? 0) + r.count)
     }
+    // Remember the counts before changing them, so the apply can be undone.
+    const previous: Record<string, number> = {}
+    for (const id of totals.keys()) previous[id] = inventory.collected[id] ?? 0
     for (const [id, count] of totals) {
       const current = inventory.collected[id] ?? 0
       setCollected(gameMode, id, mode === 'add' ? current + count : count)
       n += count
     }
-    setApplied(`${mode === 'add' ? 'Added' : 'Set'} ${n} item${n === 1 ? '' : 's'} across ${totals.size} kind${totals.size === 1 ? '' : 's'} in Item Collection.`)
+    const summary = `${mode === 'add' ? 'Added' : 'Set'} ${n} item${n === 1 ? '' : 's'} across ${totals.size} kind${totals.size === 1 ? '' : 's'} in Item Collection.`
+    useScanStore.getState().setLastApply({ mode: gameMode, previous, learnedIds: [], summary })
+    void rememberConfirmations()
+    setApplied(summary)
+  }
+
+  const lastApply = useScanStore((s) => s.lastApply)
+  const [undoNote, setUndoNote] = useState<string | null>(null)
+  const undoApply = async () => {
+    if (!(await undoLastApply())) return
+    // The same screenshot may be applied again (e.g. after fixing a wrong item).
+    appliedRef.current = false
+    setApplied(null)
+    setUndoNote('Undone: Item Collection is back to how it was before the apply.')
   }
 
   /** Puts one box (spot) under an item: updates the box and moves it between rows. */
@@ -759,7 +780,23 @@ export function ScanDialog() {
                 <label className="flex items-center gap-1.5" title="Use when this screenshot shows every copy you own"><input type="radio" checked={mode === 'set'} onChange={() => setMode('set')} /> Replace my counts</label>
               </div>
               {applied ? (
-                <p className="flex items-center gap-1.5 text-success"><Check className="h-4 w-4" /> {applied} To apply again, paste or open a new screenshot.</p>
+                <p className="flex flex-wrap items-center gap-1.5 text-success">
+                  <Check className="h-4 w-4" /> {applied}
+                  {lastApply && (
+                    <button type="button" onClick={() => void undoApply()} className="btn !py-0.5 text-xs" title="Puts the counts back to how they were before this apply">
+                      <Undo2 className="h-3.5 w-3.5" /> Undo
+                    </button>
+                  )}
+                </p>
+              ) : !applied && lastApply ? (
+                <p className="flex flex-wrap items-center gap-1.5 text-ink-muted">
+                  Last apply: {lastApply.summary}
+                  <button type="button" onClick={() => void undoApply()} className="btn !py-0.5 text-xs">
+                    <Undo2 className="h-3.5 w-3.5" /> Undo it
+                  </button>
+                </p>
+              ) : undoNote ? (
+                <p className="text-ink-muted">{undoNote}</p>
               ) : (
                 <p className="text-ink-dim">Ticked items count toward Item Collection (alternatives a quest accepts count too). Scanning the same stash twice with "Add" counts items twice.</p>
               )}
