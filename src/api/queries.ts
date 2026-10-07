@@ -432,8 +432,35 @@ function adaptWeaponData(raw: RawItem, item: Item): void {
   }
   // Pictures for the Weapon builder's Modding view (only these items, to keep the cache small).
   if (item.weapon || item.mod || item.preset) {
-    if (raw.gridImageLink) item.gridImageLink = raw.gridImageLink
-    if (raw.image512pxLink) item.image512Link = raw.image512pxLink
+    const grid = realPicture(raw.gridImageLink)
+    const large = realPicture(raw.image512pxLink)
+    if (grid) item.gridImageLink = grid
+    if (large) item.image512Link = large
+  }
+}
+
+/** tarkov.dev links items it has no picture for yet to a shared "unknown item" placeholder. */
+function realPicture(link: string | null | undefined): string | null {
+  return link && !link.includes('/unknown-item') ? link : null
+}
+
+/**
+ * New colour variants of guns ("HK 416A5 … (RAL 8000)", "FN P90 … (Scourge)") often have no
+ * pictures on tarkov.dev yet. Show the standard version's pictures instead (same gun, other
+ * colour) and say so (`pictureOf`). Presets map the same way ("… (Scourge) Default").
+ */
+function borrowVariantPictures(out: ItemsById) {
+  const byName = new Map<string, Item>()
+  for (const it of Object.values(out)) byName.set(it.name, it)
+  for (const it of Object.values(out)) {
+    if (!(it.weapon || it.preset) || (it.iconLink && it.image512Link)) continue
+    const plain = it.name.replace(/ \([^)]*\)(?=( Default)?$)/, '')
+    const twin = plain !== it.name ? byName.get(plain) : undefined
+    if (!twin?.iconLink) continue
+    it.iconLink = it.iconLink ?? twin.iconLink
+    it.gridImageLink = it.gridImageLink ?? twin.gridImageLink
+    it.image512Link = it.image512Link ?? twin.image512Link
+    it.pictureOf = twin.name
   }
 }
 
@@ -451,7 +478,7 @@ export async function fetchItems(gameMode: GameMode, signal?: AbortSignal): Prom
       name: t(raw.name, raw.normalizedName),
       shortName: t(raw.shortName, raw.normalizedName),
       normalizedName: raw.normalizedName,
-      iconLink: raw.iconLink ?? null,
+      iconLink: realPicture(raw.iconLink),
       wikiLink: raw.wikiLink ?? null,
       avg24hPrice: raw.avg24hPrice ?? null,
       lastLowPrice: raw.lastLowPrice ?? null,
@@ -484,6 +511,7 @@ export async function fetchItems(gameMode: GameMode, signal?: AbortSignal): Prom
     adaptWeaponData(raw, item)
     out[item.id] = item
   }
+  borrowVariantPictures(out)
   const categoryNames: Record<string, string> = {}
   for (const [id, c] of Object.entries(doc.data.itemCategories ?? {})) {
     if (c?.name) categoryNames[c.id ?? id] = t(c.name, c.normalizedName ?? id)

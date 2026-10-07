@@ -228,6 +228,8 @@ export function ModdingView({
       <div className="min-w-0 max-w-full">
         <p className="truncate text-sm font-semibold" title={focusItem?.name}>{focusItem?.name ?? 'Unknown part'}</p>
         {preset && <p className="truncate text-xs text-ink-dim">Same parts as the ready-made build "{preset.name}"</p>}
+        {(preset ?? focusItem)?.pictureOf && <p className="text-xs text-ink-dim">Picture of the standard version: tarkov.dev has no picture of this one yet.</p>}
+        {!centreSrc && <p className="text-xs text-ink-dim">tarkov.dev has no picture of this item yet.</p>}
         {focusItem?.mod && <ModStatLine item={focusItem} className="text-xs" />}
         {path.length > 0 && (
           <button type="button" onClick={() => goTo(path.slice(0, -1))} className="mt-1 block w-full text-xs text-ink-muted hover:text-accent">

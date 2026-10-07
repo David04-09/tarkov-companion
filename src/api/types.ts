@@ -539,6 +539,8 @@ export interface Item {
   gridImageLink?: string
   /** Large 512 px picture; only on weapons, parts and presets (Weapon builder). */
   image512Link?: string
+  /** tarkov.dev has no pictures of this variant yet: the pictures are this item's (standard version). */
+  pictureOf?: string
 }
 
 /** A slot on a weapon or part; `allowed` lists the item ids that fit. */

@@ -28,7 +28,8 @@ const shortNames = (en.data ?? en) as Record<string, string>
 // is assembled (the default AK-74N is 5x2). Every preset is a ready-made build with its own
 // picture and size, so presets ship too, labelled as their base weapon (same printed name).
 const all = res.data.items
-const items = Object.values(all).filter((i) => i.gridImageLink && (!(i.types ?? []).includes('preset') || all[i.properties?.baseItem ?? '']))
+// Items without a picture yet share tarkov.dev's "unknown item" placeholder: never a fingerprint.
+const items = Object.values(all).filter((i) => i.gridImageLink && !i.gridImageLink.includes('/unknown-item') && (!(i.types ?? []).includes('preset') || all[i.properties?.baseItem ?? '']))
 const baseOf = (i: RawItem) => ((i.types ?? []).includes('preset') ? all[i.properties?.baseItem ?? ''] : i)
 const isGun = (i: RawItem) => (baseOf(i).types ?? []).includes('gun')
 fs.mkdirSync(CACHE, { recursive: true })
