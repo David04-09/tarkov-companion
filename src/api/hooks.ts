@@ -2,12 +2,12 @@ import { useQuery } from '@tanstack/react-query'
 import { catalogKeys, fetchEndpointCatalog } from './catalog'
 import type { GameMode } from './client'
 import { fetchCrafts, fetchGameData, fetchHideout, fetchItems, fetchPriceHistory, fetchServerStatus } from './queries'
-import { FIVE_MINUTES, ONE_HOUR, ONE_MINUTE } from './queryClient'
+import { FIVE_MINUTES, ONE_MINUTE, refreshMs } from './queryClient'
 import { useProgressStore } from '../store/progress'
 
-/** While a query is in error, poll again every minute instead of waiting an hour. */
+/** While a query is in error, poll again every minute instead of waiting for the next refresh. */
 const hourlyOrRetry = (status: 'pending' | 'error' | 'success') =>
-  status === 'error' ? ONE_MINUTE : ONE_HOUR
+  status === 'error' ? ONE_MINUTE : refreshMs()
 
 export const gameDataKeys = {
   all: ['gameData'] as const,
@@ -49,8 +49,8 @@ export function useItems(enabled = true, refetchMs?: number) {
     queryKey: itemKeys.mode(gameMode),
     queryFn: ({ signal }) => fetchItems(gameMode, signal),
     enabled,
-    staleTime: refetchMs ? Math.min(refetchMs, ONE_HOUR) : ONE_HOUR,
-    refetchInterval: (query) => (query.state.status === 'error' ? ONE_MINUTE : (refetchMs ?? ONE_HOUR)),
+    staleTime: refetchMs ? Math.min(refetchMs, refreshMs()) : refreshMs(),
+    refetchInterval: (query) => (query.state.status === 'error' ? ONE_MINUTE : (refetchMs ?? refreshMs())),
   })
 }
 

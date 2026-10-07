@@ -6,6 +6,7 @@
  */
 import { app, desktopCapturer, screen } from 'electron'
 import fs from 'node:fs'
+import { isScreenshotName } from './security'
 import path from 'node:path'
 
 /** Captures the display under the mouse at full resolution, as PNG bytes. */
@@ -47,7 +48,7 @@ export function listGameScreenshots(limit = 12): GameScreenshot[] {
 
 export function readGameScreenshot(name: string): Uint8Array {
   // Only plain file names inside the screenshots folder.
-  if (name !== path.basename(name)) throw new Error('Invalid file name')
+  if (!isScreenshotName(name)) throw new Error('Invalid file name')
   return new Uint8Array(fs.readFileSync(path.join(gameScreenshotsDir(), name)))
 }
 
@@ -78,7 +79,7 @@ export function resourceResponse(url: string, devServer: boolean): Response {
 /** Reads a file shipped with the app (only the scanner data folder). */
 export function readAppResource(rel: string, devServer: boolean): Uint8Array {
   const clean = path.normalize(rel).replace(/^([/\\])+/, '')
-  if (!clean.startsWith(`scan${path.sep}`) && !clean.startsWith('scan/')) throw new Error('Not allowed')
+  if ((!clean.startsWith(`scan${path.sep}`) && !clean.startsWith('scan/')) || clean.includes('..')) throw new Error('Not allowed')
   const base = devServer ? path.join(__dirname, '..', 'public') : path.join(__dirname, '..', 'dist')
   return new Uint8Array(fs.readFileSync(path.join(base, clean)))
 }

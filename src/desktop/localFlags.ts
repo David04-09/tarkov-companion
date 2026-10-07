@@ -10,6 +10,7 @@
  */
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { guarded } from '../store/guarded'
 
 interface LocalFlags {
   setupDone: boolean
@@ -26,7 +27,7 @@ export const useLocalFlags = create<LocalFlags>()(
       setSetupDone: (setupDone) => set({ setupDone }),
       setBackfillDone: (backfillDone) => set({ backfillDone }),
     }),
-    { name: 'tarkov-companion-desktop-flags', version: 1 },
+    { name: 'tarkov-companion-desktop-flags', version: 1, ...guarded<LocalFlags>({ setupDone: 'boolean', backfillDone: 'boolean' }) },
   ),
 )
 

@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { AlertTriangle, CheckCircle2, FolderOpen, HardDriveDownload, Info, RotateCcw, Stethoscope } from 'lucide-react'
 import { useGameData } from '../api/hooks'
-import { formatTimeAgo } from '../lib/format'
-import { buildProgressFile, importProgressFile } from '../lib/progressFile'
+import { formatDateTime, formatTimeAgo } from '../lib/format'
+import { buildProgressFile, importProgressFile, parseImportJson } from '../lib/progressFile'
 import type { BackupInfo } from '../shared/desktop-api'
 import { useProgressStore } from '../store/progress'
 import { useNow } from '../story/storyUtils'
@@ -78,7 +78,7 @@ export function HealthAndBackups() {
       ? { ok: now - gameData.data.fetchedAt < 6 * SIX_HOURS, label: 'Game data from tarkov.dev', detail: `${mode === 'pve' ? 'PvE' : 'PvP'}, downloaded ${formatTimeAgo(gameData.data.fetchedAt)}` }
       : { ok: gameData.isError ? false : null, label: 'Game data from tarkov.dev', detail: gameData.isError ? 'could not download (offline?)' : 'loading…' },
     logs.data
-      ? { ok: true, label: 'Profile reset / wipe', detail: reset ? `detected on ${new Date(reset).toLocaleString()}; older logs are ignored` : 'none found in the logs' }
+      ? { ok: true, label: 'Profile reset / wipe', detail: reset ? `detected on ${formatDateTime(reset)}; older logs are ignored` : 'none found in the logs' }
       : { ok: null, label: 'Profile reset / wipe', detail: logs.isFetching ? 'reading the logs…' : 'press "Check logs"' },
     update
       ? { ok: update.state !== 'error', label: 'Updates', detail: update.state === 'none' ? 'up to date' : update.state === 'ready' ? `version ${update.version} downloaded, restart to apply` : update.state === 'error' ? update.message : update.state }
@@ -105,14 +105,14 @@ export function HealthAndBackups() {
           <ul className="divide-y divide-line rounded border border-line bg-surface text-xs">
             {backups.map((b) => (
               <li key={b.name} className="flex items-center gap-2 px-2 py-1">
-                <span className="min-w-0 flex-1">{new Date(b.at).toLocaleString()} <span className="text-ink-dim">· {Math.round(b.size / 1024)} KB</span></span>
+                <span className="min-w-0 flex-1">{formatDateTime(b.at)} <span className="text-ink-dim">· {Math.round(b.size / 1024)} KB</span></span>
                 <button
                   type="button"
                   onClick={async () => {
                     if (confirm !== b.name) return setConfirm(b.name)
                     setConfirm(null)
                     try {
-                      const restored = importProgressFile(JSON.parse(await window.desktop!.readBackup(b.name)))
+                      const restored = importProgressFile(parseImportJson(await window.desktop!.readBackup(b.name)))
                       setMessage(`Restored ${restored.join(', ')} from ${new Date(b.at).toLocaleDateString()}.`)
                     } catch (err) {
                       setMessage(`Restore failed: ${err instanceof Error ? err.message : 'invalid file'}`)

@@ -23,7 +23,7 @@ import { Notification, app, shell } from 'electron'
 import fs from 'node:fs'
 import path from 'node:path'
 import { autoUpdater } from 'electron-updater'
-import type { UpdateOutcome, UpdateStatus } from '../src/shared/desktop-api'
+import type { UpdateMode, UpdateOutcome, UpdateStatus } from '../src/shared/desktop-api'
 
 const SIX_HOURS = 6 * 60 * 60 * 1000
 const RELEASES_URL = 'https://github.com/David04-09/tarkov-companion/releases/latest'
@@ -37,6 +37,16 @@ let broadcastFn: Broadcast = () => undefined
 let timer: ReturnType<typeof setInterval> | null = null
 let updater: typeof autoUpdater | null = null
 let outcome: UpdateOutcome | null = null
+/** Settings → Updates: auto = download in the background; notify = only say a new version exists; off = no automatic checks. */
+let mode: UpdateMode = 'auto'
+
+/** Applies the Settings choice (also at start-up). Manual "Check for updates" always works. */
+export function setUpdateMode(next: UpdateMode) {
+  mode = next
+  if (!updater) return
+  updater.autoDownload = !IS_PORTABLE && mode === 'auto'
+  updater.autoInstallOnAppQuit = !IS_PORTABLE && mode === 'auto'
+}
 
 // A plain text log of every update step (userData/updater.log, last ~200 KB), so a failed
 // install leaves a trail. Nothing personal goes in: versions, file names, errors.
@@ -110,8 +120,9 @@ export function getUpdateStatus(): UpdateStatus {
 }
 
 /** Wires electron-updater; a no-op in development (unpackaged) builds. */
-export function setupUpdater(broadcast: Broadcast) {
+export function setupUpdater(broadcast: Broadcast, initialMode: UpdateMode = 'auto') {
   broadcastFn = broadcast
+  mode = initialMode
   if (!app.isPackaged) {
     setStatus({ state: 'disabled', message: 'Updates only work in the installed app.' })
     return
@@ -119,8 +130,7 @@ export function setupUpdater(broadcast: Broadcast) {
   readAttempt()
   updater = autoUpdater
   // The portable exe cannot replace itself: only check, then offer the download page.
-  autoUpdater.autoDownload = !IS_PORTABLE
-  autoUpdater.autoInstallOnAppQuit = !IS_PORTABLE
+  setUpdateMode(mode)
   autoUpdater.allowPrerelease = false
   autoUpdater.logger = fileLogger
   logLine('info', `App ${app.getVersion()} started (${IS_PORTABLE ? 'portable' : 'installed'})`)
@@ -129,7 +139,7 @@ export function setupUpdater(broadcast: Broadcast) {
 
   autoUpdater.on('checking-for-update', () => setStatus({ state: 'checking' }))
   autoUpdater.on('update-available', (info) =>
-    setStatus(IS_PORTABLE ? { state: 'available', version: info.version, url: RELEASES_URL } : { state: 'downloading', version: info.version, percent: 0 }),
+    setStatus(IS_PORTABLE || !autoUpdater.autoDownload ? { state: 'available', version: info.version, url: RELEASES_URL, installable: !IS_PORTABLE } : { state: 'downloading', version: info.version, percent: 0 }),
   )
   autoUpdater.on('download-progress', (p) => setStatus({ state: 'downloading', version: status.state === 'downloading' ? status.version : undefined, percent: Math.round(p.percent) }))
   autoUpdater.on('update-downloaded', (info) => setStatus({ state: 'ready', version: info.version }))
@@ -137,8 +147,8 @@ export function setupUpdater(broadcast: Broadcast) {
   autoUpdater.on('error', (err) => setStatus({ state: 'error', message: shortError(err) }))
 
   // On launch (after a short delay so the window appears first) and every 6 hours.
-  setTimeout(() => void checkForUpdates(), 10_000)
-  timer = setInterval(() => void checkForUpdates(), SIX_HOURS)
+  setTimeout(() => mode !== 'off' && void checkForUpdates(), 10_000)
+  timer = setInterval(() => mode !== 'off' && void checkForUpdates(), SIX_HOURS)
   app.on('before-quit', () => {
     if (timer) clearInterval(timer)
   })
@@ -158,6 +168,13 @@ export async function checkForUpdates(): Promise<UpdateStatus> {
 /** Installed app: quits and runs the downloaded installer silently, then restarts. Portable: opens the download page. */
 export function installUpdate(): void {
   if (status.state === 'available') {
+    // Installed app with "only tell me": download now, then "Restart to update" as usual.
+    if (!IS_PORTABLE && updater) {
+      const version = status.version
+      setStatus({ state: 'downloading', version, percent: 0 })
+      updater.downloadUpdate().catch((err: unknown) => setStatus({ state: 'error', message: shortError(err) }))
+      return
+    }
     void shell.openExternal(status.url)
     return
   }

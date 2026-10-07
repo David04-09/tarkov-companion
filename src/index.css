@@ -18,6 +18,55 @@
   --font-sans: "Segoe UI", system-ui, -apple-system, sans-serif;
 }
 
+/* ---- Themes (Settings → Appearance). Each one redefines the colour tokens above;
+   every bg-/text-/border- utility follows. data-* attributes are set by applyAppearance. */
+:root[data-theme="midnight"] {
+  --color-surface: #0b0f14; --color-surface-2: #121821; --color-surface-3: #1a2330; --color-line: #283342;
+  --color-ink: #dfe6ee; --color-ink-muted: #93a1b3; --color-ink-dim: #64717f;
+  --color-accent: #6fa8dc; --color-accent-dim: #4a7aa6; --color-success: #6fb38a; --color-danger: #d0675c; --color-info: #8fb7e0;
+}
+:root[data-theme="olive"] {
+  --color-surface: #0d0f0a; --color-surface-2: #141710; --color-surface-3: #1c2017; --color-line: #2c3224;
+  --color-ink: #e3e6d6; --color-ink-muted: #9ba08a; --color-ink-dim: #6c705e;
+  --color-accent: #a3b86c; --color-accent-dim: #77874d; --color-success: #84b56a; --color-danger: #c46a52; --color-info: #7ea6b8;
+}
+:root[data-theme="oled"] {
+  --color-surface: #000000; --color-surface-2: #0a0a0a; --color-surface-3: #151515; --color-line: #262626;
+  --color-ink: #ececec; --color-ink-muted: #a0a0a0; --color-ink-dim: #6e6e6e;
+  --color-accent: #d4b277; --color-accent-dim: #94784a; --color-success: #7fb86a; --color-danger: #d0644f; --color-info: #6ba3d6;
+}
+:root[data-theme="crimson"] {
+  --color-surface: #0f0b0b; --color-surface-2: #171111; --color-surface-3: #201717; --color-line: #33292a;
+  --color-ink: #ece2e0; --color-ink-muted: #a59391; --color-ink-dim: #736462;
+  --color-accent: #d0645a; --color-accent-dim: #94463f; --color-success: #7ea86a; --color-danger: #f08a4b; --color-info: #6b9bc7;
+}
+:root[data-theme="daylight"] {
+  color-scheme: light;
+  --color-surface: #f4f1ea; --color-surface-2: #ffffff; --color-surface-3: #ebe6db; --color-line: #d6cfbf;
+  --color-ink: #1d1b16; --color-ink-muted: #5e584c; --color-ink-dim: #857e70;
+  --color-accent: #8a6a2f; --color-accent-dim: #b39762; --color-success: #3f7a2e; --color-danger: #b2402c; --color-info: #2f6a9e;
+}
+:root[data-theme="contrast"] {
+  --color-surface: #000000; --color-surface-2: #0d0d0d; --color-surface-3: #1a1a1a; --color-line: #5c5c5c;
+  --color-ink: #ffffff; --color-ink-muted: #d6d6d6; --color-ink-dim: #b0b0b0;
+  --color-accent: #ffd34d; --color-accent-dim: #c9a227; --color-success: #6ee07a; --color-danger: #ff6b5b; --color-info: #6cb8ff;
+}
+:root:not([data-theme="daylight"]) {
+  color-scheme: dark;
+}
+/* Compact density: Tailwind's spacing unit (every p-/m-/gap- step) is a bit smaller. */
+:root[data-density="compact"] {
+  --spacing: 0.2rem;
+}
+:root[data-reduce-motion="true"] *,
+:root[data-reduce-motion="true"] *::before,
+:root[data-reduce-motion="true"] *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
+}
+
 html,
 body,
 #root {
@@ -264,3 +313,10 @@ select option {
 .wiki-green { color: var(--color-success); }
 .wiki-content .wiki-scroll { max-width: 100%; overflow-x: auto; }
 .wiki-content { overflow-wrap: anywhere; }
+
+/* Settings → Maps → Marker size. The icon's inner element is scaled around its centre (the
+   `scale` property composes with any rotation the marker uses, and leaves Leaflet's own
+   positioning transform on the outer element alone). */
+.leaflet-marker-icon > :first-child {
+  scale: var(--tc-marker-scale, 1);
+}

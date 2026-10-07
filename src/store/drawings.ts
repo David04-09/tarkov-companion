@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { guarded } from './guarded'
 
 /** Coordinates are game coordinates as Leaflet sees them: [z, x] (lat, lng). */
 export type LatLngTuple = [number, number]
@@ -45,7 +46,7 @@ export const useDrawingsStore = create<DrawingsState>()(
         }),
       importAll: (byKey) => set({ byKey }),
     }),
-    { name: 'tarkov-companion-drawings', version: 1 },
+    { name: 'tarkov-companion-drawings', version: 1, ...guarded<DrawingsState>({ byKey: (v) => parseDrawings(v) }) },
   ),
 )
 

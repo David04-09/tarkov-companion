@@ -29,6 +29,9 @@ export const DEFAULT_SETTINGS: StoredSettings = {
   knownProfileId: null,
   knownGameVersion: null,
   setupDone: false,
+  updateMode: 'auto',
+  trackPosition: true,
+  backupKeep: 7,
   trayNoticeShown: false,
   window: { width: 1360, height: 860 },
 }

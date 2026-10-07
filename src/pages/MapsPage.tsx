@@ -29,6 +29,7 @@ import { useModeInventory } from '../store/inventory'
 import { taskColor, useMapOverlayStore } from '../store/mapOverlay'
 import { useProfile, useProgressStore } from '../store/progress'
 import { useUiStore } from '../store/ui'
+import { formatTime } from '../lib/format'
 
 /** Above this many markers on screen, quest markers switch to canvas circles. */
 const CANVAS_THRESHOLD = 200
@@ -86,6 +87,16 @@ export function MapsPage() {
   )
   const lootShown = useMemo(() => lootGroups.filter((g) => lootOn[g.name]), [lootGroups, lootOn])
   const spawnModel = useMemo(() => (gameData.data && mapId ? buildSpawnModel(gameData.data, mapId) : null), [gameData.data, mapId])
+  const items = itemsQuery.data?.items
+  // Stable inputs for the bring box and briefing (new arrays/objects each render re-ran their work).
+  const bringTasks = useMemo(() => shown.map((x) => x.mapTask).filter((m) => statuses[m.task.id] !== 'completed'), [shown, statuses])
+  const briefing = useMemo(
+    () =>
+      gameData.data && mapId && selected
+        ? { data: gameData.data, mapId, mapKey: selected.key, gameMode, mapTasks, statuses, needs, items, ownedKeyIds, collected: inventory.collected }
+        : null,
+    [gameData.data, mapId, selected, gameMode, mapTasks, statuses, needs, items, ownedKeyIds, inventory.collected],
+  )
 
   if (!selected || !cfg || !layer) return null
   const floors = layer.floors.filter((f) => floorIsDrawable(f, layer))
@@ -94,7 +105,6 @@ export function MapsPage() {
   const hasFloors = layerHasFloorHeights(layer)
   const markerCount = shown.reduce((n, s) => n + s.mapTask.placements.length, 0)
   const canvas = markerCount > CANVAS_THRESHOLD
-  const items = itemsQuery.data?.items
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -118,7 +128,7 @@ export function MapsPage() {
           <span className="flex items-center gap-1.5 rounded border border-sky-400/50 bg-sky-400/10 px-2 py-1 text-xs text-sky-300" title={position.file}>
             <MapPin className="h-3.5 w-3.5" />
             {position.mapKey === selected.key ? (
-              <>You are here · screenshot {new Date(position.at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</>
+              <>You are here · screenshot {formatTime(position.at)}</>
             ) : (
               <button type="button" onClick={() => position.mapKey && setLastMapKey(position.mapKey)} className="underline">
                 Last position is on {options.find((o) => o.key === position.mapKey)?.name ?? 'another map'}
@@ -163,7 +173,7 @@ export function MapsPage() {
             <Legend entries={shown} />
             <LootLegend groups={lootShown} />
             {position && position.mapKey === selected.key && <PositionLayer pos={position} />}
-            <BringBox mapTasks={shown.map((x) => x.mapTask).filter((m) => statuses[m.task.id] !== 'completed')} items={items} />
+            <BringBox mapTasks={bringTasks} items={items} />
           </MapViewer>
         </div>
 
@@ -176,11 +186,7 @@ export function MapsPage() {
           hasFloors={hasFloors}
           lootGroups={lootGroups}
           spawnModel={spawnModel}
-          briefing={
-            gameData.data && mapId
-              ? { data: gameData.data, mapId, mapKey: selected.key, gameMode, mapTasks, statuses, needs, items, ownedKeyIds, collected: inventory.collected }
-              : null
-          }
+          briefing={briefing}
         />
       </div>
 

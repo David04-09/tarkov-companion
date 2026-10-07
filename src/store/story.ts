@@ -6,6 +6,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { GameMode } from '../api/client'
+import { guarded } from './guarded'
 
 export interface StoryTimer {
   startedAt: number
@@ -78,7 +79,7 @@ export const useStoryStore = create<StoryState>()(
         importAll: (byMode) => set({ byMode }),
       }
     },
-    { name: 'tarkov-companion-story', version: 1 },
+    { name: 'tarkov-companion-story', version: 1, ...guarded<StoryState>({ byMode: (v) => parseStory(v) }) },
   ),
 )
 

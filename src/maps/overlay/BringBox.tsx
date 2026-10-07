@@ -4,6 +4,7 @@ import { Backpack, ChevronDown, ChevronUp, KeyRound } from 'lucide-react'
 import type { ItemsById } from '../../api/types'
 import { buildBringList, type BringKind } from './bringList'
 import type { MapTask } from './mapTasks'
+import { prefs } from '../../store/prefs'
 
 const KIND_LABEL: Record<BringKind, string> = {
   key: 'Keys',
@@ -19,7 +20,7 @@ const KIND_LABEL: Record<BringKind, string> = {
  * map need you to bring. Rendered as a Leaflet control so it sits inside the map.
  */
 export function BringBox({ mapTasks, items }: { mapTasks: MapTask[]; items: ItemsById | undefined }) {
-  const [open, setOpen] = useState(true)
+  const [open, setOpen] = useState(() => prefs().bringBoxOpen)
   const ref = useRef<HTMLDivElement>(null)
   const list = useMemo(() => buildBringList(mapTasks), [mapTasks])
   useEffect(() => {

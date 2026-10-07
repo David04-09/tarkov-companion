@@ -1,11 +1,40 @@
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
-import { defineConfig } from 'vite'
+import { defineConfig, type Plugin } from 'vite'
 import electron from 'vite-plugin-electron/simple'
 import { readFileSync } from 'node:fs'
 
 const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as { version: string; repository?: { url?: string } }
 const repoUrl = (pkg.repository?.url ?? '').replace(/^git+/, '').replace(/.git$/, '')
+
+/**
+ * Content-Security-Policy for built pages (the dev server injects inline scripts for hot
+ * reload, so it only applies to builds). The page may only run its own code and talk to the
+ * services it uses: tarkov.dev (game data, pictures, map tiles) and the EFT Wiki (guides).
+ * file: and tcres: are the desktop app's own files; blob: and wasm are the text reader (OCR).
+ */
+const CSP = [
+  "default-src 'self' file:",
+  "script-src 'self' file: tcres: blob: 'wasm-unsafe-eval'",
+  "worker-src 'self' file: tcres: blob:",
+  "style-src 'self' file: 'unsafe-inline'",
+  "img-src 'self' file: data: blob: https://assets.tarkov.dev https://static.wikia.nocookie.net",
+  "font-src 'self' file: data:",
+  "connect-src 'self' file: tcres: blob: data: https://json.tarkov.dev https://assets.tarkov.dev https://escapefromtarkov.fandom.com",
+  "media-src 'self' file: data:",
+  "object-src 'none'",
+  "frame-src 'none'",
+  "base-uri 'none'",
+  "form-action 'none'",
+].join('; ')
+
+function contentSecurityPolicy(): Plugin {
+  return {
+    name: 'tc-csp',
+    apply: 'build',
+    transformIndexHtml: () => [{ tag: 'meta', attrs: { 'http-equiv': 'Content-Security-Policy', content: CSP }, injectTo: 'head-prepend' }],
+  }
+}
 
 // `vite --mode desktop` / `vite build --mode desktop` adds the Electron main +
 // preload builds and makes asset URLs relative so dist/index.html works from
@@ -21,6 +50,7 @@ export default defineConfig(({ mode }) => {
     plugins: [
       react(),
       tailwindcss(),
+      contentSecurityPolicy(),
       ...(desktop
         ? [
             electron({

@@ -3,6 +3,7 @@ import { Eye, EyeOff, Plus, ScrollText, Trash2 } from 'lucide-react'
 import type { GameMode } from '../api/client'
 import { formatMinutes, type RaidRecord } from '../lib/logStats'
 import { RESULT_LABEL, raidKey, survivalOf, useRaidLogStore, type RaidEntry, type RaidResult, type RaidRole } from '../store/raidLog'
+import { formatDateTime } from '../lib/format'
 
 const RESULTS: RaidResult[] = ['survived', 'died', 'mia', 'runthrough']
 const RESULT_TONE: Record<RaidResult, string> = {
@@ -127,7 +128,7 @@ export function RaidLog({ raids, mode, mapName, mapNames }: { raids: RaidRecord[
             const e = entries[r.key]
             return (
               <li key={r.key} className={`flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-1.5 text-sm ${r.hidden ? 'opacity-45' : ''}`}>
-                <span className="w-28 shrink-0 text-xs tabular-nums text-ink-muted">{new Date(r.at).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+                <span className="w-28 shrink-0 text-xs tabular-nums text-ink-muted">{formatDateTime(r.at, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
                 <span className="w-32 shrink-0 truncate text-ink">{r.location}{r.manual && <span className="ml-1 text-[10px] text-ink-dim">(added)</span>}</span>
                 <span className="w-16 shrink-0 text-xs tabular-nums text-ink-dim">{r.minutes !== null ? formatMinutes(r.minutes) : '–'}</span>
                 <ResultButtons value={e?.result} onPick={(result) => setEntry(mode, r.key, { result })} />

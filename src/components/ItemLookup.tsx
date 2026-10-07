@@ -24,14 +24,13 @@ function rankMatches(items: Item[], query: string): Item[] {
   return scored.sort((a, b) => b.score - a.score).slice(0, 25).map((s) => s.item)
 }
 
+/**
+ * Ctrl+K item lookup. The dialog (and the item list it needs, a large download) only mounts
+ * while open, so the app does not load every item at start-up just for this.
+ */
 export function ItemLookup() {
   const open = useLookupStore((s) => s.open)
   const setOpen = useLookupStore((s) => s.setOpen)
-  const { needs, gameData, items, inventory } = useNeeds()
-  const [query, setQuery] = useState('')
-  const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [cursor, setCursor] = useState(0)
-  const inputRef = useRef<HTMLInputElement>(null)
 
   // Ctrl+K opens / toggles from anywhere.
   useEffect(() => {
@@ -47,26 +46,24 @@ export function ItemLookup() {
     return () => window.removeEventListener('keydown', onKey)
   }, [setOpen])
 
-  useEffect(() => {
-    if (open) setTimeout(() => inputRef.current?.focus(), 0)
-  }, [open])
+  return open ? <ItemLookupDialog /> : null
+}
 
-  // Reset the search when the dialog closes (derived-state pattern, no effect needed).
-  const [prevOpen, setPrevOpen] = useState(open)
-  if (open !== prevOpen) {
-    setPrevOpen(open)
-    if (!open) {
-      setQuery('')
-      setSelectedId(null)
-      setCursor(0)
-    }
-  }
+function ItemLookupDialog() {
+  const setOpen = useLookupStore((s) => s.setOpen)
+  const { needs, gameData, items, inventory } = useNeeds()
+  const [query, setQuery] = useState('')
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [cursor, setCursor] = useState(0)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    setTimeout(() => inputRef.current?.focus(), 0)
+  }, [])
 
   const all = useMemo(() => (items.data ? Object.values(items.data.items) : []), [items.data])
   const results = useMemo(() => rankMatches(all, query), [all, query])
   const selected = selectedId ? (items.data?.items[selectedId] ?? null) : (results[cursor] ?? null)
-
-  if (!open) return null
 
   const traderName = (id: string) => gameData.data?.traders.find((t) => t.id === id)?.name ?? 'Trader'
   const need = selected ? needs.get(selected.id) : undefined

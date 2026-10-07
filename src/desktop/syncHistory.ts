@@ -7,6 +7,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { GameMode } from '../api/client'
 import { useProgressStore } from '../store/progress'
+import { guarded } from '../store/guarded'
 
 export type SyncSource = 'live' | 'past-logs'
 
@@ -86,6 +87,7 @@ export const useSyncHistory = create<SyncHistoryState>()(
     {
       name: 'tarkov-companion-sync-history',
       version: 1,
+      ...guarded<SyncHistoryState>({ entries: 'array', undoneKeys: 'array', undoneTasks: 'array' }),
       partialize: (s) => ({ entries: s.entries, undoneKeys: s.undoneKeys, undoneTasks: s.undoneTasks }),
     },
   ),

@@ -3,7 +3,7 @@ import { Camera, Check, Crop, Palette, FolderOpen, ImageUp, Loader2, Minus, Move
 import { useNeeds } from '../hooks/useNeeds'
 import { remainingFor, type NeedSource } from '../lib/needs'
 import { sellValue } from '../lib/economy'
-import { formatRoubles } from '../lib/format'
+import { formatDateTime, formatRoubles } from '../lib/format'
 import { useGameData } from '../api/hooks'
 import { isDesktop } from '../desktop/useDesktop'
 import { useInventoryStore, useModeInventory } from '../store/inventory'
@@ -16,6 +16,7 @@ import { learnedFingerprints, recordFromCorrection, recordFromSpot, useLearnedSt
 import { LearnedPanel } from './LearnedPanel'
 import { readWords, warmUpOcr } from './ocr'
 import { imageFromClipboard, useScanStore } from './scanStore'
+import { prefs } from '../store/prefs'
 
 interface Row {
   key: string
@@ -113,7 +114,7 @@ export function ScanDialog() {
   const close = useScanStore((s) => s.close)
   const { needs, items: itemsQuery } = useNeeds()
   const gameData = useGameData()
-  const [tint, setTint] = useState(true)
+  const [tint, setTint] = useState(() => prefs().scanTint)
   const items = itemsQuery.data?.items
   const inventory = useModeInventory()
   const gameMode = useProgressStore((s) => s.gameMode)
@@ -130,7 +131,7 @@ export function ScanDialog() {
   const [result, setResult] = useState<ScanResult | null>(null)
   const [rows, setRows] = useState<Row[]>([])
   const [hover, setHover] = useState<string | null>(null)
-  const [mode, setMode] = useState<'add' | 'set'>('add')
+  const [mode, setMode] = useState<'add' | 'set'>(() => (prefs().scanApplyMode === 'replace' ? 'set' : 'add'))
   const [applied, setApplied] = useState<string | null>(null)
   // One Apply per screenshot (re-scans and selections of it included), so counts are never added twice;
   // a ref as well as state so a fast double-click cannot get through before the re-render.
@@ -220,7 +221,15 @@ export function ScanDialog() {
   // Default selection: items that count toward something you still need.
   useEffect(() => {
     // Uncertain matches stay unticked so a wrong guess cannot slip into Item Collection.
-    setRows((rs) => rs.map((r) => ({ ...r, selected: (needFor.get(r.itemId)?.remaining ?? 0) > 0 && confidence(r.error, r.margin, r.nameMatch) !== 'check' })))
+    // Settings → Scanner: tick needed items unless uncertain (default), only sure ones, or none.
+    const ticking = prefs().scanTicking
+    setRows((rs) =>
+      rs.map((r) => {
+        const conf = confidence(r.error, r.margin, r.nameMatch)
+        const needed = (needFor.get(r.itemId)?.remaining ?? 0) > 0
+        return { ...r, selected: ticking === 'none' ? false : ticking === 'sure' ? needed && conf === 'sure' : needed && conf !== 'check' }
+      }),
+    )
     // Only when a new result arrives.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [result])
@@ -603,7 +612,7 @@ export function ScanDialog() {
                       <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-ink-muted"><FolderOpen className="h-3.5 w-3.5" /> Recent game screenshots</div>
                       <ul className="space-y-0.5 text-xs">
                         {shots.slice(0, 6).map((s) => (
-                          <li key={s.name}><button type="button" onClick={() => void window.desktop?.readGameScreenshot(s.name).then((b) => loadBytes(b))} className="w-full truncate rounded px-2 py-1 text-left hover:bg-surface-3">{s.name} <span className="text-ink-dim">· {new Date(s.modified).toLocaleString()}</span></button></li>
+                          <li key={s.name}><button type="button" onClick={() => void window.desktop?.readGameScreenshot(s.name).then((b) => loadBytes(b))} className="w-full truncate rounded px-2 py-1 text-left hover:bg-surface-3">{s.name} <span className="text-ink-dim">· {formatDateTime(s.modified)}</span></button></li>
                         ))}
                       </ul>
                     </div>

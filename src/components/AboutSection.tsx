@@ -34,7 +34,7 @@ function UpdateLine() {
       case 'installing':
         return `Installing ${status.version}… the app reopens by itself in about a minute.`
       case 'available':
-        return `Version ${status.version} is available; download it from GitHub (the portable exe cannot update itself).`
+        return status.installable ? `Version ${status.version} is available.` : `Version ${status.version} is available; download it from GitHub (the portable exe cannot update itself).`
       case 'none':
         return 'You are up to date.'
       case 'error':

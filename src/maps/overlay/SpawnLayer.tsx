@@ -138,8 +138,11 @@ const BossMarkers = memo(function BossMarkers({ entry, guards }: { entry: BossEn
 /** Small dots clustered into grid cells while zoomed out (same approach as the loot layer). */
 const Dots = memo(function Dots({ points, color, label, clusterBelowZoom }: { points: Position[]; color: string; label: string; clusterBelowZoom: number }) {
   const map = useMap()
-  const [zoom, setZoom] = useState(() => map.getZoom())
-  useMapEvents({ zoomend: () => setZoom(map.getZoom()) })
+  // Whole zoom levels only (see LootLayer): no re-clustering on every quarter zoom step.
+  const [zoom, setZoom] = useState(() => Math.floor(map.getZoom()))
+  useMapEvents({ zoomend: () => setZoom(Math.floor(map.getZoom())) })
+  const clusterStyle = useMemo(() => ({ color, weight: 2, fillColor: color, fillOpacity: 0.35 }), [color])
+  const dotStyle = useMemo(() => ({ color: '#111', weight: 0.75, fillColor: color, fillOpacity: 0.95 }), [color])
   const { clusters, singles } = useMemo(() => {
     if (zoom >= clusterBelowZoom) return { clusters: [] as { lat: number; lng: number; n: number; key: string }[], singles: points }
     const cells = new Map<string, { sx: number; sz: number; n: number }>()
@@ -163,12 +166,12 @@ const Dots = memo(function Dots({ points, color, label, clusterBelowZoom }: { po
   return (
     <>
       {clusters.map((c) => (
-        <CircleMarker key={c.key} center={[c.lat, c.lng]} radius={9} pathOptions={{ color, weight: 2, fillColor: color, fillOpacity: 0.35 }} eventHandlers={{ click: () => map.setView([c.lat, c.lng], Math.min(map.getMaxZoom(), map.getZoom() + 2)) }}>
+        <CircleMarker key={c.key} center={[c.lat, c.lng]} radius={9} pathOptions={clusterStyle} eventHandlers={{ click: () => map.setView([c.lat, c.lng], Math.min(map.getMaxZoom(), map.getZoom() + 2)) }}>
           <Tooltip direction="top" offset={[0, -8]}>{`${c.n} ${label} spawns`}</Tooltip>
         </CircleMarker>
       ))}
       {singles.map((p, i) => (
-        <CircleMarker key={i} center={ll(p)} radius={3.5} pathOptions={{ color: '#111', weight: 0.75, fillColor: color, fillOpacity: 0.95 }}>
+        <CircleMarker key={`${p.x}:${p.z}:${i}`} center={ll(p)} radius={3.5} pathOptions={dotStyle}>
           <Tooltip direction="top" offset={[0, -4]}>{`${label} spawn`}</Tooltip>
         </CircleMarker>
       ))}

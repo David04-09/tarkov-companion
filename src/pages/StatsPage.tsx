@@ -4,7 +4,7 @@ import { BarChart3, ExternalLink, Info, RefreshCw } from 'lucide-react'
 import { useGameData, useItems } from '../api/hooks'
 import { SegmentButton } from '../components/SegmentButton'
 import { isDesktop } from '../desktop/useDesktop'
-import { formatNumber, formatRoubles } from '../lib/format'
+import { formatDateTime, formatNumber, formatRoubles } from '../lib/format'
 import { computeLogStats, formatMinutes, type LogStats } from '../lib/logStats'
 import { useProgressStore } from '../store/progress'
 import { RaidLog } from '../stats/RaidLog'
@@ -88,7 +88,7 @@ function RatingChart({ points }: { points: LogStats['rating'] }) {
       <polyline points={points.map((p) => `${x(p.at)},${y(p.rating)}`).join(' ')} fill="none" stroke="var(--color-accent)" strokeWidth={2} strokeLinejoin="round" />
       {points.map((p, i) => (
         <circle key={i} cx={x(p.at)} cy={y(p.rating)} r={6} fill="transparent">
-          <title>{`${new Date(p.at).toLocaleString()}: ${p.rating.toFixed(2)}`}</title>
+          <title>{`${formatDateTime(p.at)}: ${p.rating.toFixed(2)}`}</title>
         </circle>
       ))}
       <text x={pad.l} y={H - 4} fontSize={10} fill="var(--color-ink-dim)">{new Date(t0).toLocaleDateString()}</text>
@@ -107,7 +107,9 @@ export function StatsPage() {
     queryKey: ['logStats'],
     queryFn: () => window.desktop!.readLogStats(),
     enabled: desktop,
-    staleTime: 60_000,
+    // Logs only grow while you play; reading them on every return to the window was wasted work.
+    staleTime: 5 * 60_000,
+    refetchOnWindowFocus: false,
   })
 
   // "since" is fixed per range choice; the clock only matters when the choice changes.

@@ -1,11 +1,10 @@
-import { useState } from 'react'
-import { NavLink } from 'react-router-dom'
+import { NavLink, useNavigate } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, Search, Settings, Shield } from 'lucide-react'
 import { useLookupStore } from '../store/lookup'
-import { NAV_ITEMS } from '../config/nav'
+import { visibleNav } from '../config/nav'
+import { usePrefs } from '../store/prefs'
 import { GAME_MODES } from '../api/client'
 import { useProgressStore } from '../store/progress'
-import { SettingsDialog } from './SettingsDialog'
 import { WatcherStatus } from '../desktop/WatcherStatus'
 
 function GameModeToggle({ compact }: { compact: boolean }) {
@@ -51,8 +50,12 @@ function GameModeToggle({ compact }: { compact: boolean }) {
 }
 
 export function Sidebar() {
-  const [collapsed, setCollapsed] = useState(false)
-  const [settingsOpen, setSettingsOpen] = useState(false)
+  const collapsed = usePrefs((s) => s.sidebarCollapsed)
+  const setPref = usePrefs((s) => s.set)
+  const setCollapsed = (fn: (c: boolean) => boolean) => setPref('sidebarCollapsed', fn(collapsed))
+  const hiddenTabs = usePrefs((s) => s.hiddenTabs)
+  const navigate = useNavigate()
+  const openSettings = (section?: string) => navigate(section ? `/settings#${section}` : '/settings')
 
   // Below the md breakpoint the sidebar always shows icons only.
   const widthClass = collapsed ? 'w-16' : 'w-16 md:w-60'
@@ -92,7 +95,7 @@ export function Sidebar() {
       </div>
       <nav className="flex-1 overflow-y-auto py-2" aria-label="Main">
         <ul className="space-y-0.5 px-2">
-          {NAV_ITEMS.map((item) => (
+          {visibleNav(hiddenTabs).map((item) => (
             <li key={item.path}>
               <NavLink
                 to={item.path}
@@ -122,23 +125,22 @@ export function Sidebar() {
           <GameModeToggle compact />
         </div>
         <div className={collapsed ? 'block' : 'hidden md:block'}>
-          <WatcherStatus compact={collapsed} onClick={() => setSettingsOpen(true)} />
+          <WatcherStatus compact={collapsed} onClick={() => openSettings('desktop')} />
         </div>
         <div className={collapsed ? 'hidden' : 'block md:hidden'}>
-          <WatcherStatus compact onClick={() => setSettingsOpen(true)} />
+          <WatcherStatus compact onClick={() => openSettings('desktop')} />
         </div>
-        <button
-          type="button"
-          onClick={() => setSettingsOpen(true)}
+        <NavLink
+          to="/settings"
           title="Settings"
-          className="flex w-full items-center gap-3 rounded px-2.5 py-2 text-sm text-ink-muted hover:bg-surface-3 hover:text-ink"
+          className={({ isActive }) =>
+            `flex w-full items-center gap-3 rounded px-2.5 py-2 text-sm transition-colors ${isActive ? 'bg-accent/15 text-accent' : 'text-ink-muted hover:bg-surface-3 hover:text-ink'}`
+          }
         >
           <Settings className="h-5 w-5 shrink-0" aria-hidden />
           <span className={labelClass}>Settings</span>
-        </button>
+        </NavLink>
       </div>
-
-      {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
     </aside>
   )
 }

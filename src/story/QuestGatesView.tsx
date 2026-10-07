@@ -9,8 +9,9 @@ import { formatCountdown, formatWait } from '../lib/storyTime'
 import { computeTaskStatuses, isFactionEligible } from '../lib/taskStatus'
 import { useProfile, useProgressStore } from '../store/progress'
 import { useNow } from './storyUtils'
+import { formatDateTime } from '../lib/format'
 
-const clock = (ms: number) => new Date(ms).toLocaleString(undefined, { weekday: 'short', hour: '2-digit', minute: '2-digit' })
+const clock = (ms: number) => formatDateTime(ms, { weekday: 'short', hour: '2-digit', minute: '2-digit' })
 
 /**
  * Quest-side gates from tarkov.dev: waiting times after prerequisites, hidden progress

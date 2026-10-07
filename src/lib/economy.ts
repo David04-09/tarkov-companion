@@ -1,8 +1,24 @@
 import type { Craft, HideoutStation, Item, ItemsById } from '../api/types'
+import { prefs } from '../store/prefs'
+import { useInventoryStore } from '../store/inventory'
+import { useProgressStore } from '../store/progress'
+
+const INTELLIGENCE_CENTER = '5d484fdf654e7600691aadf8'
+
+/**
+ * Intelligence Center level 3 lowers flea fees (5% → 3%). Settings → Prices: "auto" uses the
+ * level from the Hideout tab, "on"/"off" force it.
+ */
+export function hasFleaDiscount(): boolean {
+  const mode = prefs().fleaFeeDiscount
+  if (mode !== 'auto') return mode === 'on'
+  const gameMode = useProgressStore.getState().gameMode
+  return (useInventoryStore.getState().byMode?.[gameMode]?.stationLevels?.[INTELLIGENCE_CENTER] ?? 0) >= 3
+}
 
 /** Shown wherever a flea fee is used. */
 export const FEE_NOTE =
-  'Flea fees are an estimate from the community formula (5% base, no Intelligence Center discount, one offer per stack); the game may charge slightly differently.'
+  'Flea fees are an estimate from the community formula (5% base, 3% with Intelligence Center level 3 — see Settings → Prices; one offer per stack); the game may charge slightly differently.'
 
 /**
  * Flea market listing fee, as the game computes it (community-documented formula):
@@ -10,7 +26,7 @@ export const FEE_NOTE =
  * VO = total base value, VR = asking price, Ti = Tr = 5 % (3 % with Intelligence Center 3),
  * PO = log10(VO/VR) (raised to 1.08 when VR < VO), PR = log10(VR/VO) (raised to 1.08 when VR >= VO).
  */
-export function fleaFee(basePrice: number, askingPrice: number, count = 1, intelCenter3 = false): number {
+export function fleaFee(basePrice: number, askingPrice: number, count = 1, intelCenter3 = hasFleaDiscount()): number {
   const vo = Math.max(1, basePrice * count)
   const vr = Math.max(1, askingPrice)
   const t = intelCenter3 ? 0.03 : 0.05
@@ -22,7 +38,10 @@ export function fleaFee(basePrice: number, askingPrice: number, count = 1, intel
   return Math.round(vo * t * Math.pow(4, po) * q + vr * t * Math.pow(4, pr) * q)
 }
 
-/** Cheapest way to obtain one unit: flea average or trader price (whichever is known and lower). */
+/**
+ * Cost of one unit: flea average or trader price. Settings → Prices decides which counts:
+ * best = the cheaper known one, trader / flea = that one first (the other only when it is unknown).
+ */
 export function acquireCost(item: Item | undefined): number | null {
   if (!item) return null
   const flea = item.types.includes('noFlea') ? null : item.avg24hPrice
@@ -30,7 +49,8 @@ export function acquireCost(item: Item | undefined): number | null {
   if (flea == null && trader == null) return null
   if (flea == null) return trader
   if (trader == null) return flea
-  return Math.min(flea, trader)
+  const source = prefs().priceSource
+  return source === 'trader' ? trader : source === 'flea' ? flea : Math.min(flea, trader)
 }
 
 /** Best price you can get for one unit: flea (minus fee) or trader buy-back. */
@@ -40,8 +60,11 @@ export function sellValue(item: Item | undefined, count = 1): { total: number; v
   const fleaUnit = item.types.includes('noFlea') ? null : item.avg24hPrice
   if (fleaUnit == null) return { total: trader, via: trader > 0 ? 'trader' : null }
   const gross = fleaUnit * count
-  const net = gross - fleaFee(item.basePrice, gross, count)
-  return net >= trader ? { total: Math.round(net), via: 'flea' } : { total: trader, via: 'trader' }
+  const net = Math.round(gross - fleaFee(item.basePrice, gross, count))
+  const source = prefs().priceSource
+  if (source === 'trader' && trader > 0) return { total: trader, via: 'trader' }
+  if (source === 'flea') return { total: net, via: 'flea' }
+  return net >= trader ? { total: net, via: 'flea' } : { total: trader, via: 'trader' }
 }
 
 export interface CraftEconomics {

@@ -6,8 +6,8 @@ import { formatClock } from '../desktop/timers'
 import { useFleaStore } from '../store/flea'
 import { useInventoryStore, useModeInventory } from '../store/inventory'
 import { useProgressStore } from '../store/progress'
-
-const NOTIFY_BEFORE_MS = 2 * 60 * 1000
+import { usePrefs } from '../store/prefs'
+import { askNotificationPermission, notify } from '../lib/notify'
 
 function countdown(ms: number): string {
   if (ms <= 0) return 'due now'
@@ -38,8 +38,11 @@ export function TradersPanel() {
     return () => clearInterval(id)
   }, [])
 
-  // Notifications 2 minutes before a chosen trader restocks; refetch traders once a reset passes.
+  // Notifications shortly before a chosen trader restocks (Settings → Notifications sets how
+  // long before); refetch traders once a reset passes.
+  const leadMinutes = usePrefs((s) => s.traderRestockLeadMinutes)
   useEffect(() => {
+    const NOTIFY_BEFORE_MS = Math.max(0.25, leadMinutes) * 60 * 1000
     const traders = gameData.data?.traders ?? []
     for (const t of traders) {
       if (t.resetTime == null) continue
@@ -47,26 +50,21 @@ export function TradersPanel() {
       const key = `${t.id}:${t.resetTime}`
       if (notifyIds.includes(t.id) && left <= NOTIFY_BEFORE_MS && left > 0 && !notified.current.has(key)) {
         notified.current.add(key)
-        if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-          new Notification(`${t.name} restocks in 2 minutes`, { body: 'Tarkov Companion', silent: false })
-        }
+        notify('trader', leadMinutes >= 1 ? `${t.name} restocks in ${leadMinutes} minute${leadMinutes === 1 ? '' : 's'}` : `${t.name} restocks now`, { body: 'Tarkov Companion', silent: false })
       }
       if (left <= -30_000 && !refreshedFor.current.has(key)) {
         refreshedFor.current.add(key)
         void queryClient.invalidateQueries({ queryKey: gameDataKeys.mode(gameMode) })
       }
     }
-  }, [now, gameData.data, notifyIds, queryClient, gameMode])
+  }, [now, gameData.data, notifyIds, queryClient, gameMode, leadMinutes])
 
   const traders = (gameData.data?.traders ?? []).filter((t) => t.maxLevel > 1 || t.resetTime != null)
   if (traders.length === 0) return null
   const anyReset = traders.some((t) => t.resetTime != null)
 
   const toggleNotify = async (traderId: string, on: boolean) => {
-    if (on && typeof Notification !== 'undefined' && Notification.permission === 'default') {
-      const res = await Notification.requestPermission()
-      if (res !== 'granted') return
-    }
+    if (on && (await askNotificationPermission()) !== 'granted') return
     setNotify(traderId, on)
   }
 
@@ -100,7 +98,7 @@ export function TradersPanel() {
                     ) : (
                       <span className="text-ink-dim">—</span>
                     )}
-                    {left != null && <span className={`tabular-nums ${left <= NOTIFY_BEFORE_MS ? 'text-accent' : ''}`}>{countdown(left)}</span>}
+                    {left != null && <span className={`tabular-nums ${left <= Math.max(0.25, leadMinutes) * 60_000 ? 'text-accent' : ''}`}>{countdown(left)}</span>}
                   </div>
                 </div>
                 {left != null && (

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Brain, Download, RefreshCw, Trash2, Upload } from 'lucide-react'
 import type { ItemsById } from '../api/types'
 import { exportCorrections, useLearnedStore } from './learned'
+import { parseImportJson } from '../lib/progressFile'
 
 function download(filename: string, data: unknown) {
   const url = URL.createObjectURL(new Blob([JSON.stringify(data)], { type: 'application/json' }))
@@ -80,7 +81,7 @@ export function LearnedPanel({ items, onRescan, canRescan }: { items: ItemsById 
                 e.target.value = ''
                 if (!f) return
                 try {
-                  const n = await importFile(JSON.parse(await f.text()))
+                  const n = await importFile(parseImportJson(await f.text()))
                   setNote(`Imported ${n} correction${n === 1 ? '' : 's'}.`)
                 } catch (err) {
                   setNote(err instanceof Error ? err.message : 'Import failed')

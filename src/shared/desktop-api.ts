@@ -95,7 +95,15 @@ export interface DesktopSettings {
   knownGameVersion: string | null
   /** First-run setup screen completed (logs folder, mode, faction). */
   setupDone: boolean
+  /** auto = download updates in the background; notify = only show that one exists; off = no automatic checks. */
+  updateMode: UpdateMode
+  /** "Where am I": read positions from the names of new in-game screenshots. */
+  trackPosition: boolean
+  /** Daily progress backups kept in userDataackups. */
+  backupKeep: number
 }
+
+export type UpdateMode = 'auto' | 'notify' | 'off'
 
 export type UpdateStatus =
   | { state: 'idle' | 'checking' }
@@ -105,8 +113,8 @@ export type UpdateStatus =
   | { state: 'ready'; version: string }
   /** "Restart to update" clicked: the app is about to close and the installer to run. */
   | { state: 'installing'; version: string }
-  /** Portable exe: a newer release exists but must be downloaded by hand. */
-  | { state: 'available'; version: string; url: string }
+  /** A newer release exists and was not downloaded: portable exe (download by hand) or Settings → Updates "Only tell me" (installable: true). */
+  | { state: 'available'; version: string; url: string; installable?: boolean }
   | { state: 'error'; message: string }
 
 /** What became of the last "Restart to update" (checked once at the next launch). */

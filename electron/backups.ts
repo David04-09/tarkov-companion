@@ -30,7 +30,7 @@ export function listBackups(userData: string): BackupInfo[] {
 }
 
 /** Writes today's backup (replacing an earlier one from today) and removes the oldest beyond KEEP. */
-export function writeBackup(userData: string, json: string, now = new Date()): BackupInfo {
+export function writeBackup(userData: string, json: string, now = new Date(), keep = KEEP): BackupInfo {
   if (json.length > 50_000_000) throw new Error('Backup too large')
   JSON.parse(json) // only valid JSON is stored
   const dir = backupDir(userData)
@@ -38,7 +38,7 @@ export function writeBackup(userData: string, json: string, now = new Date()): B
   const day = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
   const name = `progress-${day}.json`
   fs.writeFileSync(path.join(dir, name), json)
-  for (const old of listBackups(userData).slice(KEEP)) fs.rmSync(path.join(dir, old.name), { force: true })
+  for (const old of listBackups(userData).slice(Math.max(1, keep))) fs.rmSync(path.join(dir, old.name), { force: true })
   const st = fs.statSync(path.join(dir, name))
   return { name, at: st.mtimeMs, size: st.size }
 }

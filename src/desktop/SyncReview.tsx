@@ -5,12 +5,12 @@ import type { GameData } from '../api/types'
 import { History, Undo2, X } from 'lucide-react'
 import { useGameData } from '../api/hooks'
 import type { GameMode } from '../api/client'
-import { formatTimeAgo } from '../lib/format'
+import { formatDateTime, formatTimeAgo } from '../lib/format'
 import { autoTickFor, useSyncHistory } from './syncHistory'
 import { applyReview, dismissReview, useDesktopStore } from './useDesktop'
 
 const MODE_LABEL: Record<GameMode, string> = { pve: 'PvE', regular: 'PvP' }
-const dateText = (at: number) => (at ? new Date(at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : 'unknown time')
+const dateText = (at: number) => (at ? formatDateTime(at) : 'unknown time')
 
 /**
  * "Read past logs" result: every quest the logs show as handed in on your

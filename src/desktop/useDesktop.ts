@@ -2,7 +2,7 @@
  * Renderer side of the desktop bridge. Everything here is a no-op in the web
  * build (window.desktop is undefined), so desktop-only UI simply hides.
  */
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { create } from 'zustand'
 import type { GameMode } from '../api/client'
@@ -17,6 +17,7 @@ import { useLocalFlags } from './localFlags'
 import { lineKey, useSyncHistory } from './syncHistory'
 import { beep, useTimersStore } from './timers'
 import { useWipeBannerStore } from './wipe'
+import { prefs } from '../store/prefs'
 
 export const isDesktop = (): boolean => typeof window !== 'undefined' && Boolean(window.desktop)
 
@@ -87,6 +88,8 @@ export function applyGameEvent(e: GameEvent): void {
   switch (e.kind) {
     case 'taskFinished': {
       if (!isKnownTask(mode, e.taskId)) return
+      // Settings → Desktop: live auto-ticking can be switched off (Read past logs still offers them).
+      if (!e.historical && !prefs().autoTickFromLogs) return
       const history = useSyncHistory.getState()
       // The user undid this exact hand-in before: re-reading the log must not re-tick it.
       if (history.undoneKeys.includes(lineKey(mode, e.taskId, e.source.file, e.source.line))) return
@@ -258,6 +261,14 @@ export async function runBackfill(): Promise<BackfillReview | null> {
 export function DesktopBridge() {
   const navigate = useNavigate()
   const gameData = useGameData()
+  // The IPC listeners are set up once; they read the latest maps and navigate through refs
+  // (reading gameData from the first render left maps empty on a fresh install).
+  const mapsRef = useRef(gameData.data?.maps ?? [])
+  const navigateRef = useRef(navigate)
+  useEffect(() => {
+    mapsRef.current = gameData.data?.maps ?? []
+    navigateRef.current = navigate
+  })
 
   useEffect(() => {
     const api = window.desktop
@@ -274,12 +285,12 @@ export function DesktopBridge() {
     const offWipe = api.onWipeDetected((e) => useWipeBannerStore.getState().show(e))
     const offEvent = api.onEvent((e) => {
       applyGameEvent(e)
-      if (e.kind === 'sessionMode' && (e.mode === 'pve' || e.mode === 'regular' || e.mode === 'seasonal')) {
+      if (e.kind === 'sessionMode' && prefs().autoSwitchGameMode && (e.mode === 'pve' || e.mode === 'regular' || e.mode === 'seasonal')) {
         const gm = modeToGameMode(e.mode, 'regular')
         if (useProgressStore.getState().gameMode !== gm) useProgressStore.getState().setGameMode(gm)
       }
       if (e.historical) return
-      const maps = gameData.data?.maps ?? []
+      const maps = mapsRef.current
       if (e.kind === 'raidMatched') useDesktopStore.getState().setLastRaidLocation(e.location)
       if (e.kind === 'raidStarted') {
         const loc = useDesktopStore.getState().lastRaidLocation
@@ -296,7 +307,7 @@ export function DesktopBridge() {
         if (!map) return
         if (useDesktopStore.getState().settings?.openMapOnRaid) {
           useUiStore.getState().setLastMapKey(map.normalizedName)
-          navigate('/maps')
+          navigateRef.current('/maps')
         }
       }
     })
@@ -308,9 +319,7 @@ export function DesktopBridge() {
       offEvent()
       offUpdate()
     }
-    // gameData.data is read lazily inside the handler.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [navigate])
+  }, [])
 
   // First connection to a logs folder: read past logs once, automatically (main window only,
   // and only after the first-run screen, which offers the same thing explicitly).

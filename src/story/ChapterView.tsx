@@ -7,8 +7,10 @@ import { formatCountdown, formatWait, timerPhase } from '../lib/storyTime'
 import { useStoryStore, type ChapterProgress } from '../store/story'
 import { RichHtml } from './RichHtml'
 import { chapterCounts, openLink, shortTitle, useNow, visibleObjectives } from './storyUtils'
+import { formatDateTime } from '../lib/format'
+import { askNotificationPermission } from '../lib/notify'
 
-const clock = (ms: number) => new Date(ms).toLocaleString(undefined, { weekday: 'short', hour: '2-digit', minute: '2-digit' })
+const clock = (ms: number) => formatDateTime(ms, { weekday: 'short', hour: '2-digit', minute: '2-digit' })
 
 function EndingBadges({ endings, icons }: { endings: string[]; icons: Record<string, string | null> }) {
   if (!endings.length) return null
@@ -90,7 +92,7 @@ export function ChapterView({
   const startTimer = (o: StoryObjective) => {
     if (!o.wait) return
     store.startTimer(mode, chapter.slug, o.key, { minH: o.wait.minH, maxH: o.wait.maxH, label: `${chapter.title.replace(/\s*\(story chapter\)/i, '')}: ${o.text}` })
-    if (typeof Notification !== 'undefined' && Notification.permission === 'default') void Notification.requestPermission()
+    void askNotificationPermission()
   }
 
   const toggle = (o: StoryObjective, value: boolean) => {

@@ -1,7 +1,7 @@
 {
   "name": "tarkov-companion",
   "private": true,
-  "version": "1.11.1",
+  "version": "1.12.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -18,7 +18,8 @@
     "scan:fingerprints": "tsx scripts/build-scan-fingerprints.ts",
     "scan:check": "tsx scripts/scan-check-corrections.ts",
     "scan:test": "tsx scripts/scan-test.ts",
-    "ocr:assets": "node scripts/fetch-ocr-assets.mjs"
+    "ocr:assets": "node scripts/fetch-ocr-assets.mjs",
+    "notices": "node scripts/build-notices.mjs"
   },
   "dependencies": {
     "electron-updater": "^6.8.9"
@@ -26,7 +27,6 @@
   "devDependencies": {
     "@geoman-io/leaflet-geoman-free": "^2.20.2",
     "@tailwindcss/vite": "^4.3.3",
-    "@tanstack/query-async-storage-persister": "^5.104.1",
     "@tanstack/react-query": "^5.104.1",
     "@tanstack/react-query-persist-client": "^5.104.1",
     "@tanstack/react-virtual": "^3.14.13",
@@ -111,7 +111,21 @@
     },
     "portable": {
       "artifactName": "TarkovCompanion-${version}-portable.exe"
-    }
+    },
+    "electronFuses": {
+      "runAsNode": false,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false,
+      "enableCookieEncryption": true,
+      "enableEmbeddedAsarIntegrityValidation": true,
+      "onlyLoadAppFromAsar": true
+    },
+    "extraResources": [
+      {
+        "from": "THIRD_PARTY_NOTICES.txt",
+        "to": "THIRD_PARTY_NOTICES.txt"
+      }
+    ]
   },
   "homepage": "https://github.com/David04-09/tarkov-companion",
   "repository": {

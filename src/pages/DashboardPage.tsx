@@ -164,27 +164,38 @@ export function DashboardPage() {
       .slice(0, 5)
   }, [crafts.data, itemsQuery.data, hideout.data, inventory.stationLevels])
 
-  const tonight = useMemo(() => {
-    if (!query.data || !derived) return []
-    const checked = new Set(checkedTaskIds)
-    const rows: { key: string; name: string; tasks: number; ticked: number; spots: number; taskIds: string[]; bosses: string[]; bringFrom: MapTask[] }[] = []
+  // Every map's quest spots and bosses depend only on the game data: built once per data load,
+  // not again on every quest tick (that rebuilt all ~515 quests for a dozen maps each time).
+  const perMap = useMemo(() => {
+    if (!query.data) return []
+    const out: { map: (typeof query.data.maps)[number]; mapTasks: MapTask[]; bosses: string[] }[] = []
     for (const m of query.data.maps) {
       const cfg = findMapConfig(m.normalizedName)
       if (!cfg) continue
       const layer = resolveBaseLayer(cfg, undefined)
-      const mapTasks = buildMapTasks(query.data, m.id, layer).filter((mt) => derived.statuses[mt.task.id] === 'available')
-      if (mapTasks.length === 0) continue
       const spawnModel = buildSpawnModel(query.data, m.id)
       const bosses = spawnModel.bosses
         .filter((e) => e.spawnChance > 0 && (e.group !== 'goons' || spawnModel.goonsHere))
         .slice(0, 3)
         .map((e) => `${e.group === 'goons' ? 'Goons' : e.name} ${Math.round(e.spawnChance * 100)}%`)
+      out.push({ map: m, mapTasks: buildMapTasks(query.data, m.id, layer), bosses })
+    }
+    return out
+  }, [query.data])
+
+  const tonight = useMemo(() => {
+    if (!derived) return []
+    const checked = new Set(checkedTaskIds)
+    const rows: { key: string; name: string; tasks: number; ticked: number; spots: number; taskIds: string[]; bosses: string[]; bringFrom: MapTask[] }[] = []
+    for (const { map: m, mapTasks: all, bosses } of perMap) {
+      const mapTasks = all.filter((mt) => derived.statuses[mt.task.id] === 'available')
+      if (mapTasks.length === 0) continue
       const tickedHere = mapTasks.filter((mt) => checked.has(mt.task.id))
       rows.push({ key: m.normalizedName, name: m.name, tasks: mapTasks.length, ticked: tickedHere.length, spots: mapTasks.reduce((n, mt) => n + mt.placements.length, 0), taskIds: mapTasks.map((mt) => mt.task.id), bosses: [...new Set(bosses)], bringFrom: tickedHere.length ? tickedHere : mapTasks })
     }
     // Maps with quests you ticked on the Maps tab come first, then the most available quests.
     return rows.sort((a, b) => b.ticked - a.ticked || b.tasks - a.tasks || b.spots - a.spots).slice(0, 3)
-  }, [query.data, derived, checkedTaskIds])
+  }, [perMap, derived, checkedTaskIds])
   const tonightBring = useMemo(() => (tonight[0] ? buildBringList(tonight[0].bringFrom) : []), [tonight])
 
   const itemName = (id: string) => itemsQuery.data?.items[id]?.name ?? '…'

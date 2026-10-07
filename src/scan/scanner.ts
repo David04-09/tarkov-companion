@@ -48,7 +48,23 @@ function ensureWorker(): Promise<number> {
         identifying.delete(m.id)
       }
     }
-    w.onerror = (e) => reject(new Error(e.message || 'Scanner worker failed'))
+    // A crash (e.g. out of memory on a huge screenshot) fails everything waiting and starts a
+    // fresh worker next time, instead of leaving the dialog on "scanning" forever.
+    const fail = (message: string) => {
+      const err = new Error(message)
+      reject(err)
+      for (const p of pending.values()) p.reject(err)
+      for (const p of identifying.values()) p.reject(err)
+      pending.clear()
+      identifying.clear()
+      w.terminate()
+      if (worker === w) {
+        worker = null
+        ready = null
+      }
+    }
+    w.onerror = (e) => fail(e.message || 'The scanner stopped unexpectedly. Try again, or scan a smaller part of the screenshot.')
+    w.onmessageerror = () => fail('The scanner could not read its data. Try again.')
     Promise.all([loadFile('fingerprints.json'), loadFile('fingerprints.bin')])
       .then(([headerBuf, pixels]) => {
         const header = JSON.parse(new TextDecoder().decode(headerBuf)) as FingerprintHeader

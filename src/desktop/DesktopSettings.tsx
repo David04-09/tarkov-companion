@@ -1,31 +1,15 @@
 import { useEffect, useState } from 'react'
-import { HealthAndBackups } from './HealthAndBackups'
 import { FolderOpen, FolderSearch, History, Loader2, Pause, Play, RotateCcw } from 'lucide-react'
 import { useGameData } from '../api/hooks'
-import { formatTimeAgo } from '../lib/format'
+import { formatDateTime, formatTimeAgo } from '../lib/format'
 import type { DesktopSettings, GameEvent } from '../shared/desktop-api'
 import { useArchivesStore } from '../store/archives'
 import { useProgressStore } from '../store/progress'
-import { useTimersStore } from './timers'
 import { isDesktop, runBackfill, updateDesktopSettings, useDesktopStore } from './useDesktop'
-import { SyncHistorySection } from './SyncReview'
 import { archiveAndReset } from './wipe'
 
-function TimersSettings() {
-  const sounds = useTimersStore((s) => s.soundsEnabled)
-  const setSounds = useTimersStore((s) => s.setSoundsEnabled)
-  const minutes = useTimersStore((s) => s.scavCooldownMinutes)
-  const setMinutes = useTimersStore((s) => s.setScavCooldownMinutes)
-  return (
-    <section className="space-y-1.5">
-      <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Timers</h3>
-      <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={sounds} onChange={(e) => setSounds(e.target.checked)} className="h-4 w-4" /> Play a short sound at raid start, when the run-through window passes and when the scav cooldown ends</label>
-      <label className="flex items-center gap-2 text-sm">Scav cooldown length <input type="number" min={1} max={90} value={minutes} onChange={(e) => setMinutes(e.target.valueAsNumber)} className="w-16 rounded border border-line bg-surface px-1.5 py-0.5 text-sm" /> minutes</label>
-    </section>
-  )
-}
 
-function ArchivesSettings() {
+export function ArchivesSettings() {
   const archives = useArchivesStore((s) => s.archives)
   const remove = useArchivesStore((s) => s.remove)
   const importProgress = useProgressStore((s) => s.importProgress)
@@ -100,29 +84,8 @@ function describeEvent(e: GameEvent, taskName: (id: string) => string): string {
   }
 }
 
-function Toggle({
-  label,
-  hint,
-  value,
-  onChange,
-}: {
-  label: string
-  hint?: string
-  value: boolean
-  onChange: (v: boolean) => void
-}) {
-  return (
-    <label className="flex items-start gap-2 text-sm">
-      <input type="checkbox" checked={value} onChange={(e) => onChange(e.target.checked)} className="mt-0.5 h-4 w-4" />
-      <span>
-        <span className="block">{label}</span>
-        {hint && <span className="block text-xs text-ink-muted">{hint}</span>}
-      </span>
-    </label>
-  )
-}
 
-/** Desktop-only part of the Settings dialog (hidden in the web build). */
+/** Game log watching: status, logs folder, Read past logs, recent events (desktop only). */
 export function DesktopSettingsSection() {
   const state = useDesktopStore((s) => s.state)
   const settings = useDesktopStore((s) => s.settings)
@@ -255,13 +218,6 @@ export function DesktopSettingsSection() {
           )}
         </div>
 
-        <div className="space-y-1.5">
-          <Toggle label="Open the map when a raid starts" value={settings?.openMapOnRaid ?? true} onChange={(v) => set({ openMapOnRaid: v })} />
-          <Toggle label="Close to tray" hint="The X button hides the window and keeps quest tracking running; use the tray icon to reopen or quit. Minimizing works as normal." value={settings?.minimizeToTray ?? true} onChange={(v) => set({ minimizeToTray: v })} />
-          <Toggle label="Start with Windows" value={settings?.startWithWindows ?? false} onChange={(v) => set({ startWithWindows: v })} />
-          <Toggle label="Start minimized to tray" value={settings?.startMinimized ?? false} onChange={(v) => set({ startMinimized: v })} />
-        </div>
-
         <div>
           <button type="button" onClick={() => setShowEvents((v) => !v)} className="text-xs text-accent underline">
             {showEvents ? 'Hide recent events' : 'Show recent events (troubleshooting)'}
@@ -271,7 +227,7 @@ export function DesktopSettingsSection() {
               {events.length === 0 && <li className="text-ink-dim">No events parsed yet.</li>}
               {events.map((e) => (
                 <li key={e.id} className="flex gap-2">
-                  <span className="shrink-0 text-ink-dim">{new Date(e.at).toLocaleTimeString()}</span>
+                  <span className="shrink-0 text-ink-dim">{formatDateTime(e.at, { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
                   <span className="shrink-0 text-ink-dim">[{e.mode === 'pve' ? 'PvE' : e.mode === 'regular' ? 'PvP' : e.mode}]</span>
                   <span className="min-w-0 truncate" title={`${e.source.file}:${e.source.line}`}>
                     {describeEvent(e, taskName)}
@@ -282,26 +238,6 @@ export function DesktopSettingsSection() {
           )}
         </div>
       </section>
-
-      <section className="space-y-2">
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Hotkey</h3>
-        <label className="flex flex-wrap items-center gap-1.5 text-xs">
-          Stash scanner hotkey
-          <input
-            type="text"
-            defaultValue={settings?.scanHotkey ?? 'Alt+Shift+S'}
-            onBlur={(e) => e.target.value.trim() && set({ scanHotkey: e.target.value.trim() })}
-            aria-label="Stash scanner hotkey"
-            className="w-40 rounded border border-line bg-surface px-2 py-1 font-mono text-xs"
-          />
-          <span className="text-ink-dim">Captures the screen the game is on and opens the scanner with it.</span>
-        </label>
-      </section>
-
-      <HealthAndBackups />
-      <SyncHistorySection />
-      <TimersSettings />
-      <ArchivesSettings />
 
     </>
   )

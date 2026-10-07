@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react'
-import { Outlet, useLocation } from 'react-router-dom'
+import { Suspense, lazy, useEffect, useState } from 'react'
+import { Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { Loader2 } from 'lucide-react'
+import { ErrorBoundary } from './ErrorBoundary'
+import { usePrefs } from '../store/prefs'
 import { NAV_ITEMS } from '../config/nav'
 import { FirstRunSetup } from '../desktop/FirstRunSetup'
 import { SyncReviewDialog, SyncToast } from '../desktop/SyncReview'
-import { ScanDialog } from '../scan/ScanDialog'
 import { useScanStore } from '../scan/scanStore'
 import { UpdateBanner } from '../desktop/UpdateBanner'
 import { hasAnyProgress, useLocalFlags } from '../desktop/localFlags'
@@ -18,8 +20,33 @@ import { PositionListener } from '../maps/position'
 import { AutoBackup } from '../desktop/HealthAndBackups'
 import { Sidebar } from './Sidebar'
 
+/** The start page from Settings is applied once per app start (later visits to / stay on the Dashboard). */
+let landingApplied = false
+
+function PageLoading() {
+  return (
+    <div className="flex items-center gap-2 p-8 text-sm text-ink-muted">
+      <Loader2 className="h-4 w-4 animate-spin" /> Loading…
+    </div>
+  )
+}
+
 export function Layout() {
   const { pathname } = useLocation()
+  const navigate = useNavigate()
+  const landingPage = usePrefs((s) => s.landingPage)
+  const hiddenTabs = usePrefs((s) => s.hiddenTabs)
+  const raidResultPrompt = usePrefs((s) => s.raidResultPrompt)
+  const liveTickToast = usePrefs((s) => s.liveTickToast)
+  const autoBackup = usePrefs((s) => s.autoBackup)
+  // Number and time formats are read while drawing: re-draw the page when they change.
+  const formatKey = usePrefs((s) => `${s.numberStyle}|${s.timeFormat}|${s.compactPrices}|${s.priceSource}|${s.fleaFeeDiscount}`)
+  useEffect(() => {
+    if (landingApplied) return
+    landingApplied = true
+    const valid = NAV_ITEMS.some((i) => i.path === landingPage && !hiddenTabs.includes(i.path)) || landingPage === '/settings'
+    if (pathname === '/' && landingPage !== '/' && valid) navigate(landingPage, { replace: true })
+  }, [landingPage, hiddenTabs, pathname, navigate])
   // Desktop scan hotkey: the main process captured the game screen; open the scanner with it.
   useEffect(() => window.desktop?.onScanCapture((png) => useScanStore.getState().openWith(new Blob([png as BlobPart], { type: 'image/png' }))), [])
   const settings = useDesktopStore((s) => s.settings)
@@ -36,28 +63,63 @@ export function Layout() {
 
   return (
     <div className="flex h-full bg-surface text-ink">
-      <ItemLookup />
-      <StoryTimerWatcher />
-      <AutoUntickCompleted />
-      {isDesktop() && <RaidResultPrompt />}
-      {isDesktop() && <PositionListener />}
-      {isDesktop() && <AutoBackup />}
+      <ErrorBoundary area="Item lookup" quiet>
+        <ItemLookup />
+      </ErrorBoundary>
+      <ErrorBoundary area="Story timers" quiet>
+        <StoryTimerWatcher />
+        <AutoUntickCompleted />
+      </ErrorBoundary>
+      {isDesktop() && (
+        <ErrorBoundary area="Game log features" quiet>
+          {raidResultPrompt && <RaidResultPrompt />}
+          <PositionListener />
+          {autoBackup && <AutoBackup />}
+          {isDesktop() && <SyncReviewDialog />}
+          {liveTickToast && <SyncToast />}
+        </ErrorBoundary>
+      )}
       {showSetup && <FirstRunSetup />}
-      {isDesktop() && <SyncReviewDialog />}
-      {isDesktop() && <SyncToast />}
-      <ScanDialog />
+      <ErrorBoundary area="The stash scanner" quiet>
+        <ScanDialogHost />
+      </ErrorBoundary>
       <Sidebar />
       <main className={`min-w-0 flex-1 ${fullBleed ? 'flex min-h-0 flex-col overflow-hidden' : 'overflow-y-auto'}`}>
         <UpdateBanner />
         <WipeBanner />
         {fullBleed ? (
-          <Outlet />
+          <ErrorBoundary key={`${pathname}|${formatKey}`} area={areaName(pathname)}>
+            <Suspense fallback={<PageLoading />}>
+              <Outlet />
+            </Suspense>
+          </ErrorBoundary>
         ) : (
           <div className="mx-auto w-full max-w-7xl px-4 py-6 md:px-8">
-            <Outlet />
+            <ErrorBoundary key={`${pathname}|${formatKey}`} area={areaName(pathname)}>
+              <Suspense fallback={<PageLoading />}>
+                <Outlet />
+              </Suspense>
+            </ErrorBoundary>
           </div>
         )}
       </main>
     </div>
   )
+}
+
+// The stash scanner (and its text reader) is loaded the first time it opens.
+const ScanDialog = lazy(() => import('../scan/ScanDialog').then((m) => ({ default: m.ScanDialog })))
+function ScanDialogHost() {
+  const open = useScanStore((s) => s.open)
+  return open ? (
+    <Suspense fallback={null}>
+      <ScanDialog />
+    </Suspense>
+  ) : null
+}
+
+function areaName(pathname: string): string {
+  if (pathname === '/settings') return 'the Settings page'
+  const tab = NAV_ITEMS.find((i) => i.path === pathname)
+  return tab ? `the ${tab.label} tab` : 'this page'
 }

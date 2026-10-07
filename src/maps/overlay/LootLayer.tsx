@@ -7,6 +7,8 @@ import type { LootGroup } from './lootGroups'
 interface Point {
   group: LootGroup
   position: Position
+  /** Stable key for React (index in the full list). */
+  id: number
 }
 
 interface Cluster {
@@ -19,6 +21,13 @@ interface Cluster {
 }
 
 const CELL_PX = 56
+/** One style object per colour, so react-leaflet does not restyle every dot on each render. */
+const dotStyles = new Map<string, L.PathOptions>()
+function dotStyle(color: string): L.PathOptions {
+  let st = dotStyles.get(color)
+  if (!st) dotStyles.set(color, (st = { color: '#111', weight: 0.75, fillColor: color, fillOpacity: 0.95 }))
+  return st
+}
 const clusterIconCache = new Map<string, L.DivIcon>()
 function clusterIcon(count: number, color: string): L.DivIcon {
   const key = `${count}|${color}`
@@ -43,10 +52,15 @@ function clusterIcon(count: number, color: string): L.DivIcon {
  */
 export const LootLayer = memo(function LootLayer({ groups, clusterBelowZoom }: { groups: LootGroup[]; clusterBelowZoom: number }) {
   const map = useMap()
-  const [zoom, setZoom] = useState(() => map.getZoom())
-  useMapEvents({ zoomend: () => setZoom(map.getZoom()) })
+  // Whole zoom levels only: the map zooms in quarter steps, and re-clustering (and re-drawing
+  // every dot) on each step made wheel zooming stutter on dense maps.
+  const [zoom, setZoom] = useState(() => Math.floor(map.getZoom()))
+  useMapEvents({ zoomend: () => setZoom(Math.floor(map.getZoom())) })
 
-  const points = useMemo<Point[]>(() => groups.flatMap((g) => g.positions.map((position) => ({ group: g, position }))), [groups])
+  const points = useMemo<Point[]>(() => {
+    let id = 0
+    return groups.flatMap((g) => g.positions.map((position) => ({ group: g, position, id: id++ })))
+  }, [groups])
 
   const { clusters, singles } = useMemo(() => {
     if (zoom >= clusterBelowZoom) return { clusters: [] as Cluster[], singles: points }
@@ -100,12 +114,12 @@ export const LootLayer = memo(function LootLayer({ groups, clusterBelowZoom }: {
           </Tooltip>
         </Marker>
       ))}
-      {singles.map((p, i) => (
+      {singles.map((p) => (
         <CircleMarker
-          key={`${p.group.name}:${i}`}
+          key={p.id}
           center={[p.position.z, p.position.x]}
           radius={3.5}
-          pathOptions={{ color: '#111', weight: 0.75, fillColor: p.group.color, fillOpacity: 0.95 }}
+          pathOptions={dotStyle(p.group.color)}
         >
           <Tooltip direction="top" offset={[0, -4]}>
             {p.group.name}

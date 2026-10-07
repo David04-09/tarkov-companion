@@ -33,15 +33,23 @@ export function modePath(gameMode: GameMode, endpoint: EndpointName, lang?: Lang
   return `/${gameMode}/${endpoint}${lang ? `_${lang}` : ''}`
 }
 
+/** A stalled connection gives up after this long (the items document is large on slow lines). */
+const REQUEST_TIMEOUT_MS = 90_000
+
 export async function fetchJson<T>(path: string, signal?: AbortSignal): Promise<T> {
   const url = `${JSON_API_BASE}${path}`
+  const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS)
+  const both = signal ? AbortSignal.any([signal, timeout]) : timeout
   let res: Response
   try {
     // The API sends an 8-day Cache-Control; without no-cache the browser would keep
     // serving stale prices and trader reset times. no-cache revalidates via ETag,
     // so unchanged documents cost a 304, not a re-download.
-    res = await fetch(url, { headers: { Accept: 'application/json' }, signal, cache: 'no-cache' })
+    res = await fetch(url, { headers: { Accept: 'application/json' }, signal: both, cache: 'no-cache' })
   } catch (err) {
+    if (timeout.aborted && !signal?.aborted) {
+      throw new TarkovApiError('json.tarkov.dev is not answering (timed out). It will be tried again in a minute.', 0, url)
+    }
     if (err instanceof DOMException && err.name === 'AbortError') throw err
     throw new TarkovApiError(
       'Could not reach json.tarkov.dev. Check your internet connection and try again.',

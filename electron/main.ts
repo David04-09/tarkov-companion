@@ -6,7 +6,9 @@
  * Nothing here touches the game, and nothing is shown on top of it (the old
  * overlay window was removed in 1.8.0).
  */
-import { BrowserWindow, Menu, Tray, app, dialog, globalShortcut, ipcMain, nativeImage, protocol, shell } from 'electron'
+import { BrowserWindow, Menu, Tray, app, dialog, globalShortcut, ipcMain, nativeImage, protocol, session, shell } from 'electron'
+import type { IpcMainInvokeEvent } from 'electron'
+import { pathToFileURL } from 'node:url'
 import fs from 'node:fs'
 import path from 'node:path'
 import type { DesktopSettings, GameEvent, LogStatsData, WipeEvent } from '../src/shared/desktop-api'
@@ -20,7 +22,8 @@ import { captureScreenUnderCursor, listGameScreenshots, readAppResource, readGam
 // Read-only access to the app's own bundled scanner/OCR files (the page is a local file and
 // Chromium cannot fetch() file:// URLs). Must be registered before the app is ready.
 protocol.registerSchemesAsPrivileged([{ scheme: 'tcres', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } }])
-import { checkForUpdates, getUpdateOutcome, getUpdateStatus, installUpdate, runInstallerManually, setupUpdater } from './updater'
+import { checkForUpdates, getUpdateOutcome, getUpdateStatus, installUpdate, runInstallerManually, setUpdateMode, setupUpdater } from './updater'
+import { cleanSettingsPatch, isSafeDirectory, isTrustedSender, isWebUrl, lockPermissions } from './security'
 
 const DEV_URL = process.env.VITE_DEV_SERVER_URL
 
@@ -29,6 +32,7 @@ let tray: Tray | null = null
 let quitting = false
 let settings: SettingsStore
 const watcher = new LogWatcher()
+let stopScreenshots: (() => void) | null = null
 
 if (!app.requestSingleInstanceLock()) {
   app.quit()
@@ -55,6 +59,9 @@ function bootstrap() {
   // Same id as the installer's shortcuts, so Windows shows the app's notifications under its name.
   if (process.platform === 'win32') app.setAppUserModelId('io.github.david04-09.tarkov-companion')
   protocol.handle('tcres', (req) => resourceResponse(req.url, Boolean(DEV_URL)))
+  lockPermissions(session.defaultSession)
+  // Installed builds: no menu (it carries Reload and the developer tools).
+  if (app.isPackaged) Menu.setApplicationMenu(null)
   settings = new SettingsStore(app.getPath('userData'))
   const startHidden = settings.get().startMinimized || process.argv.includes('--minimized')
 
@@ -62,7 +69,7 @@ function bootstrap() {
   createTray()
   registerIpc()
   registerHotkey()
-  setupUpdater(broadcast)
+  setupUpdater(broadcast, settings.get().updateMode)
   applyWatcherSettings()
   app.setLoginItemSettings({ openAtLogin: settings.get().startWithWindows, args: ['--minimized'] })
 
@@ -71,8 +78,7 @@ function bootstrap() {
     detectWipe(e)
   })
   watcher.on('state', (s) => broadcast('watcher:state', s))
-  // "Where am I": positions from the names of new in-game screenshots (read-only).
-  watchScreenshots((p) => broadcast('position:new', p))
+  applyPositionTracking()
 
   app.on('before-quit', () => {
     quitting = true
@@ -83,6 +89,24 @@ function bootstrap() {
     if (process.platform !== 'darwin' && quitting) app.quit()
   })
   app.on('activate', () => showWindow())
+  // No embedded browsers and no pop-up windows, whatever a page tries.
+  app.on('web-contents-created', (_e, contents) => {
+    contents.on('will-attach-webview', (ev) => ev.preventDefault())
+    contents.setWindowOpenHandler(({ url }) => {
+      if (isWebUrl(url)) void shell.openExternal(url)
+      return { action: 'deny' }
+    })
+  })
+}
+
+/** "Where am I": positions from the names of new in-game screenshots (read-only), if switched on. */
+function applyPositionTracking() {
+  const on = settings.get().trackPosition
+  if (on && !stopScreenshots) stopScreenshots = watchScreenshots((p) => broadcast('position:new', p))
+  if (!on && stopScreenshots) {
+    stopScreenshots()
+    stopScreenshots = null
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -135,16 +159,22 @@ function load(w: BrowserWindow, hash: string) {
  * through, a redirect) is blocked, and web links open in the user's browser instead.
  */
 function lockNavigation(w: BrowserWindow) {
-  const own = (url: string) => url.startsWith('file:') || (DEV_URL ? url.startsWith(DEV_URL) : false)
   w.webContents.on('will-navigate', (e, url) => {
-    if (own(url)) return
+    if (isOwnUrl(url)) return
     e.preventDefault()
-    if (/^https?:/i.test(url)) void shell.openExternal(url)
+    if (isWebUrl(url)) void shell.openExternal(url)
   })
   w.webContents.setWindowOpenHandler(({ url }) => {
-    if (/^https?:/i.test(url)) void shell.openExternal(url)
+    if (isWebUrl(url)) void shell.openExternal(url)
     return { action: 'deny' }
   })
+}
+
+/** The app's own page: exactly its index.html (any #route), or the dev server. Not any local file. */
+function isOwnUrl(url: string): boolean {
+  if (DEV_URL) return url.startsWith(DEV_URL)
+  const own = pathToFileURL(resourcePath('dist', 'index.html')).href
+  return url.split('#')[0].split('?')[0].toLowerCase() === own.toLowerCase()
 }
 
 function createWindow(show: boolean) {
@@ -166,6 +196,10 @@ function createWindow(show: boolean) {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      webSecurity: true,
+      allowRunningInsecureContent: false,
+      webviewTag: false,
+      devTools: !app.isPackaged,
       additionalArguments: ['--tc-window=main', `--tc-version=${app.getVersion()}`],
     },
   })
@@ -266,7 +300,9 @@ function refreshTrayMenu() {
 function applyWatcherSettings() {
   const s = settings.get()
   const detected = detectLogsFolder()
-  watcher.configure({ logsPath: s.logsPath ?? detected.path, detectedPath: detected.path, paused: s.paused })
+  // A saved folder that is gone (or was never a folder) falls back to the detected one.
+  const custom = s.logsPath && isSafeDirectory(s.logsPath) ? s.logsPath : null
+  watcher.configure({ logsPath: custom ?? detected.path, detectedPath: detected.path, paused: s.paused })
   refreshTrayMenu()
 }
 
@@ -279,17 +315,25 @@ function updateSettings(patch: Partial<DesktopSettings>): DesktopSettings {
   }
   if (patch.logsPath !== undefined || patch.paused !== undefined) applyWatcherSettings()
   if (patch.scanHotkey !== undefined) registerHotkey()
+  if (patch.updateMode !== undefined) setUpdateMode(after.updateMode)
+  if (patch.trackPosition !== undefined) applyPositionTracking()
   broadcast('watcher:state', watcher.getState())
   broadcast('settings:changed', settings.getPublic())
   return settings.getPublic()
 }
 
 function registerIpc() {
-  ipcMain.handle('watcher:getState', () => watcher.getState())
-  ipcMain.handle('settings:get', () => settings.getPublic())
-  ipcMain.handle('settings:set', (_e, patch: Partial<DesktopSettings>) => updateSettings(patch ?? {}))
-  ipcMain.handle('watcher:recent', () => watcher.getRecentEvents())
-  ipcMain.handle('watcher:pickFolder', async () => {
+  // Every request must come from the app's own page; anything else is refused.
+  const handle = (channel: string, fn: (e: IpcMainInvokeEvent, ...args: any[]) => unknown) =>
+    ipcMain.handle(channel, (e, ...args) => {
+      if (!isTrustedSender(e.sender, isOwnUrl)) throw new Error('Refused')
+      return fn(e, ...args)
+    })
+  handle('watcher:getState', () => watcher.getState())
+  handle('settings:get', () => settings.getPublic())
+  handle('settings:set', (_e, patch: unknown) => updateSettings(cleanSettingsPatch(patch)))
+  handle('watcher:recent', () => watcher.getRecentEvents())
+  handle('watcher:pickFolder', async () => {
     if (!win) return null
     const res = await dialog.showOpenDialog(win, {
       title: 'Select the Escape from Tarkov Logs folder',
@@ -301,8 +345,8 @@ function registerIpc() {
     updateSettings({ logsPath: picked })
     return picked
   })
-  ipcMain.handle('watcher:backfill', async () => {
-    const result = watcher.backfill((p) => broadcast('watcher:backfillProgress', p))
+  handle('watcher:backfill', async () => {
+    const result = await watcher.backfillAsync((p) => broadcast('watcher:backfillProgress', p))
     settings.update({ initialBackfillDone: true })
     const summary = {
       at: new Date().toISOString(),
@@ -326,8 +370,8 @@ function registerIpc() {
     return result
   })
   // Stats tab: the same read-only pass over all log folders, without touching settings.
-  ipcMain.handle('stats:read', async (): Promise<LogStatsData> => {
-    const result = watcher.backfill()
+  handle('stats:read', async (): Promise<LogStatsData> => {
+    const result = await watcher.backfillAsync()
     const keep = new Set(['mapLoading', 'raidMatched', 'raidStarted', 'raidEnded', 'matchingAborted', 'fleaSold', 'fleaExpired', 'fleaRating', 'taskFinished', 'taskStarted', 'taskFailed'])
     const sessions = result.sessions ?? []
     return {
@@ -339,31 +383,38 @@ function registerIpc() {
       resetAtByMode: result.resetAtByMode ?? { regular: null, pve: null, seasonal: null, unknown: null },
     }
   })
-  ipcMain.handle('watcher:openFolder', async () => {
+  handle('watcher:openFolder', async () => {
+    // openPath runs files: only ever open a real folder.
     const p = watcher.getState().logsPath
-    if (p) await shell.openPath(p)
+    if (isSafeDirectory(p)) await shell.openPath(p)
   })
-  ipcMain.handle('update:status', () => getUpdateStatus())
-  ipcMain.handle('update:check', () => checkForUpdates())
-  ipcMain.handle('update:install', () => installUpdate())
-  ipcMain.handle('update:outcome', () => getUpdateOutcome())
-  ipcMain.handle('position:latest', () => latestPosition())
-  ipcMain.handle('backup:write', (_e, json: unknown) => writeBackup(app.getPath('userData'), String(json)))
-  ipcMain.handle('backup:list', () => listBackups(app.getPath('userData')))
-  ipcMain.handle('backup:read', (_e, name: unknown) => readBackup(app.getPath('userData'), String(name)))
-  ipcMain.handle('backup:openFolder', async () => {
+  handle('update:status', () => getUpdateStatus())
+  handle('update:check', () => checkForUpdates())
+  handle('update:install', () => installUpdate())
+  handle('update:outcome', () => getUpdateOutcome())
+  handle('position:latest', () => latestPosition())
+  handle('backup:write', (_e, json: unknown) => {
+    if (typeof json !== 'string') throw new Error('Not a backup')
+    return writeBackup(app.getPath('userData'), json, new Date(), settings.get().backupKeep)
+  })
+  handle('backup:list', () => listBackups(app.getPath('userData')))
+  handle('backup:read', (_e, name: unknown) => readBackup(app.getPath('userData'), String(name)))
+  handle('backup:openFolder', async () => {
     const dir = backupDir(app.getPath('userData'))
     fs.mkdirSync(dir, { recursive: true })
     await shell.openPath(dir)
   })
-  ipcMain.handle('update:runInstaller', (_e, version: unknown) => {
+  handle('update:runInstaller', (_e, version: unknown) => {
     if (typeof version === 'string' && /^[0-9]+\.[0-9]+\.[0-9]+$/.test(version)) runInstallerManually(version)
   })
-  ipcMain.handle('resource:read', (_e, rel: string) => readAppResource(String(rel), Boolean(DEV_URL)))
-  ipcMain.handle('scan:capture', () => captureScreenUnderCursor())
-  ipcMain.handle('scan:listShots', () => listGameScreenshots())
-  ipcMain.handle('scan:readShot', (_e, name: string) => readGameScreenshot(String(name)))
-  ipcMain.handle('shell:openExternal', async (_e, url: string) => {
-    if (/^https?:/i.test(url)) await shell.openExternal(url)
+  handle('resource:read', (_e, rel: unknown) => {
+    if (typeof rel !== 'string' || rel.length > 300) throw new Error('Not allowed')
+    return readAppResource(rel, Boolean(DEV_URL))
+  })
+  handle('scan:capture', () => captureScreenUnderCursor())
+  handle('scan:listShots', () => listGameScreenshots())
+  handle('scan:readShot', (_e, name: unknown) => readGameScreenshot(String(name)))
+  handle('shell:openExternal', async (_e, url: unknown) => {
+    if (isWebUrl(url)) await shell.openExternal(url)
   })
 }

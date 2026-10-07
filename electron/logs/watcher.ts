@@ -181,11 +181,52 @@ export class LogWatcher extends EventEmitter {
   }
 
   /**
-   * Reads every session folder once (oldest first). Each folder gets its own
-   * interpreter so session modes never leak between sessions.
+   * Parsed past sessions, keyed by folder. A finished session's files never change, so a later
+   * Read past logs / My stats only re-reads folders whose files changed (normally just the
+   * current one). Key = every file's name, size and modified time.
    */
-  backfill(onProgress?: (p: BackfillProgress) => void): BackfillResult {
-    const result: BackfillResult = {
+  private folderCache = new Map<string, { sig: string; events: GameEvent[]; files: number; session: { start: number; end: number } | null }>()
+
+  private readFolder(folder: { name: string; dir: string }) {
+    const files = listLogFiles(folder.dir)
+    let sig = ''
+    for (const f of files) {
+      try {
+        const st = fs.statSync(f.file)
+        sig += `${path.basename(f.file)}:${st.size}:${st.mtimeMs};`
+      } catch {
+        sig += `${path.basename(f.file)}:?;`
+      }
+    }
+    const cached = this.folderCache.get(folder.dir)
+    if (cached && cached.sig === sig) return cached
+    const interpreter = new GameLogInterpreter()
+    const events: GameEvent[] = []
+    const pending: { entries: ReturnType<typeof FileTail.readAll>; fileName: string }[] = []
+    let first = Infinity
+    let last = -Infinity
+    for (const f of files) {
+      const entries = FileTail.readAll(f.file)
+      for (const e of entries) {
+        if (e.at < first) first = e.at
+        if (e.at > last) last = e.at
+      }
+      const fileName = path.basename(f.file)
+      if (f.role === 'application') {
+        // Application log first: establishes the mode timeline.
+        for (const e of entries) events.push(...interpreter.interpret(e, fileName, true))
+      } else {
+        pending.push({ entries, fileName })
+      }
+    }
+    for (const p of pending) for (const e of p.entries) events.push(...interpreter.interpret(e, p.fileName, true))
+    const entry = { sig, events, files: files.length, session: Number.isFinite(first) && last >= first ? { start: first, end: last } : null }
+    this.folderCache.set(folder.dir, entry)
+    return entry
+  }
+
+  private emptyResult(): BackfillResult {
+    return {
       folders: 0,
       files: 0,
       events: [],
@@ -194,41 +235,50 @@ export class LogWatcher extends EventEmitter {
       skippedOtherProfile: 0,
       sessions: [],
     }
+  }
+
+  private addFolder(result: BackfillResult, folder: { name: string; dir: string }) {
+    const r = this.readFolder(folder)
+    result.files += r.files
+    for (const ev of r.events) result.events.push(ev)
+    result.folders += 1
+    if (r.session) result.sessions?.push(r.session)
+  }
+
+  /**
+   * Reads every session folder once (oldest first). Each folder gets its own
+   * interpreter so session modes never leak between sessions. (Synchronous: for scripts.)
+   */
+  backfill(onProgress?: (p: BackfillProgress) => void): BackfillResult {
+    const result = this.emptyResult()
     if (!this.logsPath) return result
     const folders = listSessionFolders(this.logsPath)
     folders.forEach((folder, i) => {
       onProgress?.({ done: i, total: folders.length, folder: folder.name })
-      const interpreter = new GameLogInterpreter()
-      const files = listLogFiles(folder.dir)
-      const pending: { entries: ReturnType<typeof FileTail.readAll>; fileName: string }[] = []
-      let first = Infinity
-      let last = -Infinity
-      for (const f of files) {
-        result.files += 1
-        const entries = FileTail.readAll(f.file)
-        for (const e of entries) {
-          if (e.at < first) first = e.at
-          if (e.at > last) last = e.at
-        }
-        const fileName = path.basename(f.file)
-        if (f.role === 'application') {
-          // Application log first: establishes the mode timeline.
-          for (const e of entries) result.events.push(...interpreter.interpret(e, fileName, true))
-        } else {
-          pending.push({ entries, fileName })
-        }
-      }
-      for (const p of pending) {
-        for (const e of p.entries) {
-          for (const ev of interpreter.interpret(e, p.fileName, true)) {
-            result.events.push(ev)
-          }
-        }
-      }
-      result.folders += 1
-      if (Number.isFinite(first) && last >= first) result.sessions?.push({ start: first, end: last })
+      this.addFolder(result, folder)
     })
     onProgress?.({ done: folders.length, total: folders.length, folder: '' })
+    return this.finish(result)
+  }
+
+  /**
+   * Same as backfill, but hands control back between folders so the app stays responsive
+   * (window, tray, other requests) and the progress bar actually moves.
+   */
+  async backfillAsync(onProgress?: (p: BackfillProgress) => void): Promise<BackfillResult> {
+    const result = this.emptyResult()
+    if (!this.logsPath) return result
+    const folders = listSessionFolders(this.logsPath)
+    for (let i = 0; i < folders.length; i++) {
+      onProgress?.({ done: i, total: folders.length, folder: folders[i].name })
+      this.addFolder(result, folders[i])
+      await new Promise((resolve) => setImmediate(resolve))
+    }
+    onProgress?.({ done: folders.length, total: folders.length, folder: '' })
+    return this.finish(result)
+  }
+
+  private finish(result: BackfillResult): BackfillResult {
     // "You" per mode = the profile selected most recently in that mode. Older profiles
     // (before a wipe/reset, or a second account on this PC) must not tick quests.
     const ordered = [...result.events].sort((a, b) => a.at - b.at)

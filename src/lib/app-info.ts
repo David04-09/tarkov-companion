@@ -23,5 +23,5 @@ export const CREDITS: Credit[] = [
   { name: 'Escape from Tarkov Wiki', url: 'https://escapefromtarkov.fandom.com', license: 'CC BY-SA 3.0', what: 'Quest guide pictures, the story chapter walkthroughs with their waiting times, and the endings.' },
   { name: 'TarkovMonitor', url: 'https://github.com/the-hideout/TarkovMonitor', license: 'GPL-3.0 (reference only; no code copied)', what: 'Where the meaning of the game log lines was learned. The parser here is an independent implementation.' },
   { name: 'Tesseract OCR (tesseract.js)', url: 'https://github.com/naptha/tesseract.js', license: 'Apache-2.0', what: 'Reads the item names printed in stash screenshots, offline, for the stash scanner.' },
-  { name: 'Electron, React, Leaflet, TanStack, Zustand, Tailwind, Geoman, lucide', url: 'https://github.com/the-hideout', license: 'MIT and similar', what: 'The open-source libraries the app is built with.' },
+  { name: 'Electron, React, Leaflet, TanStack, Zustand, Tailwind, Geoman, lucide', url: 'https://github.com/David04-09/tarkov-companion/blob/main/THIRD_PARTY_NOTICES.txt', license: 'MIT and similar (full texts in THIRD_PARTY_NOTICES.txt)', what: 'The open-source libraries the app is built with.' },
 ]

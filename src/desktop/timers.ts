@@ -1,5 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { prefs } from '../store/prefs'
+import { guarded } from '../store/guarded'
 
 /** Survive-to-count threshold: leaving earlier is a "run-through". */
 export const RUN_THROUGH_SECONDS = 7 * 60
@@ -41,6 +43,7 @@ export const useTimersStore = create<TimersState>()(
     {
       name: 'tarkov-companion-timers',
       version: 1,
+      ...guarded<TimersState>({ scavCooldownEndsAt: 'number', scavCooldownMinutes: 'number', soundsEnabled: 'boolean' }),
       partialize: (s) => ({ scavCooldownEndsAt: s.scavCooldownEndsAt, scavCooldownMinutes: s.scavCooldownMinutes, soundsEnabled: s.soundsEnabled }),
     },
   ),
@@ -59,7 +62,7 @@ export function beep(kind: 'start' | 'ok' | 'done' = 'ok') {
       const gain = ctx.createGain()
       osc.type = 'sine'
       osc.frequency.value = freq
-      gain.gain.value = 0.08
+      gain.gain.value = 0.16 * (prefs().soundVolume / 100)
       osc.connect(gain).connect(ctx.destination)
       osc.start(ctx.currentTime + i * 0.18)
       osc.stop(ctx.currentTime + i * 0.18 + 0.15)

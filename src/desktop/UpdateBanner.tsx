@@ -43,7 +43,8 @@ export function UpdateBanner() {
   )
 
   if (!status || (status.state !== 'ready' && status.state !== 'available') || dismissed === status.version) return outcomeBar || null
-  const portable = status.state === 'available'
+  const portable = status.state === 'available' && !status.installable
+  const notDownloaded = status.state === 'available' && status.installable
   return (
     <>
       {outcomeBar}
@@ -52,10 +53,12 @@ export function UpdateBanner() {
         <span className="min-w-0 flex-1">
           {portable
             ? `Tarkov Companion ${status.version} is out. This is the portable version, so download the new exe (or use the installer to get automatic updates).`
-            : `Tarkov Companion ${status.version} is downloaded. "Restart to update" closes the app, installs it (about a minute, nothing on screen) and opens it again.`}
+            : notDownloaded
+              ? `Tarkov Companion ${status.version} is out. "Download" fetches it in the background; you choose when to restart.`
+              : `Tarkov Companion ${status.version} is downloaded. "Restart to update" closes the app, installs it (about a minute, nothing on screen) and opens it again.`}
         </span>
         <button type="button" onClick={() => void window.desktop?.installUpdate()} className="btn !py-1">
-          {portable ? 'Download' : 'Restart to update'}
+          {portable || notDownloaded ? 'Download' : 'Restart to update'}
         </button>
         <button type="button" onClick={() => setDismissed(status.version)} aria-label="Later" title="Later" className="text-ink-dim hover:text-ink">
           <X className="h-4 w-4" />

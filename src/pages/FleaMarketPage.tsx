@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { ArrowDown, ArrowUp, ArrowUpDown, RefreshCw, RotateCcw, Search } from 'lucide-react'
 import { useGameData, useItems, usePriceHistory } from '../api/hooks'
@@ -7,7 +7,7 @@ import { ErrorPanel, LoadingPanel } from '../components/DataState'
 import { TradersPanel } from '../components/TradersPanel'
 import { useNeeds } from '../hooks/useNeeds'
 import { FEE_NOTE, fleaFee } from '../lib/economy'
-import { formatRoubles, formatTimeAgo } from '../lib/format'
+import { formatNumber, formatRoubles, formatTimeAgo } from '../lib/format'
 import { remainingFor, type ItemNeed } from '../lib/needs'
 import { useFleaStore, type FleaSortKey } from '../store/flea'
 
@@ -121,8 +121,11 @@ interface RowProps {
   traderName: (id: string | null) => string
   changes: Changes | undefined
   onChanges: (id: string, c: Changes) => void
-  onToggle: () => void
+  onToggle: (id: string) => void
 }
+
+/** One collator for the whole list (localeCompare builds one per call: thousands per sort). */
+const collator = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true })
 
 /** One row; loads its price history when it has been on screen for a moment (or is expanded). */
 const FleaRow = memo(function FleaRow({ row, open, needed, collected, traderName, changes, onChanges, onToggle }: RowProps) {
@@ -142,7 +145,7 @@ const FleaRow = memo(function FleaRow({ row, open, needed, collected, traderName
   const remaining = needed ? remainingFor(needed, collected) : 0
   return (
     <div>
-      <div role="button" tabIndex={0} onClick={onToggle} onKeyDown={(e) => e.key === 'Enter' && onToggle()} className={`${GRID} h-11 cursor-pointer border-b border-line text-sm hover:bg-surface-3 ${open ? 'bg-surface-3' : ''}`}>
+      <div role="button" tabIndex={0} onClick={() => onToggle(row.item.id)} onKeyDown={(e) => e.key === 'Enter' && onToggle(row.item.id)} className={`${GRID} h-11 cursor-pointer border-b border-line text-sm hover:bg-surface-3 ${open ? 'bg-surface-3' : ''}`}>
         <div className="flex min-w-0 items-center gap-2">
           {row.item.iconLink && <img src={row.item.iconLink} alt="" className="h-8 w-8 shrink-0 object-contain" loading="lazy" />}
           <span className="min-w-0 truncate">{row.item.name}</span>
@@ -218,13 +221,18 @@ export function FleaMarketPage() {
     },
     [],
   )
-  const [tick, setTick] = useState(0)
+  // Re-draws the "prices updated … ago" label; the list itself does not depend on it.
+  const [, setTick] = useState(0)
   useEffect(() => {
     const id = setInterval(() => setTick((t) => t + 1), 30_000)
     return () => clearInterval(id)
   }, [])
 
   const rows = useMemo(() => (items.data ? Object.values(items.data.items).map(buildRow) : []), [items.data])
+  // Lower-cased names once per data load, not on every keystroke.
+  const searchText = useMemo(() => new Map(rows.map((r) => [r.item.id, `${r.item.name}\n${r.item.shortName}`.toLowerCase()])), [rows])
+  // Typing stays instant; the 4,000-row filter catches up right after.
+  const listFilters = useDeferredValue(filters)
   const types = useMemo(() => {
     const counts = new Map<string, number>()
     for (const r of rows) for (const t of r.item.types) if (!HIDDEN_TYPES.has(t)) counts.set(t, (counts.get(t) ?? 0) + 1)
@@ -232,6 +240,7 @@ export function FleaMarketPage() {
   }, [rows])
 
   const filtered = useMemo(() => {
+    const filters = listFilters
     const needle = filters.search.trim().toLowerCase()
     const min = Number(filters.minPrice) || 0
     const max = Number(filters.maxPrice) || Infinity
@@ -241,7 +250,7 @@ export function FleaMarketPage() {
       if (filters.type !== 'all' && !r.item.types.includes(filters.type)) return false
       if (filters.fleaBan === 'banned' && !r.banned) return false
       if (filters.fleaBan === 'allowed' && r.banned) return false
-      if (needle && !r.item.name.toLowerCase().includes(needle) && !r.item.shortName.toLowerCase().includes(needle)) return false
+      if (needle && !(searchText.get(r.item.id) ?? '').includes(needle)) return false
       const price = r.flea ?? r.traderSell
       if (price < min || price > max) return false
       if (minSlot > 0 && (r.perSlot ?? 0) < minSlot) return false
@@ -268,18 +277,18 @@ export function FleaMarketPage() {
       }
     }
     list.sort((a, b) => {
-      if (filters.sort.key === 'name') return a.item.name.localeCompare(b.item.name) * dir
+      if (filters.sort.key === 'name') return collator.compare(a.item.name, b.item.name) * dir
       const va = val(a)
       const vb = val(b)
-      if (va == null && vb == null) return a.item.name.localeCompare(b.item.name)
+      if (va == null && vb == null) return collator.compare(a.item.name, b.item.name)
       if (va == null) return 1
       if (vb == null) return -1
-      return (va - vb) * dir || a.item.name.localeCompare(b.item.name)
+      return (va - vb) * dir || collator.compare(a.item.name, b.item.name)
     })
     return list
     // changeVersion (via setChangeVersion) re-runs this when histories arrive
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, filters, needs, tick, changesRef.current.size])
+  }, [rows, listFilters, needs, searchText, changesRef.current.size])
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const virtualizer = useVirtualizer({
@@ -293,7 +302,10 @@ export function FleaMarketPage() {
     virtualizer.measure()
   }, [expandedId, virtualizer])
 
-  const traderName = (id: string | null) => (id ? (gameData.data?.traders.find((t) => t.id === id)?.name ?? 'Trader') : '—')
+  // Stable functions so memoised rows only re-draw when their own data changes.
+  const traderNames = useMemo(() => new Map((gameData.data?.traders ?? []).map((t) => [t.id, t.name])), [gameData.data])
+  const traderName = useCallback((id: string | null) => (id ? (traderNames.get(id) ?? 'Trader') : '—'), [traderNames])
+  const toggleRow = useCallback((id: string) => setExpandedId((cur) => (cur === id ? null : id)), [])
   const onSort = (key: FleaSortKey) =>
     setFilters({ sort: filters.sort.key === key ? { key, dir: filters.sort.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: key === 'name' ? 'asc' : 'desc' } })
 
@@ -306,12 +318,12 @@ export function FleaMarketPage() {
         <div>
           <h1 className="text-2xl font-semibold">Flea Market</h1>
           <p className="text-sm text-ink-muted">
-            {rows.length.toLocaleString()} items{items.dataUpdatedAt ? ` · prices updated ${formatTimeAgo(items.dataUpdatedAt)}` : ''} · refreshes every 10 min while this tab is visible
+            {formatNumber(rows.length)} items{items.dataUpdatedAt ? ` · prices updated ${formatTimeAgo(items.dataUpdatedAt)}` : ''} · refreshes every 10 min while this tab is visible
           </p>
           <p className="text-[11px] text-ink-dim">{FEE_NOTE}</p>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-xs text-ink-dim">{filtered.length.toLocaleString()} shown</span>
+          <span className="text-xs text-ink-dim">{formatNumber(filtered.length)} shown</span>
           <button type="button" onClick={() => void items.refetch()} disabled={items.isFetching} className="btn !py-1 !text-xs"><RefreshCw className={`h-3.5 w-3.5 ${items.isFetching ? 'animate-spin' : ''}`} /> Refresh prices</button>
         </div>
       </div>
@@ -373,7 +385,7 @@ export function FleaMarketPage() {
                     traderName={traderName}
                     changes={changesRef.current.get(r.item.id)}
                     onChanges={onChanges}
-                    onToggle={() => setExpandedId(r.item.id === expandedId ? null : r.item.id)}
+                    onToggle={toggleRow}
                   />
                 </div>
               )

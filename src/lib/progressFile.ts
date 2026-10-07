@@ -63,3 +63,11 @@ export function importProgressFile(parsed: unknown): string[] {
   }
   return restored
 }
+
+/** Files you import are untrusted: refuse huge ones and drop keys that could tamper with objects. */
+export const MAX_IMPORT_BYTES = 20 * 1024 * 1024
+const BLOCKED_KEYS = new Set(['__proto__', 'constructor', 'prototype'])
+export function parseImportJson(text: string): unknown {
+  if (text.length > MAX_IMPORT_BYTES) throw new Error('that file is too large')
+  return JSON.parse(text, (key, value: unknown) => (BLOCKED_KEYS.has(key) ? undefined : value))
+}

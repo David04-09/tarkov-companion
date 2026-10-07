@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { BuildParts } from '../lib/weaponBuild'
+import { guarded } from './guarded'
 
 export interface SavedBuild {
   id: string
@@ -41,6 +42,6 @@ export const useWeaponBuildsStore = create<WeaponBuildsState>()(
         set((s) => ({ builds: s.builds.map((b) => (b.id === id && name.trim() ? { ...b, name: name.trim(), updatedAt: Date.now() } : b)) })),
       deleteBuild: (id) => set((s) => ({ builds: s.builds.filter((b) => b.id !== id) })),
     }),
-    { name: 'tarkov-companion-weapon-builds', version: 1 },
+    { name: 'tarkov-companion-weapon-builds', version: 1, ...guarded<WeaponBuildsState>({ builds: (v) => (Array.isArray(v) ? v.filter((b) => b && typeof b.id === 'string' && typeof b.weaponId === 'string' && typeof b.parts === 'object') : null) }) },
   ),
 )

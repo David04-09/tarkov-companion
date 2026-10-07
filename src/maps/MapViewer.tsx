@@ -5,6 +5,7 @@ import { MapContainer, useMap } from 'react-leaflet'
 import { AlertTriangle, Loader2, Maximize2, Minimize2 } from 'lucide-react'
 import { floorIsDrawable, type BaseLayerConfig, type FloorLayerConfig } from './mapConfig'
 import { createMapCRS, gameBoundsToLatLngBounds } from './projection'
+import { sanitizeSvg } from '../lib/sanitizeSvg'
 
 /** Extra zoom beyond the native tiles, like tarkov.dev (max(7, maxZoom)). */
 const OVERZOOM = 7
@@ -22,12 +23,12 @@ type ImageryState = 'loading' | 'ready' | 'error'
  * top-level <g id> groups are classified as base (ground) or overlay (floors).
  */
 async function loadSvg(layer: BaseLayerConfig, signal: AbortSignal): Promise<SVGSVGElement> {
-  const res = await fetch(layer.svgPath as string, { signal })
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
-  const text = await res.text()
+  const text = await svgText(layer.svgPath as string, signal)
   const doc = new DOMParser().parseFromString(text, 'image/svg+xml')
   const inner = doc.documentElement
   if (inner.nodeName.toLowerCase() !== 'svg') throw new Error('Not an SVG document')
+  // Remote file going into the live page: drawing elements only (see sanitizeSvg).
+  sanitizeSvg(inner)
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
   svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg')
   const viewBox = inner.getAttribute('viewBox')
@@ -41,6 +42,25 @@ async function loadSvg(layer: BaseLayerConfig, signal: AbortSignal): Promise<SVG
     else g.classList.add('tc-overlay-group')
   }
   return svg
+}
+
+/** Map drawings fetched this session (switching maps, layers or floors used to download them again). */
+const svgCache = new Map<string, Promise<string>>()
+function svgText(url: string, signal: AbortSignal): Promise<string> {
+  let p = svgCache.get(url)
+  if (!p) {
+    p = fetch(url).then((res) => {
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      return res.text()
+    })
+    p.catch(() => svgCache.delete(url))
+    svgCache.set(url, p)
+  }
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) return reject(new DOMException('Aborted', 'AbortError'))
+    signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true })
+    p.then(resolve, reject)
+  })
 }
 
 interface ImageryProps {

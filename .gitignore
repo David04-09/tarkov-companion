@@ -48,3 +48,6 @@ public/scan/
 
 # Offline text reader for the stash scanner (generated: npm run ocr:assets)
 public/ocr/
+
+# Tesseract model downloaded by older OCR test runs (the app ships public/ocr)
+/eng.traineddata
