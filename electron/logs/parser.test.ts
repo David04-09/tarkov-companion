@@ -250,6 +250,14 @@ describe('helpers', () => {
     expect(new Date(t).getMinutes()).toBe(53)
     expect(logFolderTime('something_else')).toBeNull()
   })
+
+  it('reads morning sessions (hour without a leading zero) and sorts them after the evening before', () => {
+    const morning = logFolderTime('log_2026.10.07_5-48-13_1.2.0.0.47888') as number
+    const evening = logFolderTime('log_2026.10.06_18-33-55_1.2.0.0.47888') as number
+    expect(morning).not.toBeNull()
+    expect(new Date(morning).getHours()).toBe(5)
+    expect(morning).toBeGreaterThan(evening)
+  })
 })
 
 describe('flea market stats', () => {

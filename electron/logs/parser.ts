@@ -387,7 +387,10 @@ export function logFileRole(fileName: string): 'application' | 'notifications' |
 
 /** Parses "log_2026.09.11_17-53-50_1.1.5.0.47242" into a sortable timestamp (ms) or null. */
 export function logFolderTime(folderName: string): number | null {
-  const m = /^log_(\d{4})\.(\d{2})\.(\d{2})_(\d{2})-(\d{2})-(\d{2})/.exec(folderName)
+  // The game writes the hour without a leading zero before 10:00 ("log_2026.10.07_5-48-13_…"):
+  // with two digits required, morning sessions were invisible and the watcher stayed on the
+  // previous folder.
+  const m = /^log_(\d{4})\.(\d{1,2})\.(\d{1,2})_(\d{1,2})-(\d{1,2})-(\d{1,2})/.exec(folderName)
   if (!m) return null
   return new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]).getTime()
 }
