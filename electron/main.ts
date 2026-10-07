@@ -26,6 +26,9 @@ import { checkForUpdates, getUpdateOutcome, getUpdateStatus, installUpdate, runI
 import { cleanSettingsPatch, isSafeDirectory, isTrustedSender, isWebUrl, lockPermissions } from './security'
 
 const DEV_URL = process.env.VITE_DEV_SERVER_URL
+/** Same as build.appId in package.json (the installer gives the shortcuts this id). The installer
+ *  itself keeps its original id (build.nsis.guid) so updates replace existing installs in place. */
+const APP_USER_MODEL_ID = 'io.github.david04-09.tarkov-companion'
 
 let win: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -57,7 +60,7 @@ function broadcast(channel: string, payload: unknown) {
 
 function bootstrap() {
   // Same id as the installer's shortcuts, so Windows shows the app's notifications under its name.
-  if (process.platform === 'win32') app.setAppUserModelId('io.github.david04-09.tarkov-companion')
+  if (process.platform === 'win32') app.setAppUserModelId(APP_USER_MODEL_ID)
   protocol.handle('tcres', (req) => resourceResponse(req.url, Boolean(DEV_URL)))
   lockPermissions(session.defaultSession)
   // Installed builds: no menu (it carries Reload and the developer tools).

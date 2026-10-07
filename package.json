@@ -1,7 +1,7 @@
 {
   "name": "tarkov-companion",
   "private": true,
-  "version": "1.12.0",
+  "version": "1.12.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -107,7 +107,8 @@
       "shortcutName": "Tarkov Companion",
       "runAfterFinish": true,
       "deleteAppDataOnUninstall": false,
-      "artifactName": "TarkovCompanion-Setup-${version}.${ext}"
+      "artifactName": "TarkovCompanion-Setup-${version}.${ext}",
+      "guid": "0077fda7-d95b-5e13-bc16-23478dc4fd96"
     },
     "portable": {
       "artifactName": "TarkovCompanion-${version}-portable.exe"
