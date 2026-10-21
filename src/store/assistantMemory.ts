@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import {
+  addChatter,
   addNote,
   emptyHabits,
   learnWord,
@@ -13,6 +14,7 @@ import {
   type Style,
   type StylePref,
 } from '../assistant/memory'
+import { words } from '../assistant/text'
 import { guarded } from './guarded'
 import type { RaidResult } from './raidLog'
 
@@ -36,6 +38,8 @@ interface AssistantMemoryState {
   /** Old game logs were read for habits (once; later raids are counted live). */
   seededAt: number | null
   lastRaid: { mapKey: string; at: number } | null
+  /** Things said to someone else during a wake-word conversation ("not you" taught it), never answered. */
+  chatter: string[]
   setLearning: (on: boolean) => void
   remember: (text: string) => void
   forgetNote: (id: string) => void
@@ -50,6 +54,9 @@ interface AssistantMemoryState {
   greeted: (day: string) => void
   seed: (habits: Habits, at: number) => void
   forgetAll: () => void
+  notForMe: (text: string) => void
+  forMe: (text: string) => void
+  clearChatter: () => void
 }
 
 const fresh = () => ({
@@ -60,6 +67,7 @@ const fresh = () => ({
   lastGreetDay: null as string | null,
   seededAt: null as number | null,
   lastRaid: null as { mapKey: string; at: number } | null,
+  chatter: [] as string[],
 })
 
 const isNote = (n: unknown): n is MemoryNote => typeof n === 'object' && n !== null && typeof (n as MemoryNote).text === 'string' && typeof (n as MemoryNote).id === 'string'
@@ -95,10 +103,13 @@ export const useAssistantMemory = create<AssistantMemoryState>()(
       greeted: (day) => set({ lastGreetDay: day }),
       seed: (habits, at) => set({ habits, seededAt: at }),
       forgetAll: () => set(fresh()),
+      notForMe: (text) => set((s) => ({ chatter: addChatter(s.chatter, text) })),
+      forMe: (text) => set((s) => ({ chatter: s.chatter.filter((c) => c !== words(text).join(' ')) })),
+      clearChatter: () => set({ chatter: [] }),
     }),
     {
       name: 'tarkov-companion-assistant-memory',
-      partialize: (s) => ({ learning: s.learning, notes: s.notes, words: s.words, habits: s.habits, style: s.style, lastGreetDay: s.lastGreetDay, seededAt: s.seededAt, lastRaid: s.lastRaid }),
+      partialize: (s) => ({ learning: s.learning, notes: s.notes, words: s.words, habits: s.habits, style: s.style, lastGreetDay: s.lastGreetDay, seededAt: s.seededAt, lastRaid: s.lastRaid, chatter: s.chatter }),
       ...guarded<AssistantMemoryState>({
         learning: 'boolean',
         notes: (v) => (Array.isArray(v) ? v.filter(isNote).slice(-200) : undefined),
@@ -113,6 +124,7 @@ export const useAssistantMemory = create<AssistantMemoryState>()(
         },
         lastGreetDay: (v) => (typeof v === 'string' && v.length <= 10 ? v : undefined),
         seededAt: 'number',
+        chatter: (v) => (Array.isArray(v) ? v.filter((x) => typeof x === 'string').slice(-60) : undefined),
         lastRaid: (v) => (v && typeof (v as { mapKey?: unknown }).mapKey === 'string' ? v : undefined),
       }),
     },

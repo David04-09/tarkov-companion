@@ -152,8 +152,9 @@ export function NeuralNetworkPage() {
           ) : (
             messages.map((m) => (
               <div key={m.id} className={`flex ${m.from === 'you' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${m.from === 'you' ? 'bg-accent/15 text-ink' : 'border border-line bg-surface text-ink'}`}>
+                <div className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${m.ignored ? 'border border-dashed border-line text-ink-dim italic' : m.from === 'you' ? 'bg-accent/15 text-ink' : 'border border-line bg-surface text-ink'}`}>
                   <p className="flex items-center gap-1.5">{m.from === 'assistant' && pending === m.id && <Loader2 className="h-3.5 w-3.5 animate-spin" />}{m.text}</p>
+                  {m.ignored && <p className="mt-0.5 text-[11px] not-italic">Not answered: sounded like you were talking to someone else. Say "that was for you" and I'll answer it.</p>}
                   {m.reply?.lines && m.reply.lines.length > 0 && (
                     <ul className="mt-1 list-disc space-y-0.5 pl-4 text-xs text-ink-muted">
                       {m.reply.lines.map((l, i) => (

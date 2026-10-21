@@ -8,6 +8,8 @@ export interface ChatMessage {
   text: string
   reply?: Reply
   at: number
+  /** Heard in a wake-word conversation but not answered: it was not for the assistant. */
+  ignored?: boolean
 }
 
 /**
@@ -25,7 +27,7 @@ interface AssistantChatState {
   done: string[]
   /** A wake-word conversation is going on ("Hey Ranger" until "thanks, that's all"). */
   talking: boolean
-  ask: (text: string) => void
+  ask: (text: string, opts?: { conversation?: boolean }) => void
   run: (key: string, action: AssistantAction) => void
   toggleListening: () => void
   set: (patch: Partial<Omit<AssistantChatState, 'set'>>) => void

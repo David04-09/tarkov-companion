@@ -29,7 +29,7 @@ import { confirmWord } from './items'
 import { listenOnce, type ListenState } from './listen'
 import { ALL_PLACES, type Place } from './places'
 import { cutCount, onSpeakingChange, speak, stopSpeaking } from './speech'
-import { applyWords, askKind, asksAboutOwn, findNote, firstSentence, FORGET_ALL, FORGET_LAST, greetingText, parseMeant, parseRemember, parseStyle, parseTeach, subjectOf, wantsShort, WHAT_YOU_KNOW } from './memory'
+import { applyWords, askKind, asksAboutOwn, findNote, firstSentence, FORGET_ALL, FORGET_LAST, greetingText, isLearnedChatter, NOT_FOR_YOU, parseMeant, parseRemember, parseStyle, parseTeach, subjectOf, wantsShort, WAS_FOR_YOU, WHAT_YOU_KNOW } from './memory'
 import { greetingFacts, habitsFromLogs, knowReply, noteReply, RECOMMEND, recommendReply, resolveName } from './memoryAnswers'
 import { compact, words } from './text'
 import { buildSoundNames, snapToNames, type SoundName } from './phonetic'
@@ -76,6 +76,9 @@ export function AssistantHost() {
   const pendingConfirm = useRef<Reply['confirm'] | null>(null)
   /** "Forget everything?" asked, waiting for yes. */
   const pendingForget = useRef(false)
+  /** In a conversation: the last line answered (for "not you") and the last one ignored (for "that was for you"). */
+  const lastAnswered = useRef<string | null>(null)
+  const lastIgnored = useRef<string | null>(null)
   /** The last question as asked, for "no, I meant …". */
   const lastQuestion = useRef<string | null>(null)
   /** The word of the last question it did not understand, for "that means …". */
@@ -220,13 +223,41 @@ export function AssistantHost() {
     [present],
   )
 
-  const ask = (input: string) => {
+  /**
+   * `conversation`: heard after the wake word, where the player may be talking to someone else.
+   * Then only what is clearly for the assistant is answered; the rest is shown greyed out, not said.
+   */
+  const ask = (input: string, opts: { conversation?: boolean } = {}) => {
     const text = input.trim()
     if (!text) return
+    const conversation = !!opts.conversation
     const you = nextId.current++
     const id = nextId.current++
     const at = Date.now()
     setMessages((m) => [...m, { id: you, from: 'you', text, at }, { id, from: 'assistant', text: '…', at }])
+    const ignore = () => {
+      setMessages((m) => m.filter((x) => x.id !== id).map((x) => (x.id === you ? { ...x, ignored: true } : x)))
+      clearPending(id)
+      lastIgnored.current = text
+    }
+    // "Not you": the last thing it answered was said to someone else; such lines are ignored from now on.
+    if (NOT_FOR_YOU.test(words(text).join(' '))) {
+      const was = lastAnswered.current
+      if (was) useAssistantMemory.getState().notForMe(was)
+      lastAnswered.current = null
+      show(id, { text: was ? "Sorry, sir. I'll stay out of it." : 'Understood, sir.' })
+      return
+    }
+    // "That was for you": answer what it stayed quiet about, and stop ignoring that kind of line.
+    if (WAS_FOR_YOU.test(words(text).join(' ')) && lastIgnored.current) {
+      const again = lastIgnored.current
+      lastIgnored.current = null
+      useAssistantMemory.getState().forMe(again)
+      setMessages((m) => m.filter((x) => x.id !== you && x.id !== id).map((x) => (x.from === 'you' && x.text === again ? { ...x, ignored: false } : x)))
+      askRef.current(again)
+      return
+    }
+    if (conversation && isLearnedChatter(text, useAssistantMemory.getState().chatter)) return ignore()
     // An answer to "Add 1 Graphics card to your Item Collection?"
     const pending = pendingConfirm.current
     pendingConfirm.current = null
@@ -338,7 +369,10 @@ export function AssistantHost() {
       mem.usedWords(learned.used)
       question = learned.text
     }
-    const finish = (r: Reply) => show(id, prefix ? { ...r, text: prefix + r.text } : r)
+    const finish = (r: Reply) => {
+      if (conversation) lastAnswered.current = text
+      show(id, prefix ? { ...r, text: prefix + r.text } : r)
+    }
 
     const data = gameData.data
     if (!data) {
@@ -391,9 +425,11 @@ export function AssistantHost() {
           const covers = hit && (unsure || hit.slots === names)
           const again = hit && covers ? answer(hit.ask, context(data, all)) : null
           if (hit && again && !again.needsItems && !notUnderstood(again) && words(hit.ask).join(' ') !== words(question).join(' ')) finish({ ...again, lines: [`I took that as: "${hit.ask}"`, ...(again.lines ?? [])] })
+          // In a conversation, what is not understood (or only guessed) was most likely said to someone else.
+          else if (conversation && unsure) ignore()
           else finish(notUnderstood(r) ? teachHint(r) : r)
         })
-        .catch(() => finish(notUnderstood(r) ? teachHint(r) : r))
+        .catch(() => (conversation && unsure ? ignore() : finish(notUnderstood(r) ? teachHint(r) : r)))
         .finally(() => clearPending(id))
     }
     const reply = answer(question, context(data, cachedItems))
@@ -532,7 +568,7 @@ export function AssistantHost() {
   // What the Neural network tab's buttons call.
   useEffect(() => {
     chat().set({
-      ask: (text) => askRef.current(text),
+      ask: (text, opts) => askRef.current(text, opts),
       run: (key, action) => runRef.current(key, action),
       toggleListening: () => (stopListening.current ? stopListening.current() : void startListening()),
     })
@@ -565,7 +601,7 @@ export function AssistantHost() {
           if (greeting) setMessages((m) => [...m, { id: nextId.current++, from: 'assistant', text: greeting, at: Date.now() }])
           say(greeting ?? 'Yes sir?')
         },
-        onQuestion: (text, alt) => askRef.current(heardRef.current(text, alt)),
+        onQuestion: (text, alt) => askRef.current(heardRef.current(text, alt), { conversation: true }),
         onEnd: (idle) => {
           chat().set({ talking: false })
           setListen({ state: 'idle', detail: waitingText })

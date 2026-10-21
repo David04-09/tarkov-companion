@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
+  addChatter,
   addNote,
+  isLearnedChatter,
+  NOT_FOR_YOU,
+  WAS_FOR_YOU,
   applyWords,
   askKind,
   asksAboutOwn,
@@ -126,5 +130,19 @@ describe('taught words, however they are heard', () => {
     // Everyday words never count as the nickname.
     expect(applyWords('what is the price of a lot', learnWord([], 'lot', 'lotus', 1)).used).toEqual(['lot'])
     expect(applyWords('where is the loot', list).used).toEqual([])
+  })
+})
+
+describe('talking to someone else', () => {
+  it('knows "not you" and "that was for you"', () => {
+    for (const s of ['not you', 'i wasnt talking to you', 'i was talking to my friend', 'that wasnt for you', 'ignore that']) expect(NOT_FOR_YOU.test(s), s).toBe(true)
+    for (const s of ['i was talking to you', 'that was for you', 'answer that', 'why didnt you answer']) expect(WAS_FOR_YOU.test(s), s).toBe(true)
+    expect(NOT_FOR_YOU.test('where is dorms')).toBe(false)
+  })
+
+  it('recognises lines like ones it was told to ignore', () => {
+    const list = addChatter([], 'dude go left at the gas station')
+    expect(isLearnedChatter('dude go left at the gas station now', list)).toBe(true)
+    expect(isLearnedChatter('where is the gas station', list)).toBe(false)
   })
 })

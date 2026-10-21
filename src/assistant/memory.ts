@@ -299,3 +299,29 @@ export function greetingText(o: { hour: number; kappaLeft: number | null; favour
   if (o.favourite && o.favourite.open > 0) parts.push(`${o.favourite.open} of your open quests are on ${o.favourite.name}, your most played map.`)
   return parts.join(' ')
 }
+
+// ---- Talking to someone else -------------------------------------------------------------
+
+/** "Not you", "I wasn't talking to you": the last thing it answered was not for it. */
+export const NOT_FOR_YOU = /^(?:no )?(?:not you|not talking to you|i was not talking to you|i wasnt talking to you|i was talking to (?:him|her|them|my (?:friend|mate|buddy|team))|that was not for you|that wasnt for you|wasnt for you|not for you|ignore that|ignore me|stay out of it|shush|be quiet|quiet)\b/
+/** "That was for you", "answer that": the last thing it stayed quiet about was for it. */
+export const WAS_FOR_YOU = /^(?:i was talking to you|that was for you|that was a question|answer that|you can answer that|why didnt you answer|did you hear me|i asked you)\b/
+
+const MAX_CHATTER = 60
+
+export function addChatter(list: string[], text: string): string[] {
+  const t = words(text).join(' ')
+  return t ? [...list.filter((c) => c !== t), t].slice(-MAX_CHATTER) : list
+}
+
+/** Something like what the player said to someone else before (most of the words the same). */
+export function isLearnedChatter(text: string, list: string[]): boolean {
+  const w = new Set(words(text))
+  if (!w.size) return false
+  return list.some((c) => {
+    const cw = new Set(c.split(' '))
+    let same = 0
+    for (const x of w) if (cw.has(x)) same++
+    return same / Math.max(w.size, cw.size) >= 0.7
+  })
+}

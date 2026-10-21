@@ -13,6 +13,7 @@ export interface ChangelogEntry {
 
 /** Committed, waiting for the next update. */
 export const UNRELEASED: string[] = [
+  "Assistant: stays out of your conversations. After \"Hey Ranger\" it only answers what is clearly for it; anything it does not understand (\"dude push left\", \"lol that was close\") is left unanswered and shown greyed out instead of \"I don't know\". Say \"not you\" when it answered something you said to a friend and it ignores that kind of line from then on; \"that was for you\" makes it answer what it skipped. The mic button and typed questions always get an answer.",
   "Assistant: understands plain English. When its rules do not understand a question, or only guessed, a small offline language model (17 MB, a millisecond per question, loaded only when needed) works out which question you meant: \"yo what's a LEDX going for\" → the price, \"I need to get out of Woods\" → the extracts, \"who runs around on Interchange\" → the bosses, \"is the bitcoin junk\" → keep or sell. The answer shows how it took you (\"I took that as: …\"). Nonsense still gets \"I don't know\". \"Thanks\" gets \"Anytime, sir\".",
   "Assistant: teaching nicknames works by voice. A nickname is recognised however the speech model spells it and in plural: teach \"leddy means LEDX\" once, and \"lady\", \"laddie\", \"leti\" and \"leddies\" all mean the LEDX. More ways to teach: \"leddy is short for LEDX\", \"by leddy I mean LEDX\", \"remember that leddy means LEDX\". You can teach several nicknames for one item.",
 ]

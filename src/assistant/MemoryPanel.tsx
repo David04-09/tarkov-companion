@@ -84,6 +84,19 @@ export function MemoryPanel() {
         )}
       </div>
 
+      <div>
+        <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink-muted">Talking to others ({m.chatter.length})</h3>
+        <p className="text-xs text-ink-dim">
+          After "Hey Ranger" it only answers what is clearly for it; anything it does not understand is left unanswered (greyed out in the chat). Say "not you" when it answered something you said to a friend, and it ignores that kind of line from then on; "that was for you" makes it answer.
+        </p>
+        {m.chatter.length > 0 && (
+          <div className="mt-1 flex items-center gap-2">
+            <span className="min-w-0 flex-1 truncate text-xs text-ink-dim">Ignored lines: {m.chatter.slice(-3).map((c) => `"${c}"`).join(', ')}{m.chatter.length > 3 ? ', …' : ''}</span>
+            <button type="button" className="btn !px-2 !py-1 !text-xs" onClick={m.clearChatter}>Forget these</button>
+          </div>
+        )}
+      </div>
+
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Answers read out</span>
         <div className="inline-flex overflow-hidden rounded border border-line" role="group" aria-label="Answer length">
