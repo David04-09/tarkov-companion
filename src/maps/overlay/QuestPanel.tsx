@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react'
-import { ChevronDown, ChevronLeft, ChevronUp, Crosshair, PanelRightClose, Search } from 'lucide-react'
-import type { ItemsById, Trader } from '../../api/types'
+import { lazy, Suspense, useMemo, useState } from 'react'
+import { ChevronDown, ChevronLeft, ChevronUp, Crosshair, PanelRightClose, ScanText, Search } from 'lucide-react'
+import type { ItemsById, Task, Trader } from '../../api/types'
 import { KappaBadge, StatusPill } from '../../components/Badges'
 import { STATUS_LABEL, type TaskStatus } from '../../lib/taskStatus'
 import { OVERLAY_LAYERS, taskColor, useMapOverlayStore } from '../../store/mapOverlay'
@@ -16,6 +16,9 @@ import { SpawnsSection } from './SpawnsSection'
 
 type StatusFilter = 'all' | TaskStatus
 type PanelTab = 'quests' | 'briefing' | 'layers'
+// The text reader is heavy: load the dialog only when it is opened.
+const QuestScanDialog = lazy(() => import('./QuestScanDialog'))
+
 const STATUS_FILTERS: StatusFilter[] = ['available', 'locked', 'completed', 'all']
 const STATUS_ORDER: Record<TaskStatus, number> = { available: 0, locked: 1, completed: 2 }
 
@@ -91,6 +94,8 @@ function TaskRow({ mt, status, color, checked, items, hasFloors }: { mt: MapTask
 export interface QuestPanelProps {
   mapName: string
   mapTasks: MapTask[]
+  /** Every quest for this faction, so a scanned quest list can say where the other quests are. */
+  allTasks: Task[]
   statuses: Record<string, TaskStatus>
   traders: Trader[]
   items: ItemsById | undefined
@@ -101,7 +106,7 @@ export interface QuestPanelProps {
 }
 
 /** Right-side panel (bottom drawer on narrow screens) with Quests, Briefing and Layers tabs. */
-export function QuestPanel({ mapName, mapTasks, statuses, traders, items, hasFloors, lootGroups, spawnModel, briefing }: QuestPanelProps) {
+export function QuestPanel({ mapName, mapTasks, allTasks, statuses, traders, items, hasFloors, lootGroups, spawnModel, briefing }: QuestPanelProps) {
   const checkedTaskIds = useMapOverlayStore((s) => s.checkedTaskIds)
   const colorIndexByTask = useMapOverlayStore((s) => s.colorIndexByTask)
   const setTasksChecked = useMapOverlayStore((s) => s.setTasksChecked)
@@ -119,6 +124,7 @@ export function QuestPanel({ mapName, mapTasks, statuses, traders, items, hasFlo
   const [lootSearch, setLootSearch] = useState('')
   const [trader, setTrader] = useState('all')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('available')
+  const [scanOpen, setScanOpen] = useState(false)
 
   const checked = useMemo(() => new Set(checkedTaskIds), [checkedTaskIds])
   const tradersHere = useMemo(() => {
@@ -205,6 +211,7 @@ export function QuestPanel({ mapName, mapTasks, statuses, traders, items, hasFlo
             <div className="flex flex-wrap gap-1.5 text-[11px]">
               <button type="button" onClick={() => setTasksChecked(availableHere, true)} className="btn !px-2 !py-0.5 !text-[11px]">Show all available ({availableHere.length})</button>
               <button type="button" onClick={clearChecked} disabled={checkedTaskIds.length === 0} className="btn !px-2 !py-0.5 !text-[11px]">Clear all</button>
+              <button type="button" onClick={() => setScanOpen(true)} title="Tick the quests from a screenshot of your in-game quest list" className="btn !px-2 !py-0.5 !text-[11px]"><ScanText className="h-3.5 w-3.5" /> Scan quest list</button>
               <span className="ml-auto self-center text-ink-dim">{checkedHere} shown here</span>
             </div>
           </div>
@@ -214,6 +221,11 @@ export function QuestPanel({ mapName, mapTasks, statuses, traders, items, hasFlo
               <TaskRow key={mt.task.id} mt={mt} status={statuses[mt.task.id]} color={checked.has(mt.task.id) ? taskColor(colorIndexByTask[mt.task.id]) : null} checked={checked.has(mt.task.id)} items={items} hasFloors={hasFloors} />
             ))}
           </ul>
+          {scanOpen && (
+            <Suspense fallback={null}>
+              <QuestScanDialog mapName={mapName} mapTasks={mapTasks} allTasks={allTasks} statuses={statuses} onClose={() => setScanOpen(false)} />
+            </Suspense>
+          )}
         </>
       )}
 

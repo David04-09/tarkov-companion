@@ -72,6 +72,7 @@ export function MapsPage() {
   }, [gameData.data, mapId, layer, profile.faction])
 
   const statuses = useMemo(() => computeTaskStatuses(mapTasks.map((m) => m.task), profile), [mapTasks, profile])
+  const factionTasks = useMemo(() => (gameData.data?.tasks ?? []).filter((t) => isFactionEligible(t, profile.faction)), [gameData.data, profile.faction])
 
   const shown = useMemo(() => {
     const byId = new Map(mapTasks.map((m) => [m.task.id, m]))
@@ -180,6 +181,7 @@ export function MapsPage() {
         <QuestPanel
           mapName={selected.name}
           mapTasks={mapTasks}
+          allTasks={factionTasks}
           statuses={statuses}
           traders={gameData.data?.traders ?? []}
           items={items}

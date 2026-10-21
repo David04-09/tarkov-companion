@@ -80,11 +80,37 @@ export function warmUpOcr(): void {
   void getWorker().catch(() => undefined)
 }
 
+/** Otsu's threshold: the brightness that best splits the picture into dark and light. */
+function otsuThreshold(lum: Float32Array): number {
+  const hist = new Array<number>(256).fill(0)
+  for (const v of lum) hist[Math.max(0, Math.min(255, Math.round(v)))]++
+  let sum = 0
+  for (let i = 0; i < 256; i++) sum += i * hist[i]
+  let sumB = 0
+  let wB = 0
+  let best = 0
+  let threshold = 150
+  for (let t = 0; t < 256; t++) {
+    wB += hist[t]
+    if (wB === 0) continue
+    const wF = lum.length - wB
+    if (wF === 0) break
+    sumB += t * hist[t]
+    const between = wB * wF * (sumB / wB - (sum - sumB) / wF) ** 2
+    if (between > best) {
+      best = between
+      threshold = t
+    }
+  }
+  return threshold
+}
+
 /**
  * Words in the screenshot, in screenshot pixel coordinates. Only the bright lettering
- * is kept (item names are white), enlarged 2x for small screenshots.
+ * is kept (item names are white), enlarged 2x for small screenshots. `threshold` 'auto'
+ * picks the cut-off from the picture (grey text on dark panels, e.g. the quest list).
  */
-export async function readWords(image: Blob, crop: { x: number; y: number; w: number; h: number } | null): Promise<OcrWord[]> {
+export async function readWords(image: Blob, crop: { x: number; y: number; w: number; h: number } | null, opts: { threshold?: number | 'auto' } = {}): Promise<OcrWord[]> {
   const bitmap = await createImageBitmap(image)
   const area = crop ?? { x: 0, y: 0, w: bitmap.width, h: bitmap.height }
   const scale = area.w < 1800 ? 2 : 1
@@ -99,6 +125,8 @@ export async function readWords(image: Blob, crop: { x: number; y: number; w: nu
   const lum = new Float32Array(area.w * area.h)
   for (let i = 0; i < lum.length; i++) lum[i] = rgba[i * 4] * 0.299 + rgba[i * 4 + 1] * 0.587 + rgba[i * 4 + 2] * 0.114
   const big = scale === 1 ? lum : bicubicResize(lum, area.w, area.h, area.w * scale, area.h * scale)
+  // Never below 90: on a mostly black screenshot Otsu would also keep dim panel edges.
+  const cutoff = opts.threshold === 'auto' ? Math.max(90, otsuThreshold(lum)) : (opts.threshold ?? 150)
   const W = area.w * scale
   const H = area.h * scale
   // A blank margin: Tesseract misses text that touches the image border (narrow snips).
@@ -109,7 +137,7 @@ export async function readWords(image: Blob, crop: { x: number; y: number; w: nu
   ctx.fillRect(0, 0, canvas.width, canvas.height)
   const out = ctx.createImageData(W, H)
   for (let i = 0; i < big.length; i++) {
-    const v = big[i] > 150 ? 0 : 255 // white names -> black text on white
+    const v = big[i] > cutoff ? 0 : 255 // white names -> black text on white
     out.data[i * 4] = out.data[i * 4 + 1] = out.data[i * 4 + 2] = v
     out.data[i * 4 + 3] = 255
   }

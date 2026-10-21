@@ -36,6 +36,8 @@ export interface MapOverlayState {
   panelCollapsed: boolean
   /** Quests shown on the map are unticked automatically once they are completed (Settings). */
   autoUntickCompleted: boolean
+  /** Quest list scan: tick only the quests found on the screenshot (untick this map's others) instead of adding them. */
+  questScanOnlyFound: boolean
   /** Set by the panel's Focus button; consumed by the map. */
   focusRequest: { taskId: string; nonce: number } | null
   setTaskChecked: (taskId: string, checked: boolean) => void
@@ -48,6 +50,7 @@ export interface MapOverlayState {
   setSpawnToggles: (keys: SpawnToggleKey[], on: boolean) => void
   setPanelCollapsed: (collapsed: boolean) => void
   setAutoUntickCompleted: (on: boolean) => void
+  setQuestScanOnlyFound: (on: boolean) => void
   requestFocus: (taskId: string) => void
 }
 
@@ -81,6 +84,7 @@ export const useMapOverlayStore = create<MapOverlayState>()(
       spawnToggles: {},
       panelCollapsed: false,
       autoUntickCompleted: true,
+      questScanOnlyFound: true,
       focusRequest: null,
       setTaskChecked: (taskId, checked) =>
         set((s) => {
@@ -117,6 +121,7 @@ export const useMapOverlayStore = create<MapOverlayState>()(
         }),
       setPanelCollapsed: (panelCollapsed) => set({ panelCollapsed }),
       setAutoUntickCompleted: (autoUntickCompleted) => set({ autoUntickCompleted }),
+      setQuestScanOnlyFound: (questScanOnlyFound) => set({ questScanOnlyFound }),
       requestFocus: (taskId) => set({ focusRequest: { taskId, nonce: Date.now() } }),
     }),
     {
@@ -131,6 +136,7 @@ export const useMapOverlayStore = create<MapOverlayState>()(
         spawnToggles: s.spawnToggles,
         panelCollapsed: s.panelCollapsed,
         autoUntickCompleted: s.autoUntickCompleted,
+        questScanOnlyFound: s.questScanOnlyFound,
       }),
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<MapOverlayState> & { layers?: Record<string, boolean> }
@@ -144,6 +150,7 @@ export const useMapOverlayStore = create<MapOverlayState>()(
           spawnToggles: p.spawnToggles ?? {},
           panelCollapsed: p.panelCollapsed ?? false,
           autoUntickCompleted: p.autoUntickCompleted ?? true,
+          questScanOnlyFound: typeof p.questScanOnlyFound === 'boolean' ? p.questScanOnlyFound : true,
           layers,
           focusRequest: null,
         }
