@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { ExternalLink, GitFork, Star } from 'lucide-react'
 import { ENDING_NAMES, type StoryChapter, type StoryEndings } from '../api/storyWiki'
 import { Lightbox } from '../components/QuestGuide'
+import { WikiImage } from '../components/WikiImage'
 import { RichHtml } from './RichHtml'
 import { openLink } from './storyUtils'
 
@@ -46,7 +47,7 @@ export function EndingsView({
             <div className="wiki-gallery">
               {endings.images.map((img, i) => ENDING_NAMES.includes(img.section as never) ? null : (
                 <button key={img.full} type="button" className="wiki-figure" onClick={() => setLightbox(i)}>
-                  <img src={img.thumb} alt={img.caption} loading="lazy" />
+                  <WikiImage src={img.thumb} alt={img.caption} loading="lazy" />
                   <span>{img.caption || img.section}</span>
                 </button>
               ))}
@@ -62,7 +63,7 @@ export function EndingsView({
           return (
             <section key={e.name} className={`rounded-lg border p-4 ${isChosen ? 'border-accent bg-accent/5' : 'border-line bg-surface-2'}`}>
               <div className="flex items-start gap-3">
-                {e.icon && <img src={e.icon} alt="" className="h-16 w-14 shrink-0 object-contain" />}
+                {e.icon && <WikiImage src={e.icon} alt="" className="h-16 w-14 shrink-0 object-contain" />}
                 <div className="min-w-0">
                   <h3 className="flex items-center gap-2 text-base font-semibold">
                     {e.name}

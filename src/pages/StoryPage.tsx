@@ -9,6 +9,7 @@ import { ChapterView } from '../story/ChapterView'
 import { EndingsView } from '../story/EndingsView'
 import { QuestGatesView } from '../story/QuestGatesView'
 import { chapterCounts, openLink, shortTitle, useNow } from '../story/storyUtils'
+import { WikiImage } from '../components/WikiImage'
 
 type View = 'chapters' | 'endings' | 'gates'
 
@@ -93,7 +94,7 @@ export function StoryPage() {
           onClick={() => openChapter(c.title)}
           className={`flex w-full items-center gap-2.5 rounded border px-2 py-1.5 text-left ${active ? 'border-accent bg-accent/10' : 'border-transparent hover:bg-surface-3'}`}
         >
-          {c.icon ? <img src={c.icon} alt="" className="h-9 w-7 shrink-0 object-contain" /> : <BookOpen className="h-5 w-5 text-ink-dim" />}
+          {c.icon ? <WikiImage src={c.icon} alt="" className="h-9 w-7 shrink-0 object-contain" /> : <BookOpen className="h-5 w-5 text-ink-dim" />}
           <span className="min-w-0 flex-1">
             <span className="block truncate text-sm text-ink">{shortTitle(c.title)}</span>
             <span className="mt-0.5 flex items-center gap-1.5">

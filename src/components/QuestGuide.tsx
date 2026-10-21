@@ -4,6 +4,7 @@ import { useItems } from '../api/hooks'
 import type { Task, WeaponBuild } from '../api/types'
 import { useWikiGuide, type GuideImage } from '../api/wikiGuide'
 import { isDesktop } from '../desktop/useDesktop'
+import { WikiImage } from './WikiImage'
 
 const STAT_LABEL: Record<string, { label: string; unit?: string; digits?: number }> = {
   ergonomics: { label: 'Ergonomics' },
@@ -103,7 +104,7 @@ export function Lightbox({ images, index, onClose, onIndex }: { images: GuideIma
         <button type="button" onClick={onClose} aria-label="Close" className="rounded p-1 hover:bg-white/10"><X className="h-5 w-5" /></button>
       </div>
       <div className="relative flex min-h-0 flex-1 items-center justify-center px-12 pb-6" onClick={(e) => e.stopPropagation()}>
-        <img src={img.full} alt={img.caption} className="max-h-full max-w-full object-contain" />
+        <WikiImage src={img.full} alt={img.caption} className="max-h-full max-w-full object-contain" />
         {images.length > 1 && (
           <>
             <button type="button" onClick={() => onIndex((index - 1 + images.length) % images.length)} aria-label="Previous" className="absolute left-2 rounded-full bg-black/50 p-2 text-white hover:bg-black/80"><ChevronLeft className="h-6 w-6" /></button>
@@ -152,7 +153,7 @@ export function QuestGuide({ task, compact = false }: { task: Task; compact?: bo
             {images.map((img, i) => (
               <li key={img.full}>
                 <button type="button" onClick={() => setOpen(i)} className="group block w-full overflow-hidden rounded border border-line bg-surface text-left hover:border-accent">
-                  <img src={img.thumb} alt={img.caption} loading="lazy" className="aspect-video w-full object-cover transition-transform group-hover:scale-105" />
+                  <WikiImage src={img.thumb} alt={img.caption} loading="lazy" className="aspect-video w-full object-cover transition-transform group-hover:scale-105" />
                   <span className="block truncate px-1.5 py-1 text-[11px] text-ink-muted" title={img.caption}>{img.caption || img.section || 'Picture'}</span>
                 </button>
               </li>

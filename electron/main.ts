@@ -64,6 +64,11 @@ function bootstrap() {
   if (process.platform === 'win32') app.setAppUserModelId(APP_USER_MODEL_ID)
   protocol.handle('tcres', (req) => resourceResponse(req.url, Boolean(DEV_URL)))
   lockPermissions(session.defaultSession)
+  // The wiki's image server (Cloudflare) answers picture requests without a referrer with a bot
+  // check instead of the picture, and a file:// page never sends one: name the wiki itself.
+  session.defaultSession.webRequest.onBeforeSendHeaders({ urls: ['https://static.wikia.nocookie.net/*'] }, (details, callback) => {
+    callback({ requestHeaders: { ...details.requestHeaders, Referer: 'https://escapefromtarkov.fandom.com/' } })
+  })
   // Installed builds: no menu (it carries Reload and the developer tools).
   if (app.isPackaged) Menu.setApplicationMenu(null)
   settings = new SettingsStore(app.getPath('userData'))

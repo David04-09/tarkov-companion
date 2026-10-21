@@ -14,6 +14,7 @@ import { findMapConfig, resolveBaseLayer, type BaseLayerConfig } from '../maps/m
 import { floorForPosition } from '../maps/overlay/floors'
 import { layerIcon } from '../maps/overlay/objectiveIcons'
 import { useUiStore } from '../store/ui'
+import { WikiImage } from '../components/WikiImage'
 
 export interface KeyDetailsRow {
   item: Item
@@ -109,7 +110,7 @@ function Thumbs({ images, onOpen }: { images: GuideImage[]; onOpen: (img: GuideI
     <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
       {images.map((img) => (
         <button key={img.full} type="button" onClick={() => onOpen(img)} className="group overflow-hidden rounded border border-line bg-surface text-left hover:border-accent">
-          <img src={img.thumb} alt={img.caption} loading="lazy" className="h-28 w-full object-cover" />
+          <WikiImage src={img.thumb} alt={img.caption} loading="lazy" className="h-28 w-full object-cover" />
           {img.caption && <span className="block truncate px-1.5 py-1 text-[11px] text-ink-muted group-hover:text-ink">{img.caption}</span>}
         </button>
       ))}

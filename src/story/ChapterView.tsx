@@ -9,6 +9,7 @@ import { RichHtml } from './RichHtml'
 import { chapterCounts, openLink, shortTitle, useNow, visibleObjectives } from './storyUtils'
 import { formatDateTime } from '../lib/format'
 import { askNotificationPermission } from '../lib/notify'
+import { WikiImage } from '../components/WikiImage'
 
 const clock = (ms: number) => formatDateTime(ms, { weekday: 'short', hour: '2-digit', minute: '2-digit' })
 
@@ -128,9 +129,9 @@ export function ChapterView({
     <div className="space-y-4">
       {/* Header */}
       <div className="overflow-hidden rounded-lg border border-line bg-surface-2">
-        {chapter.banner && <img src={chapter.banner} alt="" className="h-20 w-full object-cover opacity-80 sm:h-24" />}
+        {chapter.banner && <WikiImage src={chapter.banner} alt="" className="h-20 w-full object-cover opacity-80 sm:h-24" />}
         <div className="flex flex-wrap items-start gap-3 p-4">
-          {chapter.icon && <img src={chapter.icon} alt="" className="h-14 w-11 shrink-0 object-contain" />}
+          {chapter.icon && <WikiImage src={chapter.icon} alt="" className="h-14 w-11 shrink-0 object-contain" />}
           <div className="min-w-[12rem] flex-1">
             <h2 className="text-xl font-semibold">{name}</h2>
             <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-ink-muted">

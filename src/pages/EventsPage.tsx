@@ -3,6 +3,7 @@ import { AlertTriangle, CalendarClock, CheckCircle2, ChevronDown, ChevronUp, Ext
 import { useServerStatus } from '../api/hooks'
 import { usePatchNotes, useWikiEvents, type NewsBlock, type WikiEvent } from '../api/wikiNews'
 import { formatDateTime, formatTimeAgo } from '../lib/format'
+import { WikiImage } from '../components/WikiImage'
 
 const OFFICIAL = {
   status: 'https://status.escapefromtarkov.com',
@@ -104,7 +105,7 @@ function EventCard({ e, open, onToggle }: { e: WikiEvent; open: boolean; onToggl
   return (
     <article className={`overflow-hidden rounded-lg border ${e.current ? 'border-accent/60 bg-accent/5' : 'border-line bg-surface-2'}`}>
       <button type="button" onClick={onToggle} className="flex w-full items-start gap-3 p-3 text-left hover:bg-surface-3/50">
-        {e.image ? <img src={e.image.thumb} alt="" loading="lazy" className="h-16 w-28 shrink-0 rounded object-cover" /> : <CalendarClock className="mt-1 h-6 w-6 shrink-0 text-ink-dim" />}
+        {e.image ? <WikiImage src={e.image.thumb} alt="" loading="lazy" className="h-16 w-28 shrink-0 rounded object-cover" /> : <CalendarClock className="mt-1 h-6 w-6 shrink-0 text-ink-dim" />}
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="font-semibold">{e.title}</h3>
