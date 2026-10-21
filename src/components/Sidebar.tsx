@@ -1,8 +1,8 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, Search, Settings, Sparkles, Shield } from 'lucide-react'
 import { useLookupStore } from '../store/lookup'
-import { visibleNav } from '../config/nav'
-import { usePrefs } from '../store/prefs'
+import { NAV_GROUPS, visibleNav } from '../config/nav'
+import { TAB_COLORS, usePrefs } from '../store/prefs'
 import { GAME_MODES } from '../api/client'
 import { useProgressStore } from '../store/progress'
 import { WatcherStatus } from '../desktop/WatcherStatus'
@@ -54,6 +54,7 @@ export function Sidebar() {
   const setPref = usePrefs((s) => s.set)
   const setCollapsed = (fn: (c: boolean) => boolean) => setPref('sidebarCollapsed', fn(collapsed))
   const hiddenTabs = usePrefs((s) => s.hiddenTabs)
+  const tabColors = usePrefs((s) => s.tabColors)
   const navigate = useNavigate()
   const openSettings = (section?: string) => navigate(section ? `/settings#${section}` : '/settings')
 
@@ -94,27 +95,42 @@ export function Sidebar() {
         </button>
       </div>
       <nav className="flex-1 overflow-y-auto py-2" aria-label="Main">
-        <ul className="space-y-0.5 px-2">
-          {visibleNav(hiddenTabs).map((item) => (
-            <li key={item.path}>
-              <NavLink
-                to={item.path}
-                end={item.path === '/'}
-                title={item.label}
-                className={({ isActive }) =>
-                  `flex items-center gap-3 rounded px-2.5 py-2 text-sm transition-colors ${
-                    isActive
-                      ? 'bg-accent/15 text-accent'
-                      : 'text-ink-muted hover:bg-surface-3 hover:text-ink'
-                  }`
-                }
-              >
-                <item.icon className="h-5 w-5 shrink-0" aria-hidden />
-                <span className={`truncate ${labelClass}`}>{item.label}</span>
-              </NavLink>
-            </li>
-          ))}
-        </ul>
+        {NAV_GROUPS.map((g, gi) => {
+          const tabs = visibleNav(hiddenTabs).filter((i) => i.group === g.id)
+          if (!tabs.length) return null
+          return (
+            <div key={g.id} className={gi ? 'mt-2' : ''}>
+              {/* Section heading when the sidebar is wide; a thin divider when it shows icons only. */}
+              <div className={`px-4 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-wider text-ink-dim ${wideOnlyClass}`}>{g.label}</div>
+              {gi > 0 && <div className={`mx-3 mb-1 border-t border-line ${collapsed ? 'block' : 'block md:hidden'}`} aria-hidden />}
+              <ul className="space-y-0.5 px-2">
+                {tabs.map((item) => {
+                  const color = tabColors[item.path] ? TAB_COLORS.find((c) => c.id === tabColors[item.path])?.hex : undefined
+                  return (
+                    <li key={item.path}>
+                      <NavLink
+                        to={item.path}
+                        end={item.path === '/'}
+                        title={item.label}
+                        style={color ? { boxShadow: `inset 3px 0 0 ${color}` } : undefined}
+                        className={({ isActive }) =>
+                          `flex items-center gap-3 rounded px-2.5 py-2 text-sm transition-colors ${
+                            isActive
+                              ? 'bg-accent/15 text-accent'
+                              : 'text-ink-muted hover:bg-surface-3 hover:text-ink'
+                          }`
+                        }
+                      >
+                        <item.icon className="h-5 w-5 shrink-0" style={color ? { color } : undefined} aria-hidden />
+                        <span className={`truncate ${labelClass}`}>{item.label}</span>
+                      </NavLink>
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+          )
+        })}
       </nav>
 
       <div className="space-y-2 border-t border-line p-2">

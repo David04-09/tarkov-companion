@@ -11,7 +11,7 @@ function apply(p: Pick<Prefs, 'theme' | 'uiScale' | 'density' | 'reduceMotion' |
   root.dataset.density = p.density
   root.dataset.reduceMotion = String(p.reduceMotion)
   root.style.fontSize = p.uiScale === 100 ? '' : `${p.uiScale}%`
-  root.classList.toggle('dark', p.theme !== 'daylight')
+  root.classList.toggle('dark', p.theme !== 'daylight' && p.theme !== 'arctic')
   root.style.setProperty('--tc-marker-scale', String(p.markerScale / 100))
 }
 

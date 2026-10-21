@@ -22,8 +22,11 @@ import {
   Volume2,
   X,
 } from 'lucide-react'
-import { NAV_ITEMS } from '../config/nav'
-import { THEMES, usePrefs, type Prefs } from '../store/prefs'
+import { NAV_GROUPS, NAV_ITEMS } from '../config/nav'
+
+/** A copy of `record` without `key`. */
+const withoutKey = <T,>(record: Record<string, T>, key: string): Record<string, T> => Object.fromEntries(Object.entries(record).filter(([k]) => k !== key))
+import { TAB_COLORS, THEMES, usePrefs, type Prefs } from '../store/prefs'
 import { useProgressStore } from '../store/progress'
 import { useMapOverlayStore } from '../store/mapOverlay'
 import { useTimersStore, beep } from '../desktop/timers'
@@ -209,12 +212,12 @@ function AppearanceSection() {
 function GeneralSection() {
   const [landing, setLanding] = usePref('landingPage')
   const [hidden, setHidden] = usePref('hiddenTabs')
+  const [tabColors, setTabColors] = usePref('tabColors')
   const [timeFormat, setTimeFormat] = usePref('timeFormat')
   const [numberStyle, setNumberStyle] = usePref('numberStyle')
   const [compactPrices, setCompactPrices] = usePref('compactPrices')
-  const tabs = NAV_ITEMS.filter((i) => i.path !== '/')
   return (
-    <Section id="general" title="General" icon={Settings2} keywords="start page landing tabs sidebar hide time clock 24 12 hour date number format separator compact prices">
+    <Section id="general" title="General" icon={Settings2} keywords="start page landing tabs sidebar hide colour color coded sections time clock 24 12 hour date number format separator compact prices">
       <Row label="Start page" hint="The tab the app opens on.">
         <Select
           value={landing}
@@ -223,22 +226,71 @@ function GeneralSection() {
           options={NAV_ITEMS.filter((i) => !hidden.includes(i.path)).map((i) => ({ value: i.path, label: i.label }))}
         />
       </Row>
-      <Row label="Sidebar tabs" hint="Untick tabs you never use to hide them. The Dashboard always stays." wide>
-        <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 sm:grid-cols-3">
-          {tabs.map((t) => (
-            <label key={t.path} className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={!hidden.includes(t.path)}
-                onChange={(e) => {
-                  setHidden(e.target.checked ? hidden.filter((p) => p !== t.path) : [...hidden, t.path])
-                  if (!e.target.checked && landing === t.path) setLanding('/')
-                }}
-                className="h-4 w-4"
-              />
-              <t.icon className="h-4 w-4 text-ink-dim" aria-hidden /> {t.label}
-            </label>
-          ))}
+      <Row label="Sidebar tabs" hint="Untick tabs you never use to hide them (the Dashboard always stays), and give tabs a colour to find them faster." wide>
+        <div className="space-y-3">
+          {NAV_GROUPS.map((g) => {
+            const inGroup = NAV_ITEMS.filter((t) => t.group === g.id)
+            return (
+              <div key={g.id}>
+                <div className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-ink-dim">{g.label}</div>
+                <ul className="divide-y divide-line rounded border border-line">
+                  {inGroup.map((t) => {
+                    const always = t.path === '/'
+                    const color = tabColors[t.path]
+                    const hex = color ? TAB_COLORS.find((c) => c.id === color)?.hex : undefined
+                    return (
+                      <li key={t.path} className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-2.5 py-1.5">
+                        <label className="flex min-w-[11rem] flex-1 items-center gap-2 text-sm">
+                          <input
+                            type="checkbox"
+                            checked={always || !hidden.includes(t.path)}
+                            disabled={always}
+                            onChange={(e) => {
+                              setHidden(e.target.checked ? hidden.filter((p) => p !== t.path) : [...hidden, t.path])
+                              if (!e.target.checked && landing === t.path) setLanding('/')
+                            }}
+                            className="h-4 w-4"
+                            aria-label={`Show ${t.label}`}
+                          />
+                          <t.icon className="h-4 w-4 shrink-0" style={hex ? { color: hex } : undefined} aria-hidden />
+                          <span className={!always && hidden.includes(t.path) ? 'text-ink-dim line-through' : ''}>{t.label}</span>
+                        </label>
+                        <div className="flex items-center gap-1" role="radiogroup" aria-label={`Colour for ${t.label}`}>
+                          <button
+                            type="button"
+                            role="radio"
+                            aria-checked={!color}
+                            onClick={() => setTabColors(withoutKey(tabColors, t.path))}
+                            title="No colour"
+                            className={`h-5 w-5 rounded-full border text-[10px] leading-none text-ink-dim ${!color ? 'border-accent ring-1 ring-accent' : 'border-line'}`}
+                          >
+                            ×
+                          </button>
+                          {TAB_COLORS.map((c) => (
+                            <button
+                              key={c.id}
+                              type="button"
+                              role="radio"
+                              aria-checked={color === c.id}
+                              onClick={() => setTabColors({ ...tabColors, [t.path]: c.id })}
+                              title={c.label}
+                              className={`h-5 w-5 rounded-full border ${color === c.id ? 'border-ink ring-2 ring-accent' : 'border-black/30'}`}
+                              style={{ background: c.hex }}
+                            />
+                          ))}
+                        </div>
+                      </li>
+                    )
+                  })}
+                </ul>
+              </div>
+            )
+          })}
+          {Object.keys(tabColors).length > 0 && (
+            <button type="button" className="text-xs text-ink-muted underline hover:text-accent" onClick={() => setTabColors({})}>
+              Remove all tab colours
+            </button>
+          )}
         </div>
       </Row>
       <Row label="Clock" hint={`Example: ${formatDateTime(new Date(2026, 9, 7, 21, 30))}`}>

@@ -13,6 +13,7 @@ export interface ChangelogEntry {
 
 /** Committed, waiting for the next update. */
 export const UNRELEASED: string[] = [
+  "Look and layout: nine new colour themes (Labs, Desert, Woods, Night vision, Thermal, Steel, Lighthouse, Cultist and the light Arctic). The sidebar is sorted into sections (Overview, Quests & story, Raid, Gear & hideout, Trading). Settings → General → Sidebar tabs can hide any tab or give it a colour.",
   'Assistant: a natural voice (Kitten TTS, made on this PC; a 57 MB download the first time). Pick Natural or Windows in the Voice panel, then a female or male voice. A sentence takes about a second to prepare on one CPU core; the Windows voices are still there if you want no download and almost no CPU.',
   'Assistant: listening no longer cuts you off. It waits until you have been quiet for about 2 seconds (up to 25 seconds in total), and it now knows item names, so "battery price" or "where can I find the dorm 303 key" work by voice. Spoken numbers like "three oh three" or "six hundred fifty" become 303 and 650.',
   'Assistant: item questions. "Where can I find X" shows its loose-loot spots on the map (most-spawning map first), traders that sell it, its flea price and the quests that need it; "price of X" gives flea and trader prices; "what is X for" lists quests and what a key opens. Items are found by their words, so "dorm 303 key" finds Dorm room 303 key.',

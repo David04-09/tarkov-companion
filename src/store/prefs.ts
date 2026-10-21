@@ -14,7 +14,29 @@ export const THEMES = [
   { id: 'crimson', label: 'Crimson', note: 'Dark with a red accent', swatch: ['#0f0b0b', '#201717', '#d0645a'] },
   { id: 'daylight', label: 'Daylight', note: 'Light theme for bright rooms', swatch: ['#f4f1ea', '#ffffff', '#8a6a2f'] },
   { id: 'contrast', label: 'High contrast', note: 'Strongest text contrast', swatch: ['#000000', '#141414', '#ffd34d'] },
+  { id: 'labs', label: 'Labs', note: 'Sterile teal, like TerraGroup', swatch: ['#081012', '#132126', '#3fc1c9'] },
+  { id: 'desert', label: 'Desert', note: 'Sand and amber', swatch: ['#110e09', '#221c13', '#e0a458'] },
+  { id: 'woods', label: 'Woods', note: 'Deep forest green', swatch: ['#080d09', '#132016', '#79c37a'] },
+  { id: 'nightvision', label: 'Night vision', note: 'Green phosphor', swatch: ['#020703', '#0b1a0d', '#5cff7a'] },
+  { id: 'thermal', label: 'Thermal', note: 'Violet with hot orange', swatch: ['#0d0812', '#1e1428', '#ff8a3d'] },
+  { id: 'steel', label: 'Steel', note: 'Neutral grey-blue', swatch: ['#0d0f11', '#1b1f24', '#9fb4c7'] },
+  { id: 'lighthouse', label: 'Lighthouse', note: 'Navy and coral', swatch: ['#080c14', '#141c2c', '#ff7a59'] },
+  { id: 'cultist', label: 'Cultist', note: 'Dark violet and magenta', swatch: ['#0c0810', '#1c1324', '#c86be0'] },
+  { id: 'arctic', label: 'Arctic', note: 'Cool light theme', swatch: ['#eef2f5', '#ffffff', '#2f7fbf'] },
 ] as const
+
+/** Colours a sidebar tab can be marked with (Settings → General → Sidebar tabs). */
+export const TAB_COLORS = [
+  { id: 'red', label: 'Red', hex: '#e05252' },
+  { id: 'orange', label: 'Orange', hex: '#e38a3a' },
+  { id: 'yellow', label: 'Yellow', hex: '#d9b84a' },
+  { id: 'green', label: 'Green', hex: '#5cb85c' },
+  { id: 'teal', label: 'Teal', hex: '#3fb8af' },
+  { id: 'blue', label: 'Blue', hex: '#4a90e2' },
+  { id: 'purple', label: 'Purple', hex: '#9b6bd6' },
+  { id: 'pink', label: 'Pink', hex: '#d65fa0' },
+] as const
+export type TabColorId = (typeof TAB_COLORS)[number]['id']
 export type ThemeId = (typeof THEMES)[number]['id']
 
 export type Density = 'comfortable' | 'compact'
@@ -35,6 +57,8 @@ export interface Prefs {
   // General
   landingPage: string
   hiddenTabs: string[]
+  /** Sidebar tab colours by path (none = the theme's colours). */
+  tabColors: Record<string, TabColorId>
   sidebarCollapsed: boolean
   timeFormat: TimeFormat
   numberStyle: NumberStyle
@@ -78,6 +102,7 @@ export const DEFAULT_PREFS: Prefs = {
   reduceMotion: false,
   landingPage: '/',
   hiddenTabs: [],
+  tabColors: {},
   sidebarCollapsed: false,
   timeFormat: 'system',
   numberStyle: 'comma',
@@ -117,6 +142,7 @@ const VALID: { [K in keyof Prefs]: (v: unknown) => boolean } = {
   reduceMotion: isBool,
   landingPage: (v) => typeof v === 'string' && v.startsWith('/') && v.length < 40,
   hiddenTabs: (v) => Array.isArray(v) && v.length < 40 && v.every((x) => typeof x === 'string'),
+  tabColors: (v) => typeof v === 'object' && v !== null && !Array.isArray(v) && Object.keys(v).length < 40 && Object.values(v).every((c) => TAB_COLORS.some((t) => t.id === c)),
   sidebarCollapsed: isBool,
   timeFormat: oneOf('system', '24h', '12h'),
   numberStyle: oneOf('comma', 'space', 'dot'),
