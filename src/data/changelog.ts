@@ -16,6 +16,7 @@ export const UNRELEASED: string[] = [
   'Assistant: a natural voice (Kitten TTS, made on this PC; a 57 MB download the first time). Pick Natural or Windows in the Voice panel, then a female or male voice. A sentence takes about a second to prepare on one CPU core; the Windows voices are still there if you want no download and almost no CPU.',
   'Assistant: listening no longer cuts you off. It waits until you have been quiet for about 2 seconds (up to 25 seconds in total), and it now knows item names, so "battery price" or "where can I find the dorm 303 key" work by voice. Spoken numbers like "three oh three" or "six hundred fifty" become 303 and 650.',
   'Assistant: item questions. "Where can I find X" shows its loose-loot spots on the map (most-spawning map first), traders that sell it, its flea price and the quests that need it; "price of X" gives flea and trader prices; "what is X for" lists quests and what a key opens. Items are found by their words, so "dorm 303 key" finds Dorm room 303 key.',
+  "Assistant: it no longer keeps asking where you are. \"Closest quest\" uses the place you named last, tips asking for a place are shown but not read out, and Test voice says a neutral line.",
   "Weapon builder: when your build matches no ready-made one exactly, the picture is now the real picture of the closest ready-made build, with what differs listed underneath (\"+ ARFX, − M4SS\"). Inside a part you see that part's own picture. The parts layout from 2.0.0 is still there as an experimental switch.",
 ]
 

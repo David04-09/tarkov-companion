@@ -42,6 +42,8 @@ export interface Reply {
   walk?: { fromName: string; toName: string }
   /** Where the player said they are, remembered for "how do I get to …" without a start. */
   youAt?: Place
+  /** Shown but not read out loud (tips asking for more detail). */
+  quiet?: boolean
   /** Things the assistant offers to do; each is a button and runs only when clicked. */
   actions?: AssistantAction[]
 }
@@ -186,7 +188,13 @@ export function answer(question: string, ctx: AssistantContext): Reply {
   if (wantsNearest || (saysWhereIAm && places.length)) {
     const { place, ambiguous } = pickPlace(places, contextMap)
     if (ambiguous.length) return { text: `${ambiguous[0].name} is on more than one map. Which one?`, lines: [...new Set(ambiguous.map((p) => mapByLabelKey(ctx, p.mapKey, null)?.name ?? p.mapKey))] }
-    if (!place) return { text: contextMap ? `Where on ${contextMap.name} are you? Name a place, like ${exampleFor(contextMap)}.` : 'Where are you? Name a place and the map, like "I\'m at Dorms on Customs".' }
+    // No place in the question: the place the player named last, if any (asking every time got annoying).
+    const known = !place && !ambiguous.length && ctx.lastPlace && (!namedMap || ctx.lastPlace.mapKey === labelKey(namedMap.normalizedName)) ? ctx.lastPlace : null
+    if (known) {
+      const map = mapByLabelKey(ctx, known.mapKey, contextMap)
+      if (map) return { ...nearestQuest(known, map, ctx), youAt: known }
+    }
+    if (!place) return { text: contextMap ? `Tip: name a place on ${contextMap.name}, like "I'm at ${exampleFor(contextMap)}".` : 'Tip: name a place and the map, like "I\'m at Dorms on Customs".', quiet: true }
     const map = mapByLabelKey(ctx, place.mapKey, contextMap)
     if (!map) return { text: `I know ${place.name}, but not which map it belongs to.` }
     return { ...nearestQuest(place, map, ctx), youAt: place }
@@ -359,7 +367,7 @@ function route(q: string[], hits: { value: Place; start: number }[], contextMap:
   if (!origins.length && ctx.lastPlace) origins = [ctx.lastPlace]
   if (!origins.length) {
     const to = after[0]?.value.name ?? questHit?.value.name
-    return { text: `Where are you now? Say for example "I spawned at Crossroads, how do I get to ${to}?"` }
+    return { text: `Tip: say where you start too, like "I spawned at Crossroads, how do I get to ${to}?"`, quiet: true }
   }
   const targets = after.map((h) => h.value)
   // Both ends on one map: the map named or talked about, else any map they share.

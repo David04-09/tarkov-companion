@@ -125,7 +125,7 @@ function VoicePanel() {
         <span className="w-10 tabular-nums text-xs text-ink-dim">{s.rate.toFixed(1)}×</span>
       </label>
       <div className="flex flex-wrap items-center gap-2">
-        <button type="button" className="btn" onClick={() => speak('Ready when you are. Where are you on the map?', { ...s, onStatus: setStatus })}>
+        <button type="button" className="btn" onClick={() => speak('This is how I sound. Ask me anything about Tarkov.', { ...s, onStatus: setStatus })}>
           <Volume2 className="h-4 w-4" /> Test voice
         </button>
         {status && <span className="text-xs text-ink-dim">{status}</span>}
@@ -197,7 +197,7 @@ export function NeuralNetworkPage() {
       if (reply.mapId) lastMapId.current = reply.mapId
       if (reply.youAt) lastPlace.current = reply.youAt
       setCard(reply.map ?? null)
-      if (voice.speak) speak(reply.text, { ...voice, onStatus: (m) => m && setListen((l) => (l.state === 'idle' ? { state: 'idle', detail: m } : l)) })
+      if (voice.speak && !reply.quiet) speak(reply.text, { ...voice, onStatus: (m) => m && setListen((l) => (l.state === 'idle' ? { state: 'idle', detail: m } : l)) })
     },
     [voice],
   )

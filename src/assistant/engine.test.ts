@@ -97,6 +97,14 @@ describe('answer', () => {
     expect(r.text).toBe('From Dorms to Crackhouse.')
   })
 
+  it('uses the last place named instead of asking again', () => {
+    const here = answer("I'm at dorms, closest quest?", ctx).youAt ?? null
+    const r = answer('next closest quest', { ...ctx, lastPlace: here })
+    expect(r.text).toContain('Near One')
+    // Without any place known it shows a quiet tip (not read out loud).
+    expect(answer('next closest quest', ctx).quiet).toBe(true)
+  })
+
   it('offers to mark a quest done, never does it by itself', () => {
     const r = answer('I finished Near One', ctx)
     expect(r.actions).toEqual([{ kind: 'complete', taskId: 't-near', done: true, label: 'Mark Near One done' }])
