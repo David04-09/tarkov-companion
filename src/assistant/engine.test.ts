@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { GameData, GameMap, Task } from '../api/types'
+import type { GameData, GameMap, Item, Task } from '../api/types'
 import type { MapTask } from '../maps/overlay/mapTasks'
 import { answer, type AssistantContext } from './engine'
 import { placeEntries } from './places'
@@ -108,6 +108,23 @@ describe('answer', () => {
   it('offers to mark a quest done, never does it by itself', () => {
     const r = answer('I finished Near One', ctx)
     expect(r.actions).toEqual([{ kind: 'complete', taskId: 't-near', done: true, label: 'Mark Near One done' }])
+  })
+
+  it('adds collected items to the Item Collection and can take them off again', () => {
+    const wires = { id: 'wires', name: 'Bundle of wires', shortName: 'Wires', types: [], sellToTrader: [], buyFromTrader: [] } as unknown as Item
+    const analyzer = { id: 'gas', name: 'Gas analyzer', shortName: 'GasAn', types: [], sellToTrader: [], buyFromTrader: [] } as unknown as Item
+    const need = { itemId: 'wires', fir: 0, nonFir: 12, total: 12, sources: [], alternatives: [] }
+    const c: AssistantContext = { ...ctx, items: { wires, gas: analyzer }, collected: { wires: 2 }, needFor: (id) => (id === 'wires' ? need : undefined) }
+    const add = answer('collected 5 wires', c)
+    expect(add.collect).toEqual({ itemId: 'wires', from: 2, to: 7 })
+    expect(add.text).toContain('7 of 12 needed')
+    expect(add.actions?.[0]).toMatchObject({ kind: 'setCollected', itemId: 'wires', count: 2 })
+    expect(answer('i found two wire', c).collect?.to).toBe(4)
+    expect(answer('used 3 wires', c).collect).toEqual({ itemId: 'wires', from: 2, to: 0 })
+    expect(answer('picked up a gas analyser', c).collect).toEqual({ itemId: 'gas', from: 0, to: 1 })
+    expect(answer('how many wires do i still need', c).text).toContain('2 of 12 needed, 10 to go')
+    // Asking where to find something is not collecting it.
+    expect(answer('where can i find wires', c).collect).toBeUndefined()
   })
 
   it('says when it did not understand', () => {

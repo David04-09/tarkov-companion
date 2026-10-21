@@ -8,7 +8,7 @@ import type { TaskStatus } from '../lib/taskStatus'
 import type { MapTask } from '../maps/overlay/mapTasks'
 import { labelKey, nearestPlace, placeEntries, type Place } from './places'
 import { compact, findNames, sayDistance, words, type NameEntry } from './text'
-import { findItem, infoAnswer, itemQuestionKind, priceAnswer, whereAnswer } from './items'
+import { collectAnswer, expandNicknames, findItem, infoAnswer, itemQuestionKind, needAnswer, parseCount, priceAnswer, whereAnswer, type ItemContext } from './items'
 
 export interface MapPoint {
   id: string
@@ -44,6 +44,8 @@ export interface Reply {
   youAt?: Place
   /** Shown but not read out loud (tips asking for more detail). */
   quiet?: boolean
+  /** An Item Collection change the page makes right away (with an Undo button). */
+  collect?: { itemId: string; from: number; to: number }
   /** Things the assistant offers to do; each is a button and runs only when clicked. */
   actions?: AssistantAction[]
 }
@@ -53,9 +55,10 @@ export type AssistantAction =
   | { kind: 'showOnMap'; taskId: string; mapKey: string; label: string }
   | { kind: 'openMap'; mapKey: string; label: string }
   | { kind: 'openWeapon'; itemId: string; label: string }
+  | { kind: 'setCollected'; itemId: string; count: number; label: string }
   | { kind: 'routeOnMap'; mapKey: string; path: Position[]; fromLabel: string; toLabel: string; label: string }
 
-export interface AssistantContext {
+export interface AssistantContext extends Pick<ItemContext, 'collected' | 'needFor'> {
   data: GameData
   statuses: Record<string, TaskStatus>
   /** Quests that count for this player (faction). */
@@ -200,6 +203,19 @@ export function answer(question: string, ctx: AssistantContext): Reply {
     return { ...nearestQuest(place, map, ctx), youAt: place }
   }
 
+  // 2a. Item Collection: "collected 5 wires", "used 2 wires", "how many wires do I still need".
+  const asking = /\b(where|how do|how can|how to)\b/.test(said)
+  const collecting = !asking && /\b(collected|picked up|grabbed|looted|got|found|add|added|have another)\b/.test(said)
+  const using = !asking && /\b(used|sold|handed in|turned in|lost|gave|removed|remove|take away|took away|minus)\b/.test(said)
+  const howMany = /\bhow many\b/.test(said) && /\b(need|needed|left|still|have|got)\b/.test(said)
+  if ((collecting || using || howMany) && !wantsRoute) {
+    if (!ctx.items) return { text: 'Loading the item list…', needsItems: true }
+    const { count, at } = parseCount(q)
+    const hit = findItem(expandNicknames(q.filter((_, i) => i !== at && !mapWords.has(i))), ctx.items)
+    if (hit) return howMany ? needAnswer(hit, ctx) : collectAnswer(hit, using ? -count : count, ctx)
+    if (!howMany) return { text: 'Which item? Say its name, like "collected 5 wires".', quiet: true }
+  }
+
   // 2. Items: where to find one, what it is worth, what it is for. The item list is large, so it is
   // loaded only when a question needs it; places and quests are answered without it.
   const priceWords = /\b(price|prices|cost|costs|worth|value|sell|sells|selling|buy|key|keys|keycard|how much)\b/.test(said)
@@ -209,7 +225,7 @@ export function answer(question: string, ctx: AssistantContext): Reply {
       if (priceWords || !places.length) return { text: 'Loading the item list…', needsItems: true }
     } else {
       const neededIds = new Set(ctx.tasks.filter((t) => ctx.statuses[t.id] !== 'completed').flatMap((t) => t.objectives.flatMap((o) => o.itemIds)))
-      const hit = findItem(q, ctx.items, mapWords, (it) => (neededIds.has(it.id) ? 1 : 0))
+      const hit = findItem(expandNicknames(q.filter((_, i) => !mapWords.has(i))), ctx.items, undefined, (it) => (neededIds.has(it.id) ? 1 : 0))
       if (hit) {
         const kind = itemQuestionKind(said)
         return kind === 'where' ? whereAnswer(hit, ctx) : kind === 'price' ? priceAnswer(hit, ctx) : infoAnswer(hit, ctx)
@@ -319,7 +335,7 @@ export function answer(question: string, ctx: AssistantContext): Reply {
 
   // 8. An item named on its own ("LEDX", "dorm 303 key").
   if (ctx.items) {
-    const hit = findItem(q, ctx.items, mapWords)
+    const hit = findItem(expandNicknames(q.filter((_, i) => !mapWords.has(i))), ctx.items)
     if (hit) return infoAnswer(hit, ctx)
     const itemHit = index.items ? findNames(q, index.items, 6).filter((h) => h.len >= 3)[0] : undefined
     if (itemHit) return infoAnswer({ item: itemHit.value, others: [] }, ctx)

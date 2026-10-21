@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Brain, CheckCircle2, Circle, Loader2, Map as MapIcon, Mic, MicOff, Send, Square, Volume2, VolumeX, X } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
-import { itemKeys, useGameData } from '../api/hooks'
+import { itemKeys, useCrafts, useGameData, useHideout } from '../api/hooks'
+import { computeNeeds, type ItemNeed } from '../lib/needs'
+import { useInventoryStore, useModeInventory } from '../store/inventory'
 import { fetchItems } from '../api/queries'
 import type { GameData, GameMap, ItemsById } from '../api/types'
 import { AssistantMap } from '../assistant/AssistantMap'
@@ -160,6 +162,10 @@ export function NeuralNetworkPage() {
   /** Runs an offered action (only ever from a click on its button). */
   const run = (key: string, a: AssistantAction) => {
     setDone((d) => new Set(d).add(key))
+    if (a.kind === 'setCollected') {
+      useInventoryStore.getState().setCollected(useProgressStore.getState().gameMode, a.itemId, a.count)
+      return
+    }
     if (a.kind === 'complete') {
       useProgressStore.getState().setTaskCompleted(a.taskId, a.done)
       return
@@ -176,6 +182,24 @@ export function NeuralNetworkPage() {
   const faction = profile.faction
 
   /** Everything an answer may use; the item list only if it is already loaded (it is large). */
+  // Item Collection: the same "still needed" numbers as the Item Collection page (hideout and
+  // crafts are small and load with this tab).
+  const inventory = useModeInventory()
+  const favoriteCraftIds = useInventoryStore((st) => st.favoriteCraftIds)
+  const hideout = useHideout()
+  const crafts = useCrafts()
+  const needsCache = useRef<{ inputs: unknown[]; list: ItemNeed[] } | null>(null)
+  const needsFor = (data: GameData, items: ItemsById | undefined): ItemNeed[] => {
+    const inputs = [data, items, profile.completedTaskIds, profile.faction, hideout.data, crafts.data, inventory.stationLevels, favoriteCraftIds]
+    const c = needsCache.current
+    if (c && c.inputs.every((v, i) => v === inputs[i])) return c.list
+    const list = [
+      ...computeNeeds({ tasks: data.tasks, completedTaskIds: profile.completedTaskIds, faction: profile.faction, stations: hideout.data ?? [], stationLevels: inventory.stationLevels, crafts: crafts.data ?? [], favoriteCraftIds, items }).values(),
+    ]
+    needsCache.current = { inputs, list }
+    return list
+  }
+
   const context = (data: GameData, items: ItemsById | undefined): AssistantContext => {
     const eligible = new Set(tasks.map((t) => t.id))
     return {
@@ -186,6 +210,8 @@ export function NeuralNetworkPage() {
       playerLevel: profile.playerLevel,
       lastMapId: lastMapId.current,
       lastPlace: lastPlace.current,
+      collected: inventory.collected,
+      needFor: (itemId) => needsFor(data, items).find((n) => n.itemId === itemId || n.alternatives.includes(itemId)),
       tasksOnMap: (map: GameMap) => tasksOnMapFor(data, map, eligible, faction),
       heading: (map, from, to) => headingOnMap(map.normalizedName, from, to),
     }
@@ -196,6 +222,8 @@ export function NeuralNetworkPage() {
       setMessages((m) => m.map((x) => (x.id === id ? { ...x, text: reply.text, reply } : x)))
       if (reply.mapId) lastMapId.current = reply.mapId
       if (reply.youAt) lastPlace.current = reply.youAt
+      // "Collected 5 wires": done right away (hands-free in game); the answer has an Undo button.
+      if (reply.collect) useInventoryStore.getState().setCollected(useProgressStore.getState().gameMode, reply.collect.itemId, reply.collect.to)
       setCard(reply.map ?? null)
       if (voice.speak && !reply.quiet) speak(reply.text, { ...voice, onStatus: (m) => m && setListen((l) => (l.state === 'idle' ? { state: 'idle', detail: m } : l)) })
     },

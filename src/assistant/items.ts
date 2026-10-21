@@ -4,16 +4,43 @@
  * such as jackets and safes are not in the data), trader offers, flea prices, quests and locks.
  */
 import type { GameData, Item, ItemsById } from '../api/types'
+import type { ItemNeed } from '../lib/needs'
 import type { TaskStatus } from '../lib/taskStatus'
 import type { MapPoint, Reply } from './engine'
+import { similarity } from '../maps/overlay/questListMatch'
 import { compact, words } from './text'
 
 /** Words that are about the question, not part of an item's name. */
 const NOT_NAME = new Set(
-  `where wheres can could i im find get found spawn spawns spawning loot looted is are the a an of how much many what whats which who for used use need needed needs do does did it its this that cost costs price prices worth value sell sells selling sold buy buying bought to me my show tell about please on in at raid good any some there best place places locate location trader traders flea market item items`.split(
+  `where wheres can could i im find get found spawn spawns spawning loot looted is are the a an of how much many what whats which who for used use need needed needs do does did it its this that cost costs price prices worth value sell sells selling sold buy buying bought to me my show tell about please on in at raid good any some there best place places locate location trader traders flea market item items
+  collected collect picked pick up got grabbed grab add added have has just one more another x pcs piece pieces stash collection inventory into from remove removed take took away minus lost gave give handed hand still left total`.split(
     /\s+/,
   ),
 )
+
+/** What players call some items, pointing at words of the real name. */
+const NICKNAMES: Record<string, string> = {
+  moonshine: 'fierce hatchling moonshine',
+  bitcoin: 'physical bitcoin',
+  btc: 'physical bitcoin',
+  lion: 'bronze lion',
+  cat: 'cat figurine',
+  horse: 'horse figurine',
+  rolex: 'roler submariner',
+  tushonka: 'beef stew',
+  gpu: 'graphics card',
+  wires: 'bundle of wires',
+  hose: 'corrugated hose',
+  tetriz: 'tetriz portable game',
+  intel: 'intelligence folder',
+  vase: 'antique vase',
+  teapot: 'antique teapot',
+  sas: 'sas drive',
+  flash: 'secure flash drive',
+}
+
+/** British spellings and other small differences folded together ("analyser" = "analyzer"). */
+const fold = (w: string) => w.replace(/ise$|ize$/, 'iz').replace(/yse(r|rs)?$/, 'yze$1').replace(/our$/, 'or')
 
 interface Indexed {
   item: Item
@@ -34,7 +61,28 @@ function indexItems(items: ItemsById): Indexed[] {
 function tokenMatches(said: string, name: string): boolean {
   if (said === name) return true
   if (said.length >= 3 && name.startsWith(said)) return true
-  return name.length >= 4 && said.startsWith(name) && said.length - name.length <= 1
+  if (name.length >= 4 && said.startsWith(name) && said.length - name.length <= 1) return true
+  // Spelling variants and plurals of longer words ("analysers" / "analyzer").
+  const a = fold(said.replace(/s$/, ''))
+  const b = fold(name.replace(/s$/, ''))
+  return a === b || (a.length >= 6 && similarity(a, b) >= 0.8)
+}
+
+const NUMBER_WORDS: Record<string, number> = { a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, fifteen: 15, twenty: 20, couple: 2 }
+
+/** The amount in "collected 5 wires" / "found two GPUs" (1 when none is said), and its word index. */
+export function parseCount(question: string[]): { count: number; at: number } {
+  for (let i = 0; i < question.length; i++) {
+    const w = question[i]
+    if (/^\d{1,4}$/.test(w)) return { count: Number(w), at: i }
+    if (w in NUMBER_WORDS && w !== 'a' && w !== 'an') return { count: NUMBER_WORDS[w], at: i }
+  }
+  return { count: 1, at: -1 }
+}
+
+/** The question with nicknames spelled out ("gpu" -> "graphics card"). */
+export function expandNicknames(question: string[]): string[] {
+  return question.flatMap((w) => (NICKNAMES[w] ? NICKNAMES[w].split(' ') : [w]))
 }
 
 export interface ItemMatch {
@@ -72,6 +120,45 @@ export interface ItemContext {
   data: GameData
   tasks: { id: string; name: string; objectives: { itemIds: string[]; type: string; requiredKeys: string[][] }[] }[]
   statuses: Record<string, TaskStatus>
+  /** Item Collection counts (this game mode), by item id. */
+  collected?: Record<string, number>
+  /** What open quests, unbuilt hideout levels and favourite crafts still need of an item (same as the Item Collection page). */
+  needFor?: (itemId: string) => ItemNeed | undefined
+}
+
+/** The Item Collection entry an item counts towards: a quest's accepted alternative counts for its main item. */
+function collectionTarget(it: Item, ctx: ItemContext): { id: string; need: ItemNeed | undefined } {
+  const need = ctx.needFor?.(it.id)
+  return { id: need?.itemId ?? it.id, need }
+}
+
+function haveLine(name: string, have: number, need: ItemNeed | undefined): string {
+  if (!need || need.total === 0) return `You have ${have}; none of your open quests, hideout levels or favourite crafts need ${name}.`
+  const left = Math.max(0, need.total - have)
+  return left ? `You have ${have} of ${need.total} needed, ${left} to go.` : `You have ${have} of ${need.total} needed: done.`
+}
+
+/** "Collected 5 wires" / "used 2 wires": the change to make in the Item Collection and what to say. */
+export function collectAnswer(m: ItemMatch, delta: number, ctx: ItemContext): Reply {
+  const { id, need } = collectionTarget(m.item, ctx)
+  const before = ctx.collected?.[id] ?? 0
+  const after = Math.max(0, before + delta)
+  const name = m.item.name
+  const verb = delta > 0 ? `Added ${delta} ${name} to` : `Took ${Math.min(-delta, before)} ${name} off`
+  return {
+    text: `${verb} your Item Collection. ${haveLine(name, after, need)}`,
+    lines: [...(id !== m.item.id ? ['Counted towards the item your quest asks for (it accepts this one too).'] : []), ...alsoLine(m)],
+    collect: { itemId: id, from: before, to: after },
+    actions: before === after ? [] : [{ kind: 'setCollected', itemId: id, count: before, label: 'Undo' }],
+  }
+}
+
+/** "How many wires do I still need?" */
+export function needAnswer(m: ItemMatch, ctx: ItemContext): Reply {
+  const { id, need } = collectionTarget(m.item, ctx)
+  const have = ctx.collected?.[id] ?? 0
+  const lines = need?.sources.slice(0, 6).map((s) => `${s.name}: ${s.count}${'fir' in s && s.fir ? ' (found in raid)' : ''}`) ?? []
+  return { text: `${m.item.name}: ${haveLine(m.item.name, have, need)}`, lines: [...lines, ...alsoLine(m)] }
 }
 
 const rub = (n: number) => `${Math.round(n).toLocaleString('en-US')} ₽`
