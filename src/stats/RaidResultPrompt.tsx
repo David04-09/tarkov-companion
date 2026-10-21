@@ -4,6 +4,7 @@ import type { GameMode } from '../api/client'
 import { useGameData } from '../api/hooks'
 import { modeToGameMode } from '../desktop/useDesktop'
 import { useProgressStore } from '../store/progress'
+import { useAssistantMemory } from '../store/assistantMemory'
 import { raidKey, useRaidLogStore } from '../store/raidLog'
 import { ResultButtons, RoleButtons } from './RaidLog'
 
@@ -37,6 +38,8 @@ export function RaidResultPrompt() {
       <div className="space-y-1.5">
         <ResultButtons value={entry?.result} onPick={(result) => {
             setEntry(pending.mode, pending.key, { result })
+            const mapKey = maps?.find((m) => m.nameId.toLowerCase() === pending.location.toLowerCase())?.normalizedName
+            if (mapKey) useAssistantMemory.getState().raidResult(mapKey, result ?? null, entry?.result ?? null)
             if (result && entry?.role) setPending(null)
           }} />
         <div className="flex items-center gap-2">

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { Brain, CheckCircle2, Circle, Loader2, Map as MapIcon, Mic, MicOff, Send, Square, Volume2, VolumeX, X } from 'lucide-react'
 import { useGameData } from '../api/hooks'
 import { AssistantMap } from '../assistant/AssistantMap'
+import { MemoryPanel } from '../assistant/MemoryPanel'
 import { WAKE_NAMES } from '../assistant/wake'
 import { listVoices, pickNaturalVoice, pickVoice, speak, speechAvailable, stopSpeaking, voiceGender } from '../assistant/speech'
 import { NATURAL_VOICES } from '../assistant/naturalVoice'
@@ -14,10 +15,11 @@ const ROADMAP: { done: boolean; title: string; detail: string }[] = [
   { done: true, title: 'Answer questions and guide on the map', detail: 'Places, extracts, walking routes around water, fences, rocks and minefields, closest quests, items and keys, your progress. Spoken out loud.' },
   { done: true, title: 'Talk to it', detail: 'Mic button, or a hotkey in game (Settings → Desktop app). Recognised on this PC; nothing is sent anywhere.' },
   { done: true, title: 'Do things for you (first steps)', detail: 'Mark quests done, show a quest or a route on the Maps tab, open a gun in the Weapon builder. Each one only when you click its button.' },
-  { done: false, title: 'More things to do', detail: 'Plan a raid, fill the Item Collection, pick parts for a gun build.' },
+  { done: true, title: 'Learn from you', detail: 'Remembers what you tell it, learns your words and your maps from the game log, keeps answers short if you keep cutting it off, and greets you with real numbers. All on this PC.' },
+  { done: false, title: 'More things to do', detail: 'Pick parts for a gun build, plan a whole raid.' },
 ]
 
-const EXAMPLES = ["I'm at Dorms, what's the closest quest?", 'Where is Crackhouse?', 'Extracts on Woods', 'What is the LEDX for?']
+const EXAMPLES = ["I'm at Dorms, what's the closest quest?", 'Where is Crackhouse?', 'What should I play tonight?', 'Remember that I keep the 314 key in my case', 'What do you know about me?']
 
 function VoicePanel() {
   const s = useAssistantStore()
@@ -233,6 +235,11 @@ export function NeuralNetworkPage() {
       <section className="rounded-lg border border-line bg-surface-2 p-4">
         <h2 className="mb-3 text-sm font-semibold">Voice</h2>
         <VoicePanel />
+      </section>
+
+      <section className="rounded-lg border border-line bg-surface-2 p-4">
+        <h2 className="mb-3 text-sm font-semibold">Memory: what it has learned about you</h2>
+        <MemoryPanel />
       </section>
 
       <section className="rounded-lg border border-line bg-surface-2 p-4">

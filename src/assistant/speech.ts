@@ -61,7 +61,12 @@ export function onSpeakingChange(cb: (speaking: boolean) => void): () => void {
   speakingListeners.add(cb)
   return () => speakingListeners.delete(cb)
 }
+let talking = false
+/** Answers cut off by the player (Stop, or talking over them), for the assistant's style (memory.ts). */
+let cuts = 0
+export const cutCount = () => cuts
 function speaking(on: boolean) {
+  talking = on
   for (const cb of speakingListeners) cb(on)
 }
 
@@ -112,7 +117,14 @@ function speakWindows(text: string, opts: SpeakOptions): Promise<void> {
   })
 }
 
+/** Stops talking because the player wanted it to (Stop button, wake word over an answer). */
 export function stopSpeaking(): void {
+  if (talking) cuts++
+  stopSpeakingQuietly()
+}
+
+/** Stops talking for the app's own reasons (a new briefing), not counted as the player cutting it off. */
+export function stopSpeakingQuietly(): void {
   stopWindows()
   stopNatural()
   speakingToken++

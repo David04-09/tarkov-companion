@@ -5,11 +5,12 @@ import { Map as MapIcon, Radio, Volume2, X } from 'lucide-react'
 import { gameDataKeys, itemKeys } from '../api/hooks'
 import { fetchItems } from '../api/queries'
 import type { GameData, ItemsById } from '../api/types'
-import { speak, stopSpeaking } from '../assistant/speech'
+import { speak, stopSpeaking, stopSpeakingQuietly } from '../assistant/speech'
 import { computeTaskStatuses, isFactionEligible } from '../lib/taskStatus'
 import { findMapConfig, resolveBaseLayer } from '../maps/mapConfig'
 import { buildMapTasks } from '../maps/overlay/mapTasks'
 import { useAssistantStore } from '../store/assistant'
+import { useAssistantMemory } from '../store/assistantMemory'
 import { useMapOverlayStore } from '../store/mapOverlay'
 import { useProgressStore } from '../store/progress'
 import { useRaidBriefingStore } from '../store/raidBriefing'
@@ -24,7 +25,7 @@ const SOURCE_TEXT: Record<RaidBriefing['source'], string> = {
 
 function sayBriefing(b: RaidBriefing) {
   const v = useAssistantStore.getState()
-  stopSpeaking()
+  stopSpeakingQuietly()
   void speak(b.spoken, v)
 }
 
@@ -52,7 +53,10 @@ export function RaidBriefingHost() {
           e.kind === 'raidMatched'
             ? data?.maps.find((m) => m.nameId.toLowerCase() === e.location.toLowerCase())
             : data?.maps.find((m) => m.scenePath && m.scenePath.toLowerCase() === e.scenePath.toLowerCase())
-        if (map) store.ask(map.normalizedName, e.at)
+        if (!map) return
+        // Habits: which maps are played and when (assistant memory).
+        useAssistantMemory.getState().raid(map.normalizedName, e.at)
+        store.ask(map.normalizedName, e.at)
       }),
     [queryClient],
   )

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { itemKeys, useCrafts, useGameData, useHideout } from '../api/hooks'
 import { fetchItems } from '../api/queries'
@@ -9,6 +9,8 @@ import { computeTaskStatuses, isFactionEligible } from '../lib/taskStatus'
 import { findMapConfig, resolveBaseLayer } from '../maps/mapConfig'
 import { buildMapTasks, type MapTask } from '../maps/overlay/mapTasks'
 import { useAssistantStore } from '../store/assistant'
+import { useAssistantMemory } from '../store/assistantMemory'
+import { useRaidLogStore } from '../store/raidLog'
 import { useAssistantChat, type ChatMessage } from '../store/assistantChat'
 import { useAssistantListenStore } from '../store/assistantListen'
 import { useAssistantRouteStore } from '../store/assistantRoute'
@@ -22,7 +24,10 @@ import { headingOnMap } from './heading'
 import { confirmWord } from './items'
 import { listenOnce, type ListenState } from './listen'
 import { ALL_PLACES, type Place } from './places'
-import { onSpeakingChange, speak, stopSpeaking } from './speech'
+import { cutCount, onSpeakingChange, speak, stopSpeaking } from './speech'
+import { applyWords, askKind, asksAboutOwn, findNote, firstSentence, FORGET_ALL, FORGET_LAST, greetingText, parseMeant, parseRemember, parseStyle, parseTeach, subjectOf, wantsShort, WHAT_YOU_KNOW } from './memory'
+import { greetingFacts, habitsFromLogs, knowReply, noteReply, RECOMMEND, recommendReply } from './memoryAnswers'
+import { words } from './text'
 import { voiceVocabulary } from './spoken'
 import { startWakeListening, type WakeListener } from './wake'
 import { withWalk } from './withWalk'
@@ -64,6 +69,10 @@ export function AssistantHost() {
   const lastMapId = useRef<string | null>(null)
   const lastPlace = useRef<Place | null>(null)
   const pendingConfirm = useRef<Reply['confirm'] | null>(null)
+  /** "Forget everything?" asked, waiting for yes. */
+  const pendingForget = useRef(false)
+  /** The last question as asked, for "no, I meant …". */
+  const lastQuestion = useRef<string | null>(null)
   const nextId = useRef(1)
   const navigate = useNavigate()
 
@@ -126,6 +135,25 @@ export function AssistantHost() {
     }
   }
 
+  const onMap = (data: GameData) => {
+    const eligible = new Set(tasks.map((t) => t.id))
+    return (map: GameMap) => tasksOnMapFor(data, map, eligible, faction)
+  }
+
+  /** "Evening, sir. 6 quests left on the way to Kappa …", once a day; null when already greeted today. */
+  const greetingToday = (): string | null => {
+    const data = gameData.data
+    const mem = useAssistantMemory.getState()
+    const today = new Date().toLocaleDateString('en-CA')
+    if (!data || mem.lastGreetDay === today) return null
+    mem.greeted(today)
+    return greetingText({ hour: new Date().getHours(), ...greetingFacts(data, tasks, profile.completedTaskIds, statuses, onMap(data), mem.habits) })
+  }
+  const greetingRef = useRef(greetingToday)
+  useEffect(() => {
+    greetingRef.current = greetingToday
+  })
+
   const present = useCallback(
     (id: number, reply: Reply) => {
       setMessages((m) => m.map((x) => (x.id === id ? { ...x, text: reply.text, reply } : x)))
@@ -134,7 +162,11 @@ export function AssistantHost() {
       // "Add 1 GPU": asked first; kept until the next message ("yes" applies it).
       pendingConfirm.current = reply.confirm ?? null
       chat().set({ card: reply.map ?? null })
-      if (voice.speak && !reply.quiet) speak(reply.text, { ...voice, onStatus: (m) => m && chat().listen.state === 'idle' && setListen({ state: 'idle', detail: m }) })
+      if (voice.speak && !reply.quiet) {
+        const cutBefore = cutCount()
+        const said = wantsShort(useAssistantMemory.getState().style) ? firstSentence(reply.text) : reply.text
+        void speak(said, { ...voice, onStatus: (m) => m && chat().listen.state === 'idle' && setListen({ state: 'idle', detail: m }) }).then(() => useAssistantMemory.getState().spoke(cutCount() > cutBefore))
+      }
     },
     [voice],
   )
@@ -152,8 +184,8 @@ export function AssistantHost() {
     [present],
   )
 
-  const ask = (question: string) => {
-    const text = question.trim()
+  const ask = (input: string) => {
+    const text = input.trim()
     if (!text) return
     const you = nextId.current++
     const id = nextId.current++
@@ -172,15 +204,92 @@ export function AssistantHost() {
       show(id, { text: 'Okay, nothing changed.' })
       return
     }
+    // "Forget everything I learned about you?" → yes / no.
+    if (pendingForget.current) {
+      pendingForget.current = false
+      const yn = confirmWord(text)
+      if (yn === 'yes') {
+        useAssistantMemory.getState().forgetAll()
+        show(id, { text: 'Done, sir. Everything I learned about you is forgotten.' })
+        return
+      }
+      if (yn === 'no') {
+        show(id, { text: 'Very well, nothing forgotten.' })
+        return
+      }
+    }
+    // Memory: what it is told, what words mean, how long answers should be (memory.ts).
+    const said = words(text).join(' ')
+    const mem = useAssistantMemory.getState()
+    const style = parseStyle(text)
+    if (style) {
+      mem.setStyle(style)
+      show(id, { text: style === 'short' ? "Understood, sir. I'll keep it short." : style === 'full' ? 'Very well, sir. I will read everything out.' : 'Back to normal answers, sir.' })
+      return
+    }
+    const note = parseRemember(text)
+    if (note) {
+      mem.remember(note)
+      show(id, { text: `Noted, sir: ${note}` })
+      return
+    }
+    if (FORGET_LAST.test(said)) {
+      const last = mem.notes.at(-1)
+      if (last) mem.forgetNote(last.id)
+      show(id, { text: last ? `Forgotten: ${last.text}` : 'There is nothing to forget, sir.' })
+      return
+    }
+    if (FORGET_ALL.test(said)) {
+      pendingForget.current = true
+      show(id, { text: 'Forget every note, word and habit I have learned about you? Say yes to confirm.' })
+      return
+    }
+    const teach = parseTeach(text)
+    if (teach) {
+      mem.learn(teach.phrase, teach.means)
+      show(id, { text: `Got it: when you say "${teach.phrase}" you mean ${teach.means}.` })
+      return
+    }
+    // "No, I meant the Hand drill": learn what the last question's word meant and answer that.
+    let question = text
+    let prefix = ''
+    const meant = parseMeant(text)
+    if (meant) {
+      const prev = lastQuestion.current
+      const subject = prev ? subjectOf(prev) : null
+      if (prev && subject && subject !== meant) {
+        if (mem.learning) {
+          mem.learn(subject, meant)
+          prefix = `Got it, "${subject}" means ${meant} from now on. `
+        }
+        question = applyWords(prev, [{ phrase: subject, means: meant, at: 0, uses: 0 }]).text
+      } else question = meant
+    }
+    lastQuestion.current = question
+    const learned = applyWords(question, useAssistantMemory.getState().words)
+    if (learned.used.length) {
+      mem.usedWords(learned.used)
+      question = learned.text
+    }
+    const finish = (r: Reply) => show(id, prefix ? { ...r, text: prefix + r.text } : r)
+
     const data = gameData.data
     if (!data) {
       setMessages((m) => m.map((x) => (x.id === id ? { ...x, text: 'The game data is still loading. Ask again in a moment.' } : x)))
       return
     }
+    if (WHAT_YOU_KNOW.test(said)) return show(id, knowReply(data, mem))
+    if (RECOMMEND.test(said)) return finish(recommendReply(data, statuses, onMap(data), mem.habits))
+    // "Where's MY 314 key?": the player's own note first.
+    const own = asksAboutOwn(question) ? findNote(mem.notes, question) : null
+    if (own) return finish(noteReply(own))
+    mem.ask(askKind(question))
     const cachedItems = queryClient.getQueryData<{ items: ItemsById }>(itemKeys.mode(gameMode))?.items
-    const reply = answer(text, context(data, cachedItems))
+    const reply = answer(question, context(data, cachedItems))
     if (!reply.needsItems) {
-      show(id, reply)
+      // Not understood, but it matches something the player told me: say that instead.
+      const fromNote = reply.text.startsWith('Sorry, I did not get that') ? findNote(mem.notes, question) : null
+      finish(fromNote ? noteReply(fromNote) : reply)
       return
     }
     // A question about an item: load the item list once (shared with the other tabs), then answer.
@@ -189,8 +298,8 @@ export function AssistantHost() {
     queryClient
       .fetchQuery({ queryKey: itemKeys.mode(gameMode), queryFn: ({ signal }) => fetchItems(gameMode, signal) })
       .then((r) => {
-        const again = answer(text, context(data, r.items))
-        show(id, again.needsItems ? { text: 'Sorry, I did not find that item.' } : again)
+        const again = answer(question, context(data, r.items))
+        finish(again.needsItems ? { text: 'Sorry, I did not find that item.' } : again)
       })
       .catch(() => show(id, { text: 'The item list could not be loaded. Check the internet connection and ask again.' }))
       .finally(() => clearPending(id))
@@ -303,7 +412,9 @@ export function AssistantHost() {
           stopSpeaking()
           chat().set({ talking: true })
           setListen({ state: 'listening', detail: `Listening. Say "thanks, that's all" when you are done.` })
-          say('Yes sir?')
+          const greeting = greetingRef.current()
+          if (greeting) setMessages((m) => [...m, { id: nextId.current++, from: 'assistant', text: greeting, at: Date.now() }])
+          say(greeting ?? 'Yes sir?')
         },
         onQuestion: (text) => askRef.current(text),
         onEnd: (idle) => {
@@ -328,6 +439,37 @@ export function AssistantHost() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- vocabularyFor/loadItems read refs and the query cache; names covers their inputs
   }, [wakeOn, wakeName, names, queryClient, gameMode])
+
+  // Opening the assistant's tab: the day's greeting, once.
+  const { pathname } = useLocation()
+  useEffect(() => {
+    if (pathname !== '/neural' || chat().messages.length) return
+    const greeting = greetingRef.current()
+    if (!greeting) return
+    setMessages((m) => [...m, { id: nextId.current++, from: 'assistant', text: greeting, at: Date.now() }])
+    const v = voiceRef.current
+    if (v.speak) void speak(greeting, v)
+  }, [pathname, gameData.data])
+
+  // Habits: every raid in the old game logs, read once (later raids are counted live).
+  const learning = useAssistantMemory((m) => m.learning)
+  const seededAt = useAssistantMemory((m) => m.seededAt)
+  useEffect(() => {
+    const maps = gameData.data?.maps
+    if (!window.desktop || !learning || seededAt || !maps) return
+    let cancelled = false
+    void window.desktop
+      .readLogStats()
+      .then((stats) => {
+        if (cancelled) return
+        const mem = useAssistantMemory.getState()
+        mem.seed(habitsFromLogs(stats.events, maps, useRaidLogStore.getState().byMode, mem.habits.asks), Date.now())
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [learning, seededAt, gameData.data])
 
   // The desktop hotkey asks to listen.
   const listenRequest = useAssistantListenStore((st) => st.request)
