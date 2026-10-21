@@ -44,8 +44,8 @@ export interface Reply {
   youAt?: Place
   /** Shown but not read out loud (tips asking for more detail). */
   quiet?: boolean
-  /** An Item Collection change the page makes right away (with an Undo button). */
-  collect?: { itemId: string; from: number; to: number }
+  /** An Item Collection change waiting for "yes" (the page keeps it until the next message). */
+  confirm?: { itemId: string; from: number; to: number; doneText: string }
   /** Things the assistant offers to do; each is a button and runs only when clicked. */
   actions?: AssistantAction[]
 }

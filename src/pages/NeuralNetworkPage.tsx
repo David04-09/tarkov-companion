@@ -11,6 +11,7 @@ import { AssistantMap } from '../assistant/AssistantMap'
 import { headingOnMap } from '../assistant/heading'
 import type { Place } from '../assistant/places'
 import { withWalk } from '../assistant/withWalk'
+import { confirmWord } from '../assistant/items'
 import { listenOnce, type ListenState } from '../assistant/listen'
 import { ALL_PLACES } from '../assistant/places'
 import { voiceVocabulary } from '../assistant/spoken'
@@ -154,6 +155,7 @@ export function NeuralNetworkPage() {
   const [pending, setPending] = useState<number | null>(null)
   const lastMapId = useRef<string | null>(null)
   const lastPlace = useRef<Place | null>(null)
+  const pendingConfirm = useRef<Reply['confirm'] | null>(null)
   const nextId = useRef(1)
   const listRef = useRef<HTMLDivElement>(null)
   const navigate = useNavigate()
@@ -164,6 +166,7 @@ export function NeuralNetworkPage() {
     setDone((d) => new Set(d).add(key))
     if (a.kind === 'setCollected') {
       useInventoryStore.getState().setCollected(useProgressStore.getState().gameMode, a.itemId, a.count)
+      pendingConfirm.current = null
       return
     }
     if (a.kind === 'complete') {
@@ -222,8 +225,8 @@ export function NeuralNetworkPage() {
       setMessages((m) => m.map((x) => (x.id === id ? { ...x, text: reply.text, reply } : x)))
       if (reply.mapId) lastMapId.current = reply.mapId
       if (reply.youAt) lastPlace.current = reply.youAt
-      // "Collected 5 wires": done right away (hands-free in game); the answer has an Undo button.
-      if (reply.collect) useInventoryStore.getState().setCollected(useProgressStore.getState().gameMode, reply.collect.itemId, reply.collect.to)
+      // "Add 1 GPU": asked first; kept until the next message ("yes" applies it).
+      pendingConfirm.current = reply.confirm ?? null
       setCard(reply.map ?? null)
       if (voice.speak && !reply.quiet) speak(reply.text, { ...voice, onStatus: (m) => m && setListen((l) => (l.state === 'idle' ? { state: 'idle', detail: m } : l)) })
     },
@@ -250,6 +253,19 @@ export function NeuralNetworkPage() {
     const id = nextId.current++
     setMessages((m) => [...m, { id: you, from: 'you', text }, { id, from: 'assistant', text: '…' }])
     setDraft('')
+    // An answer to "Add 1 Graphics card to your Item Collection?"
+    const pending = pendingConfirm.current
+    pendingConfirm.current = null
+    const yesNo = pending ? confirmWord(text) : null
+    if (pending && yesNo === 'yes') {
+      useInventoryStore.getState().setCollected(useProgressStore.getState().gameMode, pending.itemId, pending.to)
+      show(id, { text: pending.doneText, actions: [{ kind: 'setCollected', itemId: pending.itemId, count: pending.from, label: 'Undo' }] })
+      return
+    }
+    if (pending && yesNo === 'no') {
+      show(id, { text: 'Okay, nothing changed.' })
+      return
+    }
     const data = gameData.data
     if (!data) {
       setMessages((m) => m.map((x) => (x.id === id ? { ...x, text: 'The game data is still loading. Ask again in a moment.' } : x)))

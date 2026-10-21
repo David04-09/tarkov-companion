@@ -60,7 +60,8 @@ export function spokenToText(heard: string): string {
 const COMMAND_WORDS = `i im i'm am at in on near by from to the a an and of is are my me it what whats what's where wheres where's which how do does did get go
 route path way take guide walk head run show find locate closest nearest next close quest quests task tasks objective objectives extract extracts exit exits
 spawned spawn spawned standing currently am here there map maps help hello hi progress level kappa price worth cost sell buy need needed for key keys open opens
-mark tick finished completed complete done untick not undo build me gun weapon item items about tell can you please stop thanks thank`.split(/\s+/)
+mark tick finished completed complete done untick not undo build me gun weapon item items about tell can you please stop thanks thank
+yes yeah yep approve approved accept accepted confirm sure okay ok go ahead no nope cancel never mind collected picked up found used sold add added`.split(/\s+/)
 
 /** Every word the recogniser may hear: command words, numbers, letters and the words of every known name. */
 export function voiceVocabulary(names: string[]): string[] {

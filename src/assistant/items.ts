@@ -144,13 +144,28 @@ export function collectAnswer(m: ItemMatch, delta: number, ctx: ItemContext): Re
   const before = ctx.collected?.[id] ?? 0
   const after = Math.max(0, before + delta)
   const name = m.item.name
-  const verb = delta > 0 ? `Added ${delta} ${name} to` : `Took ${Math.min(-delta, before)} ${name} off`
+  if (before === after) return { text: `You have no ${name} in your Item Collection to take off.` }
+  const amount = delta > 0 ? delta : before - after
+  // Asked first; the change happens on "yes" / "approve" (or the Yes button), see the page.
   return {
-    text: `${verb} your Item Collection. ${haveLine(name, after, need)}`,
-    lines: [...(id !== m.item.id ? ['Counted towards the item your quest asks for (it accepts this one too).'] : []), ...alsoLine(m)],
-    collect: { itemId: id, from: before, to: after },
-    actions: before === after ? [] : [{ kind: 'setCollected', itemId: id, count: before, label: 'Undo' }],
+    text: delta > 0 ? `Add ${amount} ${name} to your Item Collection?` : `Take ${amount} ${name} off your Item Collection?`,
+    lines: [`Say "yes" or "approve" to do it, "no" to cancel.`, ...(id !== m.item.id ? ['Counted towards the item your quest asks for (it accepts this one too).'] : []), ...alsoLine(m)],
+    confirm: {
+      itemId: id,
+      from: before,
+      to: after,
+      doneText: `${delta > 0 ? `Added ${amount} ${name} to` : `Took ${amount} ${name} off`} your Item Collection. ${haveLine(name, after, need)}`,
+    },
+    actions: [{ kind: 'setCollected', itemId: id, count: after, label: delta > 0 ? `Yes, add ${amount}` : `Yes, take ${amount} off` }],
   }
+}
+
+/** "Yes" / "approve" / "accept" … to a question the assistant asked; "no" / "cancel" to drop it. */
+export function confirmWord(question: string): 'yes' | 'no' | null {
+  const w = words(question).join(' ')
+  if (/^(yes|yeah|yep|yup|approve|approved|accept|accepted|confirm|confirmed|sure|ok|okay|do it|go ahead|add it|please do)\b/.test(w)) return 'yes'
+  if (/^(no|nope|cancel|dont|do not|stop|never mind|nevermind|forget it)\b/.test(w)) return 'no'
+  return null
 }
 
 /** "How many wires do I still need?" */
