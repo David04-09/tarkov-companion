@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from 'react'
-import { Image as ImageIcon, Info, Layers, MapPin, X } from 'lucide-react'
+import { Image as ImageIcon, Info, Layers, MapPin, Route, X } from 'lucide-react'
 import { useGameData } from '../api/hooks'
 import { ONE_HOUR } from '../api/queryClient'
 import { SegmentButton } from '../components/SegmentButton'
@@ -18,6 +18,8 @@ import { buildLootGroups } from '../maps/overlay/lootGroups'
 import { OtherLayers } from '../maps/overlay/OtherLayers'
 import { QuestPanel } from '../maps/overlay/QuestPanel'
 import { RoutePlanLayer } from '../maps/overlay/RoutePlan'
+import { AssistantRouteLayer } from '../assistant/AssistantRouteLayer'
+import { useAssistantRouteStore } from '../store/assistantRoute'
 import { SpawnLayer } from '../maps/overlay/SpawnLayer'
 import { buildSpawnModel } from '../maps/overlay/spawns'
 import { TaskLayer } from '../maps/overlay/TaskLayer'
@@ -45,6 +47,7 @@ export function MapsPage() {
   const inventory = useModeInventory()
   const ownedKeyIds = useMemo(() => new Set(inventory.ownedKeyIds), [inventory.ownedKeyIds])
   const lastMapKey = useUiStore((s) => s.lastMapKey)
+  const assistantRoute = useAssistantRouteStore()
   const setLastMapKey = useUiStore((s) => s.setLastMapKey)
   const baseLayerByMap = useUiStore((s) => s.baseLayerByMap)
   const setBaseLayer = useUiStore((s) => s.setBaseLayer)
@@ -140,6 +143,13 @@ export function MapsPage() {
             <button type="button" onClick={() => clearPosition(null)} aria-label="Clear position" className="ml-1 text-sky-300/70 hover:text-sky-200"><X className="h-3.5 w-3.5" /></button>
           </span>
         )}
+        {assistantRoute.mapKey === selected.key && (
+          <span className="flex items-center gap-1.5 rounded border border-amber-400/50 bg-amber-400/10 px-2 py-1 text-xs text-amber-300">
+            <Route className="h-3.5 w-3.5" />
+            Route: {assistantRoute.fromLabel} → {assistantRoute.toLabel}
+            <button type="button" onClick={assistantRoute.clear} aria-label="Clear the route" className="ml-1 text-amber-300/70 hover:text-amber-200"><X className="h-3.5 w-3.5" /></button>
+          </span>
+        )}
         {cfg.baseLayers.length > 1 && (
           <label className="ml-auto flex items-center gap-1.5 text-xs text-ink-muted">
             <ImageIcon className="h-4 w-4 text-ink-dim" aria-hidden />
@@ -171,6 +181,7 @@ export function MapsPage() {
               <TaskLayer key={mapTask.task.id} mapTask={mapTask} color={color} activeFloor={activeFloor} hasFloors={hasFloors} canvas={canvas} />
             ))}
             <RoutePlanLayer mapKey={selected.key} />
+            <AssistantRouteLayer mapKey={selected.key} />
             <DrawingLayer storageKey={drawingsKey(gameMode, selected.key)} />
             <FocusController mapTasks={mapTasks} maxZoom={layer.maxZoom} />
             <Legend entries={shown} />

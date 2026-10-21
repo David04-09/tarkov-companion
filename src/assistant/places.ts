@@ -11,6 +11,8 @@ export interface Place {
   mapKey: string
   name: string
   position: Position
+  /** A map label, or an extract from the game data (also where PMCs spawn: "I spawned at Crossroads"). */
+  kind?: 'place' | 'extract'
 }
 
 const LABELS = (labels as { maps: Record<string, { text: string; x: number; z: number }[]> }).maps

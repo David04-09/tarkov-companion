@@ -51,13 +51,13 @@ export function findNames<T>(question: string[], entries: NameEntry<T>[], maxWor
   }
   const hits: NameHit<T>[] = []
   for (let start = 0; start < question.length; start++) {
-    if (FILLER.has(question[start])) continue
+    // Names may start with a small word ("The Survivalist Path"), but only exact matches may.
+    const fillerStart = FILLER.has(question[start])
     let text = ''
     for (let end = start; end < Math.min(question.length, start + maxWords); end++) {
       text += question[end]
-      if (FILLER.has(question[end]) && end === start) break
       for (const v of exact.get(text) ?? []) hits.push({ value: v, start, end, score: 1, len: text.length })
-      if (text.length < 4) continue
+      if (fillerStart || text.length < 4) continue
       for (const e of entries) {
         if (e.key === text || Math.abs(e.key.length - text.length) > 2) continue
         // Singular/plural and one-letter typos for short names; a little more for long ones.

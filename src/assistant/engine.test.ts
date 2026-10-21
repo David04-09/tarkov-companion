@@ -33,6 +33,7 @@ const ctx: AssistantContext = {
   tasksOnMap: (m) => (m.id === 'm-customs' ? [spot(far, 600, 600, 'Far thing'), spot(near, 230, 150, 'Find the stash'), spot(locked, 201, 151, 'Locked thing')] : []),
   heading: () => 'east',
   lastMapId: null,
+  lastPlace: null,
   playerLevel: 10,
 }
 
@@ -75,6 +76,30 @@ describe('answer', () => {
 
   it('asks for the item list only when needed', () => {
     expect(answer('what is the ledx for', ctx).needsItems).toBe(true)
+  })
+
+  it('plans a route from where the player spawned to a place', () => {
+    const withExtract = { ...ctx, data: { ...ctx.data, mapDetails: { ...ctx.data.mapDetails, 'm-customs': { extracts: [{ id: 'x1', name: 'ZB-1013', faction: 'pmc', position: { x: 10, y: 0, z: 20 }, outline: [] }], locks: [] } } } as unknown as GameData }
+    const r = answer('I spawned at zb 013, how do I get to dorms?', withExtract)
+    expect(r.text).toBe('From ZB-1013 to Dorms.')
+    expect(r.walk).toEqual({ fromName: 'ZB-1013', toName: 'Dorms' })
+    expect(r.map?.route).toEqual([{ x: 10, y: 0, z: 20 }, { x: 200, y: 0, z: 150 }])
+    expect(r.youAt?.name).toBe('ZB-1013')
+  })
+
+  it('reads "to X from Y" too', () => {
+    expect(answer('route to crackhouse from dorms', ctx).text).toBe('From Dorms to Crackhouse.')
+  })
+
+  it('remembers where the player is for the next route', () => {
+    const here = answer("I'm at dorms, closest quest?", ctx).youAt ?? null
+    const r = answer('how do I get to crackhouse', { ...ctx, lastPlace: here })
+    expect(r.text).toBe('From Dorms to Crackhouse.')
+  })
+
+  it('offers to mark a quest done, never does it by itself', () => {
+    const r = answer('I finished Near One', ctx)
+    expect(r.actions).toEqual([{ kind: 'complete', taskId: 't-near', done: true, label: 'Mark Near One done' }])
   })
 
   it('says when it did not understand', () => {

@@ -29,7 +29,7 @@ function Fit({ points, layer }: { points: Position[]; layer: BaseLayerConfig }) 
 export function AssistantMap({ card }: { card: MapCard }) {
   const cfg = findMapConfig(card.map.normalizedName)
   const preferred = useUiStore((s) => (cfg ? s.baseLayerByMap[cfg.key] : undefined))
-  const points = useMemo(() => card.points.map((p) => p.position), [card])
+  const points = useMemo(() => [...card.points.map((p) => p.position), ...(card.path ?? [])], [card])
   if (!cfg) return <p className="text-xs text-ink-dim">No map picture for {card.map.name}.</p>
   const layer = resolveBaseLayer(cfg, preferred)
   const floor = floorForPosition(layer, card.points[0].position)
@@ -38,8 +38,13 @@ export function AssistantMap({ card }: { card: MapCard }) {
     <div className="h-72 overflow-hidden rounded border border-line">
       <MapViewer mapKey={`assistant:${cfg.key}:${card.points.map((p) => p.id).join(',')}`} layer={layer} floorName={floor}>
         <Fit points={points} layer={layer} />
-        {card.route && (
-          <Polyline positions={card.route.map((p) => [p.z, p.x] as [number, number])} pathOptions={{ color: '#f59e0b', weight: 4, dashArray: '8 8', opacity: 0.95 }} />
+        {card.path ? (
+          <>
+            <Polyline positions={card.path.map((p) => [p.z, p.x] as [number, number])} pathOptions={{ color: '#0b0b0b', weight: 7, opacity: 0.6 }} />
+            <Polyline positions={card.path.map((p) => [p.z, p.x] as [number, number])} pathOptions={{ color: '#f59e0b', weight: 4, opacity: 1 }} />
+          </>
+        ) : (
+          card.route && <Polyline positions={card.route.map((p) => [p.z, p.x] as [number, number])} pathOptions={{ color: '#f59e0b', weight: 4, dashArray: '8 8', opacity: 0.95 }} />
         )}
         {card.points.map((p) => (
           <CircleMarker key={p.id} center={[p.position.z, p.position.x]} radius={STYLE[p.kind].radius ?? 7} pathOptions={STYLE[p.kind]}>

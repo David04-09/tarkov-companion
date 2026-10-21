@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { Brain, CheckCircle2, Circle, Loader2, Map as MapIcon, Send, Square, Volume2, VolumeX, X } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { itemKeys, useGameData } from '../api/hooks'
@@ -7,12 +7,17 @@ import { fetchItems } from '../api/queries'
 import type { GameData, GameMap, ItemsById } from '../api/types'
 import { AssistantMap } from '../assistant/AssistantMap'
 import { headingOnMap } from '../assistant/heading'
-import { answer, type AssistantContext, type MapCard, type Reply } from '../assistant/engine'
+import type { Place } from '../assistant/places'
+import { withWalk } from '../assistant/withWalk'
+import { answer, type AssistantAction, type AssistantContext, type MapCard, type Reply } from '../assistant/engine'
 import { listVoices, pickVoice, speak, speechAvailable, stopSpeaking, voiceGender } from '../assistant/speech'
 import { computeTaskStatuses, isFactionEligible } from '../lib/taskStatus'
 import { findMapConfig, resolveBaseLayer } from '../maps/mapConfig'
 import { buildMapTasks, type MapTask } from '../maps/overlay/mapTasks'
 import { useAssistantStore } from '../store/assistant'
+import { useAssistantRouteStore } from '../store/assistantRoute'
+import { useMapOverlayStore } from '../store/mapOverlay'
+import { useUiStore } from '../store/ui'
 import { useProfile, useProgressStore } from '../store/progress'
 
 /** Objective positions per map and faction, worked out once per data load and only for maps that are asked about. */
@@ -116,8 +121,25 @@ export function NeuralNetworkPage() {
   const [card, setCard] = useState<MapCard | null>(null)
   const [pending, setPending] = useState<number | null>(null)
   const lastMapId = useRef<string | null>(null)
+  const lastPlace = useRef<Place | null>(null)
   const nextId = useRef(1)
   const listRef = useRef<HTMLDivElement>(null)
+  const navigate = useNavigate()
+  const [done, setDone] = useState<Set<string>>(new Set())
+
+  /** Runs an offered action (only ever from a click on its button). */
+  const run = (key: string, a: AssistantAction) => {
+    setDone((d) => new Set(d).add(key))
+    if (a.kind === 'complete') {
+      useProgressStore.getState().setTaskCompleted(a.taskId, a.done)
+      return
+    }
+    if (a.kind === 'openWeapon') return navigate(`/weapons?weapon=${encodeURIComponent(a.itemId)}`)
+    if (a.kind === 'showOnMap') useMapOverlayStore.getState().setTasksChecked([a.taskId], true)
+    if (a.kind === 'routeOnMap') useAssistantRouteStore.getState().set({ mapKey: a.mapKey, path: a.path, fromLabel: a.fromLabel, toLabel: a.toLabel })
+    useUiStore.getState().setLastMapKey(a.mapKey)
+    navigate('/maps')
+  }
 
   const tasks = useMemo(() => (gameData.data?.tasks ?? []).filter((t) => isFactionEligible(t, profile.faction)), [gameData.data, profile.faction])
   const statuses = useMemo(() => computeTaskStatuses(tasks, profile), [tasks, profile])
@@ -133,19 +155,34 @@ export function NeuralNetworkPage() {
       items,
       playerLevel: profile.playerLevel,
       lastMapId: lastMapId.current,
+      lastPlace: lastPlace.current,
       tasksOnMap: (map: GameMap) => tasksOnMapFor(data, map, eligible, faction),
       heading: (map, from, to) => headingOnMap(map.normalizedName, from, to),
     }
   }
 
-  const show = useCallback(
+  const present = useCallback(
     (id: number, reply: Reply) => {
       setMessages((m) => m.map((x) => (x.id === id ? { ...x, text: reply.text, reply } : x)))
       if (reply.mapId) lastMapId.current = reply.mapId
+      if (reply.youAt) lastPlace.current = reply.youAt
       setCard(reply.map ?? null)
       if (voice.speak) speak(reply.text, voice)
     },
     [voice],
+  )
+
+  /** Answers with a line on the map get a walking route over the terrain first (built only now, in a few ms). */
+  const show = useCallback(
+    (id: number, reply: Reply) => {
+      if (!reply.map?.route) return present(id, reply)
+      setMessages((m) => m.map((x) => (x.id === id ? { ...x, text: 'Working out the route…' } : x)))
+      setPending(id)
+      void withWalk(reply)
+        .then((r) => present(id, r))
+        .finally(() => setPending((p) => (p === id ? null : p)))
+    },
+    [present],
   )
 
   const ask = (question: string) => {
@@ -226,6 +263,18 @@ export function NeuralNetworkPage() {
                       ))}
                     </div>
                   )}
+                  {m.reply?.actions && m.reply.actions.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {m.reply.actions.map((a, i) => {
+                        const key = `${m.id}:${i}`
+                        return (
+                          <button key={key} type="button" disabled={done.has(key)} onClick={() => run(key, a)} className="btn !px-2 !py-1 !text-xs">
+                            {done.has(key) ? <><CheckCircle2 className="h-3.5 w-3.5 text-accent" /> Done</> : a.label}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
                 </div>
               </div>
             ))
@@ -251,7 +300,7 @@ export function NeuralNetworkPage() {
         <section className="space-y-1">
           <div className="flex items-center gap-2 text-xs text-ink-muted">
             <MapIcon className="h-3.5 w-3.5 text-accent" /> {card.map.name}
-            {card.route && <span className="text-ink-dim">· dashed line = straight line, not a walking path</span>}
+            {card.path ? <span className="text-ink-dim">· orange line = walking route</span> : card.route && <span className="text-ink-dim">· dashed line = straight line, not a walking path</span>}
             <button type="button" onClick={() => setCard(null)} className="ml-auto rounded p-1 hover:bg-surface-3" aria-label="Close the map"><X className="h-4 w-4" /></button>
           </div>
           <AssistantMap card={card} />

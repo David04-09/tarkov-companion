@@ -19,8 +19,10 @@ export interface MapPoint {
 export interface MapCard {
   map: GameMap
   points: MapPoint[]
-  /** A straight line from the first to the second spot (no walking paths exist in the data). */
+  /** A straight line from the first to the second spot; with `walk` the page replaces it by a route over the terrain. */
   route: [Position, Position] | null
+  /** Walking route over the terrain, filled in by the page (see route/walk.ts). */
+  path?: Position[]
 }
 
 export interface Reply {
@@ -35,7 +37,20 @@ export interface Reply {
   mapId?: string
   /** The answer needs the item list, which is loaded only on demand (it is large). */
   needsItems?: boolean
+  /** Work out a walking route for map.route over the terrain before showing / saying the answer. */
+  walk?: { fromName: string; toName: string }
+  /** Where the player said they are, remembered for "how do I get to …" without a start. */
+  youAt?: Place
+  /** Things the assistant offers to do; each is a button and runs only when clicked. */
+  actions?: AssistantAction[]
 }
+
+export type AssistantAction =
+  | { kind: 'complete'; taskId: string; done: boolean; label: string }
+  | { kind: 'showOnMap'; taskId: string; mapKey: string; label: string }
+  | { kind: 'openMap'; mapKey: string; label: string }
+  | { kind: 'openWeapon'; itemId: string; label: string }
+  | { kind: 'routeOnMap'; mapKey: string; path: Position[]; fromLabel: string; toLabel: string; label: string }
 
 export interface AssistantContext {
   data: GameData
@@ -49,6 +64,8 @@ export interface AssistantContext {
   heading: (map: GameMap, from: Position, to: Position) => string | null
   /** Map of the previous answer. */
   lastMapId: string | null
+  /** Where the player last said they were. */
+  lastPlace: Place | null
   playerLevel: number
 }
 
@@ -80,7 +97,16 @@ function indexFor(ctx: AssistantContext): Index {
         return out
       })
     : null
-  const index = { maps, places: placeEntries(), quests, items }
+  // Extracts count as places too ("I spawned at Crossroads", "route to ZB-1013").
+  const extracts: NameEntry<Place>[] = []
+  for (const m of ctx.data.maps) {
+    const mapKey = labelKey(m.normalizedName)
+    for (const e of ctx.data.mapDetails[m.id]?.extracts ?? []) {
+      if (extracts.some((x) => x.value.mapKey === mapKey && x.value.name === e.name)) continue
+      extracts.push({ key: compact(e.name), value: { mapKey, name: e.name, position: e.position, kind: 'extract' } })
+    }
+  }
+  const index = { maps, places: [...placeEntries(), ...extracts.filter((e) => e.key.length >= 3)], quests, items }
   cached = { data: ctx.data, items: ctx.items, tasks: ctx.tasks, index }
   return index
 }
@@ -105,6 +131,9 @@ function pickPlace(hits: Place[], map: GameMap | null): { place: Place | null; a
   return maps.size === 1 ? { place: unique[0], ambiguous: [] } : { place: null, ambiguous: unique }
 }
 
+/** Shown under answers whose line could not follow the terrain; the page drops it once a walking route is found. */
+export const STRAIGHT_NOTE = 'The line is a straight line, not a walking path.'
+
 const STATUS_WORD: Record<TaskStatus, string> = { available: 'available', locked: 'locked', completed: 'done' }
 
 function questLine(t: Task, ctx: AssistantContext): string {
@@ -114,7 +143,8 @@ function questLine(t: Task, ctx: AssistantContext): string {
 const HELP: Reply = {
   text: 'Here is what I can do so far.',
   lines: [
-    '"I\'m at Dorms, what\'s the closest quest?" — opens the map with a line to the nearest available quest spot.',
+    '"I\'m at Dorms, what\'s the closest quest?" — opens the map with a walking route to the nearest available quest spot.',
+    '"I spawned at Crossroads, how do I get to Dorms?" — a walking route around fences, water, rocks and minefields.',
     '"Where is Crackhouse?" — shows a place on its map.',
     '"Extracts on Customs" — lists the map\'s extracts.',
     '"Quests on Woods" — your available quests on a map.',
@@ -143,6 +173,13 @@ export function answer(question: string, ctx: AssistantContext): Reply {
 
   const wantsNearest = /\b(closest|nearest|next|near me|close by|nearby)\b/.test(said) && /\b(quest|quests|task|tasks|objective|objectives|mission)\b/.test(said)
   const saysWhereIAm = /\b(i m|im|i am|iam|standing|currently)\b.*\b(at|in|near|by|on|inside|around)\b/.test(said)
+  const wantsRoute = /\b(get to|go to|route|path|way to|take me|guide me|walk to|head to|directions|navigate|get from|run to)\b/.test(said) || /\bfrom\b.*\bto\b/.test(said)
+
+  // 0. "I spawned at Crossroads, how do I get to Dorms?" — a walking route over the terrain.
+  if (wantsRoute && !wantsNearest) {
+    const routed = route(q, placeHits, contextMap, ctx, index)
+    if (routed) return routed
+  }
 
   // 1. "I'm at Dorms, what's the next closest task?"
   if (wantsNearest || (saysWhereIAm && places.length)) {
@@ -151,7 +188,7 @@ export function answer(question: string, ctx: AssistantContext): Reply {
     if (!place) return { text: contextMap ? `Where on ${contextMap.name} are you? Name a place, like ${exampleFor(contextMap)}.` : 'Where are you? Name a place and the map, like "I\'m at Dorms on Customs".' }
     const map = mapByLabelKey(ctx, place.mapKey, contextMap)
     if (!map) return { text: `I know ${place.name}, but not which map it belongs to.` }
-    return nearestQuest(place, map, ctx)
+    return { ...nearestQuest(place, map, ctx), youAt: place }
   }
 
   // 2. Extracts on a map.
@@ -217,8 +254,41 @@ export function answer(question: string, ctx: AssistantContext): Reply {
     }
   }
 
-  // 6. A quest by name.
+  // 6. A quest by name: things to do with it, else what it needs.
   const questHit = findNames(q, index.quests)[0]
+  if (questHit && questHit.len >= 5) {
+    const t = questHit.value
+    const done = ctx.statuses[t.id] === 'completed'
+    if (/\b(untick|unmark|uncomplete|not done|not finished|undo)\b/.test(said)) {
+      return done
+        ? { text: `Mark ${t.name} as not done?`, actions: [{ kind: 'complete', taskId: t.id, done: false, label: `Mark ${t.name} not done` }] }
+        : { text: `${t.name} is not marked done.` }
+    }
+    if (/\b(mark|tick|finished|completed|complete|did|done|handed in|hand in|turned in)\b/.test(said)) {
+      return done
+        ? { text: `${t.name} is already marked done.` }
+        : { text: `Mark ${t.name} as done?`, lines: t.taskRequirements.length ? ['Quests it needs first are not changed.'] : undefined, actions: [{ kind: 'complete', taskId: t.id, done: true, label: `Mark ${t.name} done` }] }
+    }
+    if (/\b(show|track|add|put|pin)\b/.test(said) && /\bmap\b/.test(said)) {
+      if (!t.map) return { text: `${t.name} has no single map in the data, so it cannot be shown on one map.` }
+      return { text: `Show ${t.name} on the ${t.map.name} map?`, actions: [{ kind: 'showOnMap', taskId: t.id, mapKey: t.map.normalizedName, label: `Show on the ${t.map.name} map` }] }
+    }
+  }
+
+  // 7. "Build me an M4": open the gun in the Weapon builder.
+  if (/\bbuild\b/.test(said)) {
+    if (!index.items) return { text: 'Loading the item list…', needsItems: true }
+    const gun = findWeapon(q.slice(q.indexOf('build') + 1), ctx)
+    if (gun.best) {
+      return {
+        text: `Open the ${gun.best.shortName} in the Weapon builder?`,
+        lines: gun.others.length ? [`Did you mean another one? ${gun.others.map((o) => o.shortName).join(', ')}`] : undefined,
+        actions: [{ kind: 'openWeapon', itemId: gun.best.id, label: `Build the ${gun.best.shortName}` }, ...gun.others.slice(0, 3).map((o) => ({ kind: 'openWeapon' as const, itemId: o.id, label: o.shortName }))],
+      }
+    }
+    if (q.length > 1) return { text: 'I could not find that weapon. Try its short name, like "build an AK-74N" or "build an M4".' }
+  }
+
   if (questHit && questHit.len >= 5) return questInfo(questHit.value, ctx)
 
   // 7. An item by name (the item list is large, so it loads only when a question needs it).
@@ -236,6 +306,75 @@ export function answer(question: string, ctx: AssistantContext): Reply {
   }
   if (namedMap) return { text: `What about ${namedMap.name}? Try "quests on ${namedMap.name}" or "extracts on ${namedMap.name}".`, mapId: namedMap.id }
   return { text: 'Sorry, I did not get that.', lines: HELP.lines }
+}
+
+/** A gun by (short) name: exact first, else names that start with what was said ("M4" -> M4A1). */
+function findWeapon(said: string[], ctx: AssistantContext): { best: Item | null; others: Item[] } {
+  const want = compact(said.filter((w) => !['me', 'a', 'an', 'the', 'my', 'gun', 'weapon', 'build', 'for'].includes(w)).join(' '))
+  if (want.length < 2 || !ctx.items) return { best: null, others: [] }
+  const guns = Object.values(ctx.items).filter((it) => it.weapon)
+  const scored = guns
+    .map((it) => {
+      const s = compact(it.shortName)
+      const n = compact(it.name)
+      const score = s === want ? 0 : n === want ? 1 : s.startsWith(want) ? 2 + s.length - want.length : n.includes(want) ? 20 + n.length / 100 : Infinity
+      return { it, score }
+    })
+    .filter((x) => Number.isFinite(x.score))
+    .sort((a, b) => a.score - b.score || a.it.shortName.length - b.it.shortName.length)
+  return { best: scored[0]?.it ?? null, others: scored.slice(1, 4).map((x) => x.it) }
+}
+
+/** Routes: where to (after the last "to") and where from (before it, or where the player last said they were). */
+function route(q: string[], hits: { value: Place; start: number }[], contextMap: GameMap | null, ctx: AssistantContext, index: Index): Reply | null {
+  const toIdx = q.lastIndexOf('to')
+  // "… to Dorms from Crossroads": the start comes after "from", the destination between "to" and "from".
+  const fromIdx = q.lastIndexOf('from')
+  const destEnd = fromIdx > toIdx ? fromIdx : q.length
+  const after = hits.filter((h) => h.start > toIdx && h.start < destEnd)
+  const before = hits.filter((h) => h.start < toIdx || (fromIdx > toIdx && h.start > fromIdx))
+  const questHit = toIdx >= 0 ? findNames(q.slice(toIdx + 1, destEnd), index.quests)[0] : undefined
+  if (!after.length && !questHit) return null
+  let origins = before.map((h) => h.value)
+  if (!origins.length && ctx.lastPlace) origins = [ctx.lastPlace]
+  if (!origins.length) {
+    const to = after[0]?.value.name ?? questHit?.value.name
+    return { text: `Where are you now? Say for example "I spawned at Crossroads, how do I get to ${to}?"` }
+  }
+  const targets = after.map((h) => h.value)
+  // Both ends on one map: the map named or talked about, else any map they share.
+  const keys = [...new Set(origins.map((p) => p.mapKey))]
+  const preferred = contextMap ? labelKey(contextMap.normalizedName) : null
+  const shared = keys.filter((k) => !targets.length || targets.some((t) => t.mapKey === k))
+  const mapKey = preferred && shared.includes(preferred) ? preferred : shared[0]
+  if (!mapKey) return { text: `${origins[0].name} and ${targets[0].name} are not on the same map.` }
+  const map = mapByLabelKey(ctx, mapKey, contextMap)
+  if (!map) return null
+  const from = origins.find((p) => p.mapKey === mapKey) as Place
+  let to = targets.find((p) => p.mapKey === mapKey)
+  let kind: MapPoint['kind'] = to?.kind === 'extract' ? 'extract' : 'place'
+  if (!to && questHit) {
+    const spots = ctx.tasksOnMap(map).find((m) => m.task.id === questHit.value.id)?.placements ?? []
+    if (!spots.length) return { text: `${questHit.value.name} has no spot on ${map.name} in the data.` }
+    const best = spots.reduce((a, b) => (dist(a.position, from.position) <= dist(b.position, from.position) ? a : b))
+    to = { mapKey, name: questHit.value.name, position: best.position }
+    kind = 'quest'
+  }
+  if (!to) return null
+  return {
+    text: `From ${from.name} to ${to.name}.`,
+    map: {
+      map,
+      points: [
+        { id: 'you', position: from.position, label: `You: ${from.name}`, kind: 'you' },
+        { id: 'target', position: to.position, label: to.name, kind },
+      ],
+      route: [from.position, to.position],
+    },
+    walk: { fromName: from.name, toName: to.name },
+    youAt: from,
+    mapId: map.id,
+  }
 }
 
 function exampleFor(map: GameMap): string {
@@ -274,7 +413,7 @@ function nearestQuest(place: Place, map: GameMap, ctx: AssistantContext): Reply 
       `Objective: ${best.text}`,
       ...others.map((o) => `Next: ${o.mt.task.name}, ${sayDistance(o.m)}`),
       ...(anywhere.length ? [`Anywhere on the map: ${anywhere.slice(0, 4).join(', ')}${anywhere.length > 4 ? '…' : ''}`] : []),
-      'The line is a straight line, not a walking path (the game data has no paths).',
+      STRAIGHT_NOTE,
     ],
     map: {
       map,

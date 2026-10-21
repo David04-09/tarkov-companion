@@ -13,6 +13,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
+import { useSearchParams } from 'react-router-dom'
 import { useItems } from '../api/hooks'
 import type { Item, ItemsById } from '../api/types'
 import { ErrorPanel, LoadingPanel } from '../components/DataState'
@@ -69,7 +70,12 @@ function toneFor(n: number, goodWhenNegative: boolean): string {
 
 export function WeaponsPage() {
   const items = useItems()
-  const [selected, setSelected] = useState<{ weaponId: string; buildId: string | null } | null>(null)
+  // "?weapon=<id>" (the assistant's "build me an M4") opens that gun straight away.
+  const [params] = useSearchParams()
+  const [selected, setSelected] = useState<{ weaponId: string; buildId: string | null } | null>(() => {
+    const id = params.get('weapon')
+    return id ? { weaponId: id, buildId: null } : null
+  })
 
   if (items.isPending) return <LoadingPanel label="weapons" />
   if (items.isError && !items.data) return <ErrorPanel error={items.error} onRetry={() => void items.refetch()} />
