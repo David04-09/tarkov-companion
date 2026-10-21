@@ -1,56 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { Brain, CheckCircle2, Circle, Loader2, Map as MapIcon, Mic, MicOff, Send, Square, Volume2, VolumeX, X } from 'lucide-react'
-import { useQueryClient } from '@tanstack/react-query'
-import { itemKeys, useCrafts, useGameData, useHideout } from '../api/hooks'
-import { computeNeeds, type ItemNeed } from '../lib/needs'
-import { useInventoryStore, useModeInventory } from '../store/inventory'
-import { fetchItems } from '../api/queries'
-import type { GameData, GameMap, ItemsById } from '../api/types'
+import { useGameData } from '../api/hooks'
 import { AssistantMap } from '../assistant/AssistantMap'
-import { headingOnMap } from '../assistant/heading'
-import type { Place } from '../assistant/places'
-import { withWalk } from '../assistant/withWalk'
-import { confirmWord } from '../assistant/items'
-import { listenOnce, type ListenState } from '../assistant/listen'
-import { startWakeListening, WAKE_NAMES, type WakeListener } from '../assistant/wake'
-import { ALL_PLACES } from '../assistant/places'
-import { voiceVocabulary } from '../assistant/spoken'
-import { useAssistantListenStore } from '../store/assistantListen'
-import { answer, type AssistantAction, type AssistantContext, type MapCard, type Reply } from '../assistant/engine'
-import { listVoices, onSpeakingChange, pickNaturalVoice, pickVoice, speak, speechAvailable, stopSpeaking, voiceGender } from '../assistant/speech'
+import { WAKE_NAMES } from '../assistant/wake'
+import { listVoices, pickNaturalVoice, pickVoice, speak, speechAvailable, stopSpeaking, voiceGender } from '../assistant/speech'
 import { NATURAL_VOICES } from '../assistant/naturalVoice'
-import { computeTaskStatuses, isFactionEligible } from '../lib/taskStatus'
-import { findMapConfig, resolveBaseLayer } from '../maps/mapConfig'
-import { buildMapTasks, type MapTask } from '../maps/overlay/mapTasks'
 import { useAssistantStore } from '../store/assistant'
-import { useAssistantRouteStore } from '../store/assistantRoute'
-import { useRaidBriefingStore } from '../store/raidBriefing'
-import { useMapOverlayStore } from '../store/mapOverlay'
-import { useUiStore } from '../store/ui'
-import { useProfile, useProgressStore } from '../store/progress'
-
-/** Objective positions per map and faction, worked out once per data load and only for maps that are asked about. */
-const mapTaskCache = new WeakMap<GameData, Map<string, MapTask[]>>()
-function tasksOnMapFor(data: GameData, map: GameMap, eligible: Set<string>, faction: string): MapTask[] {
-  let perData = mapTaskCache.get(data)
-  if (!perData) mapTaskCache.set(data, (perData = new Map()))
-  const key = `${map.id}:${faction}`
-  let list = perData.get(key)
-  if (!list) {
-    const cfg = findMapConfig(map.normalizedName)
-    list = cfg ? buildMapTasks(data, map.id, resolveBaseLayer(cfg, undefined)).filter((m) => eligible.has(m.task.id)) : []
-    perData.set(key, list)
-  }
-  return list
-}
-
-interface Message {
-  id: number
-  from: 'you' | 'assistant'
-  text: string
-  reply?: Reply
-}
+import { useAssistantChat } from '../store/assistantChat'
 
 const ROADMAP: { done: boolean; title: string; detail: string }[] = [
   { done: true, title: 'The tab', detail: 'A place for the assistant in the app.' },
@@ -94,7 +51,7 @@ function VoicePanel() {
             <option key={n} value={n}>Hey {n[0].toUpperCase() + n.slice(1)}</option>
           ))}
         </select>
-        <span className="text-xs text-ink-dim">While this tab is open: say the name, it answers "Yes sir?", ask away, and say "thanks, that's all" to finish. The mic stays open while it waits; only the name is listened for and nothing leaves this PC.</span>
+        <span className="text-xs text-ink-dim">On any tab while the app is open: say the name, it answers "Yes sir?", ask away, and say "thanks, that's all" to finish. The mic stays open while it waits; only the name is listened for and nothing leaves this PC.</span>
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <span className="w-16 text-ink-muted">Engine</span>
@@ -152,297 +109,25 @@ function VoicePanel() {
 }
 
 /**
- * The in-app assistant. Built to be light enough to use while the game runs: no AI model, no
+ * The in-app assistant's chat (the logic is in AssistantHost, mounted in Layout so the wake word
+ * works on every tab). Built to be light enough to use while the game runs: no AI model, no
  * background work. Each question is matched against names from the app's own data in well under
  * a millisecond; the voice is generated on this PC only while speaking; the small map only exists while an
  * answer shows one. The large item list is loaded only when a question is about an item.
  */
 export function NeuralNetworkPage() {
   const gameData = useGameData()
-  const profile = useProfile()
-  const queryClient = useQueryClient()
-  const gameMode = useProgressStore((s) => s.gameMode)
   const voice = useAssistantStore()
-  const [messages, setMessages] = useState<Message[]>([])
+  const { messages, card, pending, listen, done, ask, run, toggleListening, set } = useAssistantChat()
   const [draft, setDraft] = useState('')
-  const [card, setCard] = useState<MapCard | null>(null)
-  const [pending, setPending] = useState<number | null>(null)
-  const lastMapId = useRef<string | null>(null)
-  const lastPlace = useRef<Place | null>(null)
-  const pendingConfirm = useRef<Reply['confirm'] | null>(null)
-  const nextId = useRef(1)
   const listRef = useRef<HTMLDivElement>(null)
-  const navigate = useNavigate()
-  const [done, setDone] = useState<Set<string>>(new Set())
-
-  /** Runs an offered action (only ever from a click on its button). */
-  const run = (key: string, a: AssistantAction) => {
-    setDone((d) => new Set(d).add(key))
-    if (a.kind === 'setCollected') {
-      useInventoryStore.getState().setCollected(useProgressStore.getState().gameMode, a.itemId, a.count)
-      pendingConfirm.current = null
-      return
-    }
-    if (a.kind === 'complete') {
-      useProgressStore.getState().setTaskCompleted(a.taskId, a.done)
-      return
-    }
-    if (a.kind === 'openWeapon') return navigate(`/weapons?weapon=${encodeURIComponent(a.itemId)}`)
-    if (a.kind === 'showOnMap') useMapOverlayStore.getState().setTasksChecked([a.taskId], true)
-    if (a.kind === 'routeOnMap') useAssistantRouteStore.getState().set({ mapKey: a.mapKey, path: a.path, fromLabel: a.fromLabel, toLabel: a.toLabel })
-    useUiStore.getState().setLastMapKey(a.mapKey)
-    navigate('/maps')
-  }
-
-  const tasks = useMemo(() => (gameData.data?.tasks ?? []).filter((t) => isFactionEligible(t, profile.faction)), [gameData.data, profile.faction])
-  const statuses = useMemo(() => computeTaskStatuses(tasks, profile), [tasks, profile])
-  const faction = profile.faction
-
-  /** Everything an answer may use; the item list only if it is already loaded (it is large). */
-  // Item Collection: the same "still needed" numbers as the Item Collection page (hideout and
-  // crafts are small and load with this tab).
-  const inventory = useModeInventory()
-  const favoriteCraftIds = useInventoryStore((st) => st.favoriteCraftIds)
-  const hideout = useHideout()
-  const crafts = useCrafts()
-  const needsCache = useRef<{ inputs: unknown[]; list: ItemNeed[] } | null>(null)
-  const needsFor = (data: GameData, items: ItemsById | undefined): ItemNeed[] => {
-    const inputs = [data, items, profile.completedTaskIds, profile.faction, hideout.data, crafts.data, inventory.stationLevels, favoriteCraftIds]
-    const c = needsCache.current
-    if (c && c.inputs.every((v, i) => v === inputs[i])) return c.list
-    const list = [
-      ...computeNeeds({ tasks: data.tasks, completedTaskIds: profile.completedTaskIds, faction: profile.faction, stations: hideout.data ?? [], stationLevels: inventory.stationLevels, crafts: crafts.data ?? [], favoriteCraftIds, items }).values(),
-    ]
-    needsCache.current = { inputs, list }
-    return list
-  }
-
-  const context = (data: GameData, items: ItemsById | undefined): AssistantContext => {
-    const eligible = new Set(tasks.map((t) => t.id))
-    return {
-      data,
-      statuses,
-      tasks,
-      items,
-      playerLevel: profile.playerLevel,
-      // Before anything was asked, follow-ups ("extracts?") are about the map being raided.
-      lastMapId: lastMapId.current ?? useRaidBriefingStore.getState().current?.mapId ?? null,
-      lastPlace: lastPlace.current,
-      collected: inventory.collected,
-      needFor: (itemId) => needsFor(data, items).find((n) => n.itemId === itemId || n.alternatives.includes(itemId)),
-      tasksOnMap: (map: GameMap) => tasksOnMapFor(data, map, eligible, faction),
-      heading: (map, from, to) => headingOnMap(map.normalizedName, from, to),
-    }
-  }
-
-  const present = useCallback(
-    (id: number, reply: Reply) => {
-      setMessages((m) => m.map((x) => (x.id === id ? { ...x, text: reply.text, reply } : x)))
-      if (reply.mapId) lastMapId.current = reply.mapId
-      if (reply.youAt) lastPlace.current = reply.youAt
-      // "Add 1 GPU": asked first; kept until the next message ("yes" applies it).
-      pendingConfirm.current = reply.confirm ?? null
-      setCard(reply.map ?? null)
-      if (voice.speak && !reply.quiet) speak(reply.text, { ...voice, onStatus: (m) => m && setListen((l) => (l.state === 'idle' ? { state: 'idle', detail: m } : l)) })
-    },
-    [voice],
-  )
-
-  /** Answers with a line on the map get a walking route over the terrain first (built only now, in a few ms). */
-  const show = useCallback(
-    (id: number, reply: Reply) => {
-      if (!reply.map?.route) return present(id, reply)
-      setMessages((m) => m.map((x) => (x.id === id ? { ...x, text: 'Working out the route…' } : x)))
-      setPending(id)
-      void withWalk(reply)
-        .then((r) => present(id, r))
-        .finally(() => setPending((p) => (p === id ? null : p)))
-    },
-    [present],
-  )
-
-  const ask = (question: string) => {
-    const text = question.trim()
-    if (!text) return
-    const you = nextId.current++
-    const id = nextId.current++
-    setMessages((m) => [...m, { id: you, from: 'you', text }, { id, from: 'assistant', text: '…' }])
-    setDraft('')
-    // An answer to "Add 1 Graphics card to your Item Collection?"
-    const pending = pendingConfirm.current
-    pendingConfirm.current = null
-    const yesNo = pending ? confirmWord(text) : null
-    if (pending && yesNo === 'yes') {
-      useInventoryStore.getState().setCollected(useProgressStore.getState().gameMode, pending.itemId, pending.to)
-      show(id, { text: pending.doneText, actions: [{ kind: 'setCollected', itemId: pending.itemId, count: pending.from, label: 'Undo' }] })
-      return
-    }
-    if (pending && yesNo === 'no') {
-      show(id, { text: 'Okay, nothing changed.' })
-      return
-    }
-    const data = gameData.data
-    if (!data) {
-      setMessages((m) => m.map((x) => (x.id === id ? { ...x, text: 'The game data is still loading. Ask again in a moment.' } : x)))
-      return
-    }
-    const cachedItems = queryClient.getQueryData<{ items: ItemsById }>(itemKeys.mode(gameMode))?.items
-    const reply = answer(text, context(data, cachedItems))
-    if (!reply.needsItems) {
-      show(id, reply)
-      return
-    }
-    // A question about an item: load the item list once (shared with the other tabs), then answer.
-    setMessages((m) => m.map((x) => (x.id === id ? { ...x, text: reply.text } : x)))
-    setPending(id)
-    queryClient
-      .fetchQuery({ queryKey: itemKeys.mode(gameMode), queryFn: ({ signal }) => fetchItems(gameMode, signal) })
-      .then((r) => {
-        const again = answer(text, context(data, r.items))
-        show(id, again.needsItems ? { text: 'Sorry, I did not find that item.' } : again)
-      })
-      .catch(() => show(id, { text: 'The item list could not be loaded. Check the internet connection and ask again.' }))
-      .finally(() => setPending((p) => (p === id ? null : p)))
-  }
+  const doneKeys = new Set(done)
+  const setCard = (c: typeof card) => set({ card: c })
+  const ready = !!gameData.data
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight })
   }, [messages])
-
-  // Stop talking when leaving the tab.
-  useEffect(() => () => stopSpeaking(), [])
-
-  // Voice input: the words it may hear are the app's own names plus question words.
-  const names = useMemo(() => {
-    const data = gameData.data
-    if (!data) return []
-    const extracts = Object.values(data.mapDetails).flatMap((d) => (d?.extracts ?? []).map((e) => e.name))
-    return [...data.maps.map((m) => m.name), ...ALL_PLACES.map((p) => p.name), ...extracts, ...tasks.map((t) => t.name)]
-  }, [gameData.data, tasks])
-  // Item names too ("battery", "LEDX", "dorm 303 key"), worked out once per item list.
-  const vocabCache = useRef<{ names: string[]; items: ItemsById | undefined; words: string[] } | null>(null)
-  const vocabularyFor = (items: ItemsById | undefined) => {
-    const c = vocabCache.current
-    if (c && c.names === names && c.items === items) return c.words
-    const itemNames = items ? Object.values(items).flatMap((it) => [it.name, it.shortName]) : []
-    const result = voiceVocabulary([...names, ...itemNames])
-    vocabCache.current = { names, items, words: result }
-    return result
-  }
-  const [listen, setListen] = useState<{ state: ListenState; detail?: string }>({ state: 'idle' })
-  const stopListening = useRef<(() => void) | null>(null)
-  const askRef = useRef(ask)
-  useEffect(() => {
-    askRef.current = ask
-  })
-  // Wake word ("Hey Ranger"): while it is on, the mic button and hotkey start a conversation instead.
-  const wakeRef = useRef<WakeListener | null>(null)
-  const voiceRef = useRef(voice)
-  useEffect(() => {
-    voiceRef.current = voice
-  })
-  const startListening = useCallback(async () => {
-    if (wakeRef.current) {
-      wakeRef.current.wake()
-      return
-    }
-    if (stopListening.current || !names.length) return
-    stopSpeaking()
-    let cancelled = false
-    stopListening.current = () => {
-      cancelled = true
-    }
-    let items = queryClient.getQueryData<{ items: ItemsById }>(itemKeys.mode(gameMode))?.items
-    if (!items) {
-      setListen({ state: 'loading', detail: 'Loading item names (first time)…' })
-      items = await queryClient
-        .fetchQuery({ queryKey: itemKeys.mode(gameMode), queryFn: ({ signal }) => fetchItems(gameMode, signal) })
-        .then((r) => r.items)
-        .catch(() => undefined)
-    }
-    if (cancelled) {
-      stopListening.current = null
-      setListen({ state: 'idle' })
-      return
-    }
-    stopListening.current = listenOnce(vocabularyFor(items), {
-      onState: (state, detail) => {
-        setListen({ state, detail })
-        if (state === 'idle') stopListening.current = null
-      },
-      onPartial: (text) => setListen({ state: 'listening', detail: text }),
-      onResult: (text) => {
-        stopListening.current = null
-        if (text) askRef.current(text)
-        else setListen({ state: 'idle', detail: 'I did not catch that. Try again.' })
-      },
-      onError: (message) => {
-        stopListening.current = null
-        setListen({ state: 'idle', detail: message })
-      },
-    })
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- vocabularyFor reads a ref; names covers its inputs
-  }, [names, queryClient, gameMode])
-  useEffect(() => () => stopListening.current?.(), [])
-
-  const wakeOn = voice.wakeWord
-  const wakeName = voice.wakeName
-  useEffect(() => {
-    if (!wakeOn || !names.length) return
-    let cancelled = false
-    let listener: WakeListener | null = null
-    let offSpeaking = () => {}
-    const called = wakeName[0].toUpperCase() + wakeName.slice(1)
-    const waitingText = `Say "Hey ${called}" to talk to the assistant.`
-    const say = (text: string) => {
-      const v = voiceRef.current
-      if (v.speak) void speak(text, v)
-    }
-    void (async () => {
-      let items = queryClient.getQueryData<{ items: ItemsById }>(itemKeys.mode(gameMode))?.items
-      if (!items) {
-        setListen({ state: 'loading', detail: 'Loading item names (first time)…' })
-        items = await queryClient
-          .fetchQuery({ queryKey: itemKeys.mode(gameMode), queryFn: ({ signal }) => fetchItems(gameMode, signal) })
-          .then((r) => r.items)
-          .catch(() => undefined)
-      }
-      if (cancelled) return
-      listener = startWakeListening(wakeName, vocabularyFor(items), {
-        onState: (state, detail) => setListen({ state: state === 'waiting' ? 'idle' : state, detail: state === 'waiting' ? waitingText : detail }),
-        onWake: () => {
-          stopSpeaking()
-          setListen({ state: 'listening', detail: `Listening. Say "thanks, that's all" when you are done.` })
-          say('Yes sir?')
-        },
-        onQuestion: (text) => askRef.current(text),
-        onEnd: (idle) => {
-          setListen({ state: 'idle', detail: waitingText })
-          if (!idle) say('Anytime.')
-        },
-        onPartial: (text) => setListen({ state: 'listening', detail: text }),
-        onError: (message) => setListen({ state: 'idle', detail: message }),
-      })
-      wakeRef.current = listener
-      // Do not listen to its own voice.
-      offSpeaking = onSpeakingChange((on) => listener?.pause(on))
-    })()
-    return () => {
-      cancelled = true
-      offSpeaking()
-      listener?.stop()
-      wakeRef.current = null
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- vocabularyFor reads a ref; names covers its inputs
-  }, [wakeOn, wakeName, names, queryClient, gameMode])
-  // The desktop hotkey asks to listen (also when it switched to this tab just now).
-  const listenRequest = useAssistantListenStore((st) => st.request)
-  const handledRequest = useRef(0)
-  useEffect(() => {
-    if (!listenRequest || listenRequest === handledRequest.current || !names.length) return
-    handledRequest.current = listenRequest
-    void startListening()
-  }, [listenRequest, names, startListening])
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-4">
@@ -489,8 +174,8 @@ export function NeuralNetworkPage() {
                       {m.reply.actions.map((a, i) => {
                         const key = `${m.id}:${i}`
                         return (
-                          <button key={key} type="button" disabled={done.has(key)} onClick={() => run(key, a)} className="btn !px-2 !py-1 !text-xs">
-                            {done.has(key) ? <><CheckCircle2 className="h-3.5 w-3.5 text-accent" /> Done</> : a.label}
+                          <button key={key} type="button" disabled={doneKeys.has(key)} onClick={() => run(key, a)} className="btn !px-2 !py-1 !text-xs">
+                            {doneKeys.has(key) ? <><CheckCircle2 className="h-3.5 w-3.5 text-accent" /> Done</> : a.label}
                           </button>
                         )
                       })}
@@ -512,13 +197,14 @@ export function NeuralNetworkPage() {
           onSubmit={(e) => {
             e.preventDefault()
             ask(draft)
+            setDraft('')
           }}
         >
           <button
             type="button"
             className={`btn ${listen.state === 'listening' ? 'border-red-500 text-red-400' : ''}`}
-            disabled={!names.length || listen.state === 'loading'}
-            onClick={() => (stopListening.current ? stopListening.current() : void startListening())}
+            disabled={!ready || listen.state === 'loading'}
+            onClick={toggleListening}
             title={listen.state === 'listening' ? 'Stop listening' : 'Ask by voice (recognised on this PC)'}
             aria-label={listen.state === 'listening' ? 'Stop listening' : 'Ask by voice'}
           >

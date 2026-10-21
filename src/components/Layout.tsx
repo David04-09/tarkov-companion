@@ -18,6 +18,8 @@ import { StoryTimerWatcher } from '../story/StoryTimerWatcher'
 import { AutoUntickCompleted } from '../maps/AutoUntick'
 import { RaidResultPrompt } from '../stats/RaidResultPrompt'
 import { RaidBriefingHost } from '../briefing/RaidBriefingHost'
+import { AssistantGate } from '../assistant/AssistantGate'
+import { AssistantBubble } from '../assistant/AssistantBubble'
 import { PositionListener } from '../maps/position'
 import { AutoBackup } from '../desktop/HealthAndBackups'
 import { Sidebar } from './Sidebar'
@@ -84,6 +86,11 @@ export function Layout() {
       <ErrorBoundary area="Raid briefing" quiet>
         {/* Briefs when the game log (desktop) says a map is loading. */}
         <RaidBriefingHost />
+      </ErrorBoundary>
+      <ErrorBoundary area="The assistant" quiet>
+        {/* The assistant lives here so the wake word works on every tab. */}
+        <AssistantGate />
+        <AssistantBubble />
       </ErrorBoundary>
       {isDesktop() && (
         <ErrorBoundary area="Game log features" quiet>
