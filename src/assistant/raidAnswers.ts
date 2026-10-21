@@ -26,6 +26,8 @@ export interface LiveInfo {
   /** Quests handed in, read from the game log (this game mode). */
   handIns: { taskId: string; at: number }[]
   habits: Habits | null
+  /** The map of the raid you are in (game log), else of a screenshot from the last 30 minutes; null when not known. */
+  currentMapId: string | null
   /** Everything quests, hideout and favourite crafts still need (Item Collection numbers). */
   needs: () => ItemNeed[]
   isDesktop: boolean

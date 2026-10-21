@@ -179,7 +179,9 @@ export function answer(question: string, ctx: AssistantContext): Reply {
   const mapHits = findNames(q, index.maps)
   const namedMap = mapHits[0]?.value ?? null
   const lastMap = ctx.data.maps.find((m) => m.id === ctx.lastMapId) ?? null
-  const contextMap = namedMap ?? lastMap
+  // The map you are in a raid on (game log / last screenshot) beats the one talked about last.
+  const raidMap = ctx.live?.currentMapId ? (ctx.data.maps.find((m) => m.id === ctx.live!.currentMapId) ?? null) : null
+  const contextMap = namedMap ?? raidMap ?? lastMap
   // Map names are not places too ("Customs" the map, not a label called Customs).
   const mapWords = new Set(mapHits.flatMap((h) => Array.from({ length: h.end - h.start + 1 }, (_, i) => h.start + i)))
   const placeHits = findNames(q, index.places).filter((h) => !mapWords.has(h.start))

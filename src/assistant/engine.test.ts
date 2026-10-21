@@ -211,3 +211,12 @@ describe('item questions', () => {
     expect(itemQuestionKind('where does a gpu spawn and what is it worth')).toBe('where')
   })
 })
+
+describe('the map you are on', () => {
+  it('settles a place that exists on several maps by the raid you are in', () => {
+    const inRaid = { ...ctx, live: { currentMapId: 'm-shore' } } as unknown as AssistantContext
+    expect(answer('where is construction', inRaid).text).toBe('Construction is on Shoreline. Here it is.')
+    // A map named in the question still wins.
+    expect(answer('where is construction on customs', inRaid).text).toMatch(/^There is no Construction on Customs/)
+  })
+})

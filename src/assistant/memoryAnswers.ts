@@ -2,7 +2,10 @@
  * The assistant's answers that use what it has learned (memory.ts): what it knows about you,
  * which map to play, the daily greeting, and habits read from old game logs.
  */
-import type { GameData, GameMap, Task } from '../api/types'
+import type { GameData, GameMap, ItemsById, Task } from '../api/types'
+import { expandNicknames, findItem } from './items'
+import { ALL_PLACES } from './places'
+import { compact, words } from './text'
 import type { GameEvent } from '../shared/desktop-api'
 import { pairRaids } from '../lib/logStats'
 import type { TaskStatus } from '../lib/taskStatus'
@@ -78,6 +81,23 @@ export function greetingFacts(data: GameData, tasks: Task[], completed: Readonly
     favourite: favMap ? { name: favMap.name, open: openOn(favMap, tasksOnMap, statuses) } : null,
     openQuests: Object.values(statuses).filter((s) => s === 'available').length,
   }
+}
+
+/**
+ * The real name a taught word should mean ("xenomorph sealing foam" → "Xenomorph sealing foam"):
+ * a map, quest or place written in full, else the item it finds. Null when nothing has that name,
+ * so a word is never taught to mean something that does not exist.
+ */
+export function resolveName(said: string, data: GameData, items: ItemsById | undefined): string | null {
+  const c = compact(said)
+  const w = words(said)
+  if (!c) return null
+  const exact = [...data.maps.map((m) => m.name), ...data.tasks.map((t) => t.name), ...ALL_PLACES.map((p) => p.name)].find((n) => compact(n) === c)
+  if (exact) return exact
+  if (!items) return null
+  const named = Object.values(items).find((it) => compact(it.name) === c || compact(it.shortName) === c)
+  if (named) return named.name
+  return findItem(expandNicknames(w), items)?.item.name ?? null
 }
 
 /** Habits from every raid in the old game logs (raid results from the raid log where marked). */

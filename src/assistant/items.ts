@@ -91,12 +91,39 @@ export interface ItemMatch {
   others: Item[]
 }
 
+const compactName = (it: Item) => words(it.name).join('')
+const fullNameCache = new WeakMap<ItemsById, Map<string, Item>>()
+/** Items by their whole name with spaces and punctuation removed ("handdrill"), names of 2+ words. */
+function fullNames(items: ItemsById): Map<string, Item> {
+  let m = fullNameCache.get(items)
+  if (!m) {
+    m = new Map()
+    for (const it of Object.values(items)) if (words(it.name).length >= 2 && !m.has(compactName(it))) m.set(compactName(it), it)
+    fullNameCache.set(items, m)
+  }
+  return m
+}
+
 /**
  * The item a question is about: every remaining word (after question words and map names) must
  * appear in the item's name; fewer extra words in the name is better ("battery" -> "AA Battery"
  * before "Cyclon rechargeable battery"). `skip` = words already used for something else (map names).
  */
 export function findItem(question: string[], items: ItemsById, skip: Set<number> = new Set(), prefer: (it: Item) => number = () => 0): ItemMatch | null {
+  // An item's whole name said as it is wins outright, even with question words in it ("Hand drill":
+  // "hand" alone is dropped below as in "hand in", which left "drill" = Electric drill).
+  const byName = fullNames(items)
+  let whole: Item | undefined
+  for (let start = 0; start < question.length; start++) {
+    let text = ''
+    for (let end = start; end < Math.min(question.length, start + 8); end++) {
+      if (skip.has(end)) break
+      text += question[end]
+      const it = end > start ? byName.get(text) : undefined
+      if (it && (!whole || compactName(it).length > compactName(whole).length)) whole = it
+    }
+  }
+  if (whole) return { item: whole, others: [] }
   const said = question.filter((w, i) => !skip.has(i) && !NOT_NAME.has(w))
   if (!said.length) return null
   const joined = said.join('')

@@ -10,7 +10,7 @@ const debut = { id: 't-debut', name: 'Debut', trader: { name: 'Prapor' }, map: c
 const next = { id: 't-next', name: 'Shooting Cans', trader: { name: 'Prapor' }, map: customs, minPlayerLevel: 2, objectives: [], taskRequirements: [{ taskId: 't-debut', status: ['complete'] }], kappaRequired: false } as unknown as Task
 
 const now = Date.UTC(2026, 9, 21, 18, 0)
-const live = (over: Partial<LiveInfo> = {}): LiveInfo => ({ now, raid: null, position: null, scavCooldownEndsAt: null, handIns: [], habits: null, needs: () => [], isDesktop: true, ...over })
+const live = (over: Partial<LiveInfo> = {}): LiveInfo => ({ now, raid: null, position: null, scavCooldownEndsAt: null, handIns: [], habits: null, needs: () => [], isDesktop: true, currentMapId: null, ...over })
 
 const ctx = (l: LiveInfo): AssistantContext =>
   ({

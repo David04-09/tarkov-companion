@@ -29,8 +29,8 @@ import { listenOnce, type ListenState } from './listen'
 import { ALL_PLACES, type Place } from './places'
 import { cutCount, onSpeakingChange, speak, stopSpeaking } from './speech'
 import { applyWords, askKind, asksAboutOwn, findNote, firstSentence, FORGET_ALL, FORGET_LAST, greetingText, parseMeant, parseRemember, parseStyle, parseTeach, subjectOf, wantsShort, WHAT_YOU_KNOW } from './memory'
-import { greetingFacts, habitsFromLogs, knowReply, noteReply, RECOMMEND, recommendReply } from './memoryAnswers'
-import { words } from './text'
+import { greetingFacts, habitsFromLogs, knowReply, noteReply, RECOMMEND, recommendReply, resolveName } from './memoryAnswers'
+import { compact, words } from './text'
 import { buildSoundNames, snapToNames, type SoundName } from './phonetic'
 import { voiceVocabulary } from './spoken'
 import { startWakeListening, type WakeListener } from './wake'
@@ -77,6 +77,8 @@ export function AssistantHost() {
   const pendingForget = useRef(false)
   /** The last question as asked, for "no, I meant …". */
   const lastQuestion = useRef<string | null>(null)
+  /** The word of the last question it did not understand, for "that means …". */
+  const lastUnknown = useRef<string | null>(null)
   const nextId = useRef(1)
   const navigate = useNavigate()
 
@@ -120,6 +122,16 @@ export function AssistantHost() {
     return list
   }
 
+  /** The map you are on: the raid's (briefing or raid clock, from the game log), else a screenshot from the last 30 minutes. */
+  const currentMapId = (data: GameData, timers: { raidMapNameId: string | null }, pos: { mapKey: string | null; at: number } | null): string | null => {
+    const briefed = useRaidBriefingStore.getState().current?.mapId
+    if (briefed) return briefed
+    const byNameId = timers.raidMapNameId ? data.maps.find((m) => m.nameId.toLowerCase() === timers.raidMapNameId!.toLowerCase()) : undefined
+    if (byNameId) return byNameId.id
+    if (pos?.mapKey && Date.now() - pos.at < 30 * 60_000) return data.maps.find((m) => m.normalizedName === pos.mapKey)?.id ?? null
+    return null
+  }
+
   /** What is happening right now: the raid clock, the last screenshot position, hand-ins and habits. */
   const liveInfo = (data: GameData, items: ItemsById | undefined) => {
     const timers = useTimersStore.getState()
@@ -132,6 +144,7 @@ export function AssistantHost() {
       scavCooldownEndsAt: timers.scavCooldownEndsAt,
       handIns: useSyncHistory.getState().entries.filter((e) => e.mode === mode && !e.undone).map((e) => ({ taskId: e.taskId, at: e.at })),
       habits: useAssistantMemory.getState().habits,
+      currentMapId: currentMapId(data, timers, pos),
       needs: () => needsFor(data, items),
       isDesktop: !!window.desktop,
     }
@@ -266,26 +279,56 @@ export function AssistantHost() {
       show(id, { text: 'Forget every note, word and habit I have learned about you? Say yes to confirm.' })
       return
     }
-    const teach = parseTeach(text)
-    if (teach) {
-      mem.learn(teach.phrase, teach.means)
-      show(id, { text: `Got it: when you say "${teach.phrase}" you mean ${teach.means}.` })
+    // Teaching a word ("xeno means xenomorph sealing foam", "that means …", "no, I meant …"): the
+    // meaning must be a real item, quest, place or map, so the item list is loaded first.
+    const teachRaw = parseTeach(text)
+    const meant = parseMeant(text)
+    const cachedForTeach = queryClient.getQueryData<{ items: ItemsById }>(itemKeys.mode(gameMode))?.items
+    if ((teachRaw || meant) && !cachedForTeach && gameData.data) {
+      setMessages((m) => m.map((x) => (x.id === id ? { ...x, text: 'Loading the item list…' } : x)))
+      void queryClient
+        .fetchQuery({ queryKey: itemKeys.mode(gameMode), queryFn: ({ signal }) => fetchItems(gameMode, signal) })
+        .then(() => {
+          setMessages((m) => m.filter((x) => x.id !== you && x.id !== id))
+          askRef.current(text)
+        })
+        .catch(() => show(id, { text: 'The item list could not be loaded. Check the internet connection and say it again.' }))
+      return
+    }
+    const realName = (means: string) => (gameData.data ? resolveName(means, gameData.data, cachedForTeach) : null)
+    if (teachRaw) {
+      // "That means …" / "it means …": the word it did not know a moment ago.
+      // After a wrong guess too ("the blue thing" taken for the blue keycard): the last question's word.
+      const phrase = /^(that|it|this|those|they)$/.test(teachRaw.phrase) ? (lastUnknown.current ?? (lastQuestion.current ? subjectOf(lastQuestion.current) : null)) : teachRaw.phrase
+      if (!phrase) {
+        show(id, { text: 'Which word? Say it like "xeno means xenomorph sealing foam".' })
+        return
+      }
+      const name = realName(teachRaw.means)
+      if (!name) {
+        show(id, { text: `I don't know "${teachRaw.means}" either, sir. Say the name as it is in the game, like "${phrase} means xenomorph sealing foam".` })
+        return
+      }
+      mem.learn(phrase, name)
+      lastUnknown.current = null
+      show(id, { text: `Got it: when you say "${phrase}" you mean ${name}.` })
       return
     }
     // "No, I meant the Hand drill": learn what the last question's word meant and answer that.
     let question = text
     let prefix = ''
-    const meant = parseMeant(text)
     if (meant) {
       const prev = lastQuestion.current
-      const subject = prev ? subjectOf(prev) : null
-      if (prev && subject && subject !== meant) {
-        if (mem.learning) {
-          mem.learn(subject, meant)
-          prefix = `Got it, "${subject}" means ${meant} from now on. `
+      const subject = lastUnknown.current ?? (prev ? subjectOf(prev) : null)
+      const name = realName(meant) ?? meant
+      if (prev && subject && compact(subject) !== compact(name)) {
+        if (mem.learning && realName(meant)) {
+          mem.learn(subject, name)
+          prefix = `Got it, "${subject}" means ${name} from now on. `
         }
-        question = applyWords(prev, [{ phrase: subject, means: meant, at: 0, uses: 0 }]).text
-      } else question = meant
+        question = applyWords(prev, [{ phrase: subject, means: name, at: 0, uses: 0 }]).text
+      } else question = name
+      lastUnknown.current = null
     }
     lastQuestion.current = question
     const learned = applyWords(question, useAssistantMemory.getState().words)
@@ -307,11 +350,21 @@ export function AssistantHost() {
     if (own) return finish(noteReply(own))
     mem.ask(askKind(question))
     const cachedItems = queryClient.getQueryData<{ items: ItemsById }>(itemKeys.mode(gameMode))?.items
+    // Not understood: offer to learn the word ("xeno means …").
+    const teachHint = (r: Reply): Reply => {
+      if (!/^Sorry, I did not (get that|find that item)/.test(r.text)) {
+        lastUnknown.current = null
+        return r
+      }
+      const word = subjectOf(question)
+      lastUnknown.current = word
+      return word ? { ...r, text: `Sorry, I don't know "${word}". If it is a nickname, say "${word} means" and the full name.`, lines: undefined } : r
+    }
     const reply = answer(question, context(data, cachedItems))
     if (!reply.needsItems) {
       // Not understood, but it matches something the player told me: say that instead.
       const fromNote = reply.text.startsWith('Sorry, I did not get that') ? findNote(mem.notes, question) : null
-      finish(fromNote ? noteReply(fromNote) : reply)
+      finish(fromNote ? noteReply(fromNote) : teachHint(reply))
       return
     }
     // A question about an item: load the item list once (shared with the other tabs), then answer.
@@ -321,7 +374,7 @@ export function AssistantHost() {
       .fetchQuery({ queryKey: itemKeys.mode(gameMode), queryFn: ({ signal }) => fetchItems(gameMode, signal) })
       .then((r) => {
         const again = answer(question, context(data, r.items))
-        finish(again.needsItems ? { text: 'Sorry, I did not find that item.' } : again)
+        finish(teachHint(again.needsItems ? { text: 'Sorry, I did not find that item.' } : again))
       })
       .catch(() => show(id, { text: 'The item list could not be loaded. Check the internet connection and ask again.' }))
       .finally(() => clearPending(id))
