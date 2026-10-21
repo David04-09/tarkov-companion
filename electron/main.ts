@@ -308,6 +308,8 @@ function registerHotkey() {
     }
   }
   tryRegister(settings.get().scanHotkey, () => void captureForScan())
+  // The window is not brought forward: the game keeps focus while the assistant listens and talks.
+  tryRegister(settings.get().assistantHotkey, () => win?.webContents.send('assistant:listen', null))
 }
 
 /** Scan hotkey: capture the game screen first, then bring the app up with the scan. */
@@ -369,7 +371,7 @@ function updateSettings(patch: Partial<DesktopSettings>): DesktopSettings {
     app.setLoginItemSettings({ openAtLogin: after.startWithWindows, args: ['--minimized'] })
   }
   if (patch.logsPath !== undefined || patch.paused !== undefined) applyWatcherSettings()
-  if (patch.scanHotkey !== undefined) registerHotkey()
+  if (patch.scanHotkey !== undefined || patch.assistantHotkey !== undefined) registerHotkey()
   if (patch.updateMode !== undefined) setUpdateMode(after.updateMode)
   if (patch.trackPosition !== undefined) applyPositionTracking()
   broadcast('watcher:state', watcher.getState())

@@ -19,6 +19,7 @@
     "scan:check": "tsx scripts/scan-check-corrections.ts",
     "scan:test": "tsx scripts/scan-test.ts",
     "ocr:assets": "node scripts/fetch-ocr-assets.mjs",
+    "voice:assets": "node scripts/fetch-voice-model.mjs",
     "notices": "node scripts/build-notices.mjs",
     "packs": "node scripts/build-packs.mjs"
   },
@@ -54,6 +55,7 @@
     "vite": "^8.3.0",
     "vite-plugin-electron": "^1.1.2",
     "vitest": "^5.0.3",
+    "vosk-browser": "^0.0.8",
     "zustand": "^5.0.15"
   },
   "allowScripts": {
@@ -76,6 +78,7 @@
       "dist/**",
       "!dist/tiles/**",
       "!dist/scan/**",
+      "!dist/voice/**",
       "dist-electron/**",
       "build/icon.png",
       "build/tray.png",

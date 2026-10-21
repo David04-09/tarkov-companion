@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Brain, CheckCircle2, Circle, Loader2, Map as MapIcon, Send, Square, Volume2, VolumeX, X } from 'lucide-react'
+import { Brain, CheckCircle2, Circle, Loader2, Map as MapIcon, Mic, MicOff, Send, Square, Volume2, VolumeX, X } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { itemKeys, useGameData } from '../api/hooks'
 import { fetchItems } from '../api/queries'
@@ -9,6 +9,10 @@ import { AssistantMap } from '../assistant/AssistantMap'
 import { headingOnMap } from '../assistant/heading'
 import type { Place } from '../assistant/places'
 import { withWalk } from '../assistant/withWalk'
+import { listenOnce, type ListenState } from '../assistant/listen'
+import { ALL_PLACES } from '../assistant/places'
+import { voiceVocabulary } from '../assistant/spoken'
+import { useAssistantListenStore } from '../store/assistantListen'
 import { answer, type AssistantAction, type AssistantContext, type MapCard, type Reply } from '../assistant/engine'
 import { listVoices, pickVoice, speak, speechAvailable, stopSpeaking, voiceGender } from '../assistant/speech'
 import { computeTaskStatuses, isFactionEligible } from '../lib/taskStatus'
@@ -44,8 +48,10 @@ interface Message {
 
 const ROADMAP: { done: boolean; title: string; detail: string }[] = [
   { done: true, title: 'The tab', detail: 'A place for the assistant in the app.' },
-  { done: true, title: 'Answer questions and guide on the map', detail: 'Places, closest quests with a line on a small map, extracts, quests, items and keys, your progress. Spoken out loud.' },
-  { done: false, title: 'Do things for you', detail: 'Tick quests, plan a raid, fill the Item Collection or build a gun in the Weapon builder when you ask.' },
+  { done: true, title: 'Answer questions and guide on the map', detail: 'Places, extracts, walking routes around water, fences, rocks and minefields, closest quests, items and keys, your progress. Spoken out loud.' },
+  { done: true, title: 'Talk to it', detail: 'Mic button, or a hotkey in game (Settings → Desktop app). Recognised on this PC; nothing is sent anywhere.' },
+  { done: true, title: 'Do things for you (first steps)', detail: 'Mark quests done, show a quest or a route on the Maps tab, open a gun in the Weapon builder. Each one only when you click its button.' },
+  { done: false, title: 'More things to do', detail: 'Plan a raid, fill the Item Collection, pick parts for a gun build.' },
 ]
 
 const EXAMPLES = ["I'm at Dorms, what's the closest quest?", 'Where is Crackhouse?', 'Extracts on Woods', 'What is the LEDX for?']
@@ -223,6 +229,49 @@ export function NeuralNetworkPage() {
   // Stop talking when leaving the tab.
   useEffect(() => () => stopSpeaking(), [])
 
+  // Voice input: the words it may hear are the app's own names plus question words.
+  const vocabulary = useMemo(() => {
+    const data = gameData.data
+    if (!data) return []
+    const extracts = Object.values(data.mapDetails).flatMap((d) => (d?.extracts ?? []).map((e) => e.name))
+    return voiceVocabulary([...data.maps.map((m) => m.name), ...ALL_PLACES.map((p) => p.name), ...extracts, ...tasks.map((t) => t.name)])
+  }, [gameData.data, tasks])
+  const [listen, setListen] = useState<{ state: ListenState; detail?: string }>({ state: 'idle' })
+  const stopListening = useRef<(() => void) | null>(null)
+  const askRef = useRef(ask)
+  useEffect(() => {
+    askRef.current = ask
+  })
+  const startListening = useCallback(() => {
+    if (stopListening.current || !vocabulary.length) return
+    stopSpeaking()
+    stopListening.current = listenOnce(vocabulary, {
+      onState: (state, detail) => {
+        setListen({ state, detail })
+        if (state === 'idle') stopListening.current = null
+      },
+      onPartial: (text) => setListen({ state: 'listening', detail: text }),
+      onResult: (text) => {
+        stopListening.current = null
+        if (text) askRef.current(text)
+        else setListen({ state: 'idle', detail: 'I did not catch that. Try again.' })
+      },
+      onError: (message) => {
+        stopListening.current = null
+        setListen({ state: 'idle', detail: message })
+      },
+    })
+  }, [vocabulary])
+  useEffect(() => () => stopListening.current?.(), [])
+  // The desktop hotkey asks to listen (also when it switched to this tab just now).
+  const listenRequest = useAssistantListenStore((st) => st.request)
+  const handledRequest = useRef(0)
+  useEffect(() => {
+    if (!listenRequest || listenRequest === handledRequest.current || !vocabulary.length) return
+    handledRequest.current = listenRequest
+    startListening()
+  }, [listenRequest, vocabulary, startListening])
+
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-4">
       <div>
@@ -280,6 +329,12 @@ export function NeuralNetworkPage() {
             ))
           )}
         </div>
+        {listen.detail && (
+          <p className={`border-t border-line px-3 py-1.5 text-xs ${listen.state === 'listening' ? 'text-ink' : 'text-ink-muted'}`}>
+            {listen.state === 'listening' ? 'Heard: ' : ''}
+            {listen.detail}
+          </p>
+        )}
         <form
           className="flex gap-2 border-t border-line p-2"
           onSubmit={(e) => {
@@ -287,7 +342,17 @@ export function NeuralNetworkPage() {
             ask(draft)
           }}
         >
-          <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={gameData.isPending ? 'Loading game data…' : 'Ask the assistant…'} aria-label="Message" className="min-w-0 flex-1 rounded border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-accent" />
+          <button
+            type="button"
+            className={`btn ${listen.state === 'listening' ? 'border-red-500 text-red-400' : ''}`}
+            disabled={!vocabulary.length || listen.state === 'loading'}
+            onClick={() => (stopListening.current ? stopListening.current() : startListening())}
+            title={listen.state === 'listening' ? 'Stop listening' : 'Ask by voice (recognised on this PC)'}
+            aria-label={listen.state === 'listening' ? 'Stop listening' : 'Ask by voice'}
+          >
+            {listen.state === 'loading' ? <Loader2 className="h-4 w-4 animate-spin" /> : listen.state === 'listening' ? <MicOff className="h-4 w-4 animate-pulse" /> : <Mic className="h-4 w-4" />}
+          </button>
+          <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={listen.state === 'listening' ? 'Listening… ask your question' : gameData.isPending ? 'Loading game data…' : 'Ask the assistant…'} aria-label="Message" className="min-w-0 flex-1 rounded border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-accent" />
           <button type="button" className="btn" onClick={() => voice.set({ speak: !voice.speak })} title={voice.speak ? 'Mute the voice' : 'Read answers out loud'} aria-label={voice.speak ? 'Mute' : 'Unmute'}>
             {voice.speak ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
           </button>

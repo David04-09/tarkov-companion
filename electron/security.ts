@@ -58,6 +58,7 @@ const CHECKS: { [K in keyof DesktopSettings]?: (v: unknown) => boolean } = {
   setupDone: (v) => typeof v === 'boolean',
   initialBackfillDone: (v) => typeof v === 'boolean',
   scanHotkey: isAccelerator,
+  assistantHotkey: isAccelerator,
   updateMode: (v) => v === 'auto' || v === 'notify' || v === 'off',
   trackPosition: (v) => typeof v === 'boolean',
   backupKeep: (v) => typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= 60,
@@ -82,13 +83,26 @@ export function isScreenshotName(n: unknown): n is string {
 
 /**
  * The app needs exactly one browser permission: notifications (raid timers, trader restocks).
- * Everything else (camera, microphone, location, screen capture from the page, USB, …) is refused.
+ * Everything else (camera, location, screen capture from the page, USB, …) is refused; the
+ * microphone only as below.
  * Screen capture for the scanner happens in the main process, not through the page.
  */
 const ALLOWED_PERMISSIONS = new Set(['notifications', 'clipboard-sanitized-write'])
+
+/**
+ * The microphone, for the assistant's voice input (asked for only when the player clicks the
+ * mic button or presses its hotkey; speech is recognised on this PC, nothing is sent anywhere).
+ * Audio only: a request that also wants the camera, or any other media type, is refused.
+ */
+export function isMicOnly(permission: string, mediaTypes: readonly string[] | undefined): boolean {
+  return permission === 'media' && Array.isArray(mediaTypes) && mediaTypes.length > 0 && mediaTypes.every((t) => t === 'audio')
+}
+
 export function lockPermissions(session: Session) {
-  session.setPermissionRequestHandler((_wc, permission, callback) => callback(ALLOWED_PERMISSIONS.has(permission)))
-  session.setPermissionCheckHandler((_wc, permission) => ALLOWED_PERMISSIONS.has(permission))
+  session.setPermissionRequestHandler((_wc, permission, callback, details) =>
+    callback(ALLOWED_PERMISSIONS.has(permission) || isMicOnly(permission, 'mediaTypes' in details ? details.mediaTypes : undefined)),
+  )
+  session.setPermissionCheckHandler((_wc, permission, _origin, details) => ALLOWED_PERMISSIONS.has(permission) || (permission === 'media' && details.mediaType === 'audio'))
   session.setDevicePermissionHandler(() => false)
 }
 

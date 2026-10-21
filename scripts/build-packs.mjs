@@ -8,7 +8,7 @@
 // Files are sorted and nothing time-dependent is stored, so the same content always gives the
 // same pack (and the same hash: users only download again when something really changed).
 //
-// Usage: npm run packs   (after tiles:lighthouse and scan:fingerprints)
+// Usage: npm run packs   (after tiles:lighthouse, scan:fingerprints and voice:assets)
 // Writes release-packs/<name>-<hash12>.tcpack and electron/packs.generated.json.
 import crypto from 'node:crypto'
 import fs from 'node:fs'
@@ -17,6 +17,7 @@ import path from 'node:path'
 const PACKS = [
   { name: 'lighthouse', dir: 'public/tiles/lighthouse-re3mr', prefix: 'tiles/lighthouse-re3mr', label: 'Lighthouse map (RE3MR render)' },
   { name: 'scan', dir: 'public/scan', prefix: 'scan', label: 'stash scanner data' },
+  { name: 'voice', dir: 'public/voice', prefix: 'voice', label: 'speech model for voice input' },
 ]
 const OUT = 'release-packs'
 const MAGIC = Buffer.from('TCPK1\n')

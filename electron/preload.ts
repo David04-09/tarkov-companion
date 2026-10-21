@@ -28,6 +28,7 @@ const api: DesktopApi = {
   listGameScreenshots: () => ipcRenderer.invoke('scan:listShots'),
   readGameScreenshot: (name: string) => ipcRenderer.invoke('scan:readShot', name),
   onScanCapture: (cb) => subscribe<Uint8Array>('scan:captured', cb),
+  onAssistantListen: (cb) => subscribe<null>('assistant:listen', () => cb()),
   getUpdateStatus: () => ipcRenderer.invoke('update:status'),
   checkForUpdates: () => ipcRenderer.invoke('update:check'),
   installUpdate: () => ipcRenderer.invoke('update:install'),

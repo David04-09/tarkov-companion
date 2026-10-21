@@ -90,6 +90,8 @@ export interface DesktopSettings {
   paused: boolean
   /** Electron accelerator that captures the screen and opens the stash scanner. */
   scanHotkey: string
+  /** Electron accelerator that starts the assistant listening (empty = off). */
+  assistantHotkey: string
   /** Last profile id / game version seen in the logs, for wipe detection. */
   knownProfileId: string | null
   knownGameVersion: string | null
@@ -200,7 +202,7 @@ export interface BackfillResult {
 }
 
 /** Content packs downloaded on first use (scripts/build-packs.mjs). */
-export type PackName = 'lighthouse' | 'scan'
+export type PackName = 'lighthouse' | 'scan' | 'voice'
 export interface PackProgress {
   name: PackName
   label: string
@@ -249,6 +251,8 @@ export interface DesktopApi {
   readGameScreenshot: (name: string) => Promise<Uint8Array>
   /** Scan hotkey pressed: a fresh capture to scan. */
   onScanCapture: (cb: (png: Uint8Array) => void) => () => void
+  /** The assistant hotkey was pressed: start listening. */
+  onAssistantListen: (cb: () => void) => () => void
   getUpdateStatus: () => Promise<UpdateStatus>
   checkForUpdates: () => Promise<UpdateStatus>
   installUpdate: () => Promise<void>

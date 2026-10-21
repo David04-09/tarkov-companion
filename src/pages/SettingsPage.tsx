@@ -458,8 +458,8 @@ function ScannerSection() {
 }
 
 /** Records a key combination for a global hotkey (Electron accelerator format). */
-function HotkeyRecorder() {
-  const current = useDesktopStore((s) => s.settings?.scanHotkey) ?? ''
+function HotkeyRecorder({ setting = 'scanHotkey' }: { setting?: 'scanHotkey' | 'assistantHotkey' }) {
+  const current = useDesktopStore((s) => s.settings?.[setting]) ?? ''
   const [recording, setRecording] = useState(false)
   const [error, setError] = useState<string | null>(null)
   useEffect(() => {
@@ -478,11 +478,11 @@ function HotkeyRecorder() {
       }
       setError(null)
       setRecording(false)
-      void updateDesktopSettings({ scanHotkey: [...mods, key].join('+') })
+      void updateDesktopSettings({ [setting]: [...mods, key].join('+') })
     }
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
-  }, [recording])
+  }, [recording, setting])
   return (
     <div className="flex flex-col items-end gap-1">
       <div className="flex items-center gap-2">
@@ -491,7 +491,7 @@ function HotkeyRecorder() {
           <Keyboard className="h-3.5 w-3.5" /> Change
         </button>
         {current && (
-          <button type="button" className="btn !py-1 text-xs" onClick={() => void updateDesktopSettings({ scanHotkey: '' })}>
+          <button type="button" className="btn !py-1 text-xs" onClick={() => void updateDesktopSettings({ [setting]: '' })}>
             Turn off
           </button>
         )}
@@ -513,7 +513,7 @@ function DesktopAppSection() {
   const scavMinutes = useTimersStore((s) => s.scavCooldownMinutes)
   const setScavMinutes = useTimersStore((s) => s.setScavCooldownMinutes)
   return (
-    <Section id="desktop" title="Desktop app" icon={Monitor} desktopOnly keywords="windows start tray minimize close hotkey shortcut update clean cleanup installer leftover delete space disk logs game log watching folder pvp pve switch tick quests where am i position screenshot scav cooldown timer">
+    <Section id="desktop" title="Desktop app" icon={Monitor} desktopOnly keywords="windows start tray minimize close hotkey shortcut assistant voice talk microphone mic update clean cleanup installer leftover delete space disk logs game log watching folder pvp pve switch tick quests where am i position screenshot scav cooldown timer">
       <Row label="Close to tray" hint="The X button hides the window and keeps quest tracking running. Use the tray icon to reopen or quit.">
         <Switch checked={tray} onChange={setTray} label="Close to tray" />
       </Row>
@@ -534,6 +534,9 @@ function DesktopAppSection() {
       </Row>
       <Row label="Stash scanner hotkey" hint="Captures the screen the game is on and opens the scanner with it.">
         <HotkeyRecorder />
+      </Row>
+      <Row label="Talk to the assistant hotkey" hint="Press it in game and speak a question; the assistant answers out loud. The app stays in the background and the game keeps focus. Recognised on this PC, nothing is sent anywhere. Off until you set one.">
+        <HotkeyRecorder setting="assistantHotkey" />
       </Row>
       <Row label="Switch PvP / PvE with the game" hint="Follows the mode you play in, read from the game log.">
         <Switch checked={autoSwitch} onChange={setAutoSwitch} label="Switch game mode" />

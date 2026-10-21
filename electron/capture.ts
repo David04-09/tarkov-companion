@@ -9,6 +9,7 @@ import fs from 'node:fs'
 import { isScreenshotName } from './security'
 import { installedPackDir, packsEnabled } from './packs'
 import path from 'node:path'
+import type { PackName } from '../src/shared/desktop-api'
 
 /** Captures the display under the mouse at full resolution, as PNG bytes. */
 export async function captureScreenUnderCursor(): Promise<Uint8Array> {
@@ -53,9 +54,9 @@ export function readGameScreenshot(name: string): Uint8Array {
   return new Uint8Array(fs.readFileSync(path.join(gameScreenshotsDir(), name)))
 }
 
-const RESOURCE_DIRS = ['scan', 'ocr', 'tiles']
+const RESOURCE_DIRS = ['scan', 'ocr', 'tiles', 'voice']
 /** Folders that come from a downloaded content pack in installed builds (see packs.ts). */
-const PACKED: Record<string, 'lighthouse' | 'scan'> = { tiles: 'lighthouse', scan: 'scan' }
+const PACKED: Record<string, PackName> = { tiles: 'lighthouse', scan: 'scan', voice: 'voice' }
 
 function resourcePath(rel: string, devServer: boolean): string {
   const clean = path.normalize(rel).replace(/^([/\\])+/, '')

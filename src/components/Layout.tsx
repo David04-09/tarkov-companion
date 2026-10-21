@@ -7,6 +7,7 @@ import { NAV_ITEMS } from '../config/nav'
 import { FirstRunSetup } from '../desktop/FirstRunSetup'
 import { SyncReviewDialog, SyncToast } from '../desktop/SyncReview'
 import { useScanStore } from '../scan/scanStore'
+import { useAssistantListenStore } from '../store/assistantListen'
 import { UpdateBanner } from '../desktop/UpdateBanner'
 import { hasAnyProgress, useLocalFlags } from '../desktop/localFlags'
 import { isDesktop, useDesktopStore } from '../desktop/useDesktop'
@@ -49,6 +50,15 @@ export function Layout() {
   }, [landingPage, hiddenTabs, pathname, navigate])
   // Desktop scan hotkey: the main process captured the game screen; open the scanner with it.
   useEffect(() => window.desktop?.onScanCapture((png) => useScanStore.getState().openWith(new Blob([png as BlobPart], { type: 'image/png' }))), [])
+  // Desktop assistant hotkey: switch to the assistant tab (the window stays in the background) and listen.
+  useEffect(
+    () =>
+      window.desktop?.onAssistantListen(() => {
+        useAssistantListenStore.getState().ask()
+        navigate('/neural')
+      }),
+    [navigate],
+  )
   const settings = useDesktopStore((s) => s.settings)
   const localSetupDone = useLocalFlags((s) => s.setupDone)
   const hasProgress = useProgressStore((s) => hasAnyProgress(s.profiles))

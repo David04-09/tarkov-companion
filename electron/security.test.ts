@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { canonicalPath, cleanSettingsPatch, isAccelerator, isSafeDirectory, isSameFileUrl, isScreenshotName, isWebUrl } from './security'
+import { canonicalPath, cleanSettingsPatch, isAccelerator, isMicOnly, isSafeDirectory, isSameFileUrl, isScreenshotName, isWebUrl } from './security'
 
 describe('settings from the page', () => {
   it('keeps only known fields with valid values', () => {
@@ -82,5 +82,16 @@ describe('own page check', () => {
   it('refuses other files and schemes', () => {
     expect(isSameFileUrl(pathToFileURL(path.join(dir, 'other.html')).href, page)).toBe(false)
     expect(isSameFileUrl('https://example.com/index.html', page)).toBe(false)
+  })
+})
+
+describe('microphone permission', () => {
+  it('allows the microphone alone, never the camera', () => {
+    expect(isMicOnly('media', ['audio'])).toBe(true)
+    expect(isMicOnly('media', ['audio', 'video'])).toBe(false)
+    expect(isMicOnly('media', ['video'])).toBe(false)
+    expect(isMicOnly('media', [])).toBe(false)
+    expect(isMicOnly('media', undefined)).toBe(false)
+    expect(isMicOnly('geolocation', ['audio'])).toBe(false)
   })
 })

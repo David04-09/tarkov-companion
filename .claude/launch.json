@@ -18,6 +18,13 @@
       "port": 5173
     },
     {
+      "name": "preview-no-node",
+      "runtimeExecutable": "node_modules/electron/dist/electron.exe",
+      "runtimeArgs": ["node_modules/vite/bin/vite.js", "preview", "--port", "4173", "--strictPort"],
+      "env": { "ELECTRON_RUN_AS_NODE": "1" },
+      "port": 4173
+    },
+    {
       "name": "preview",
       "runtimeExecutable": "npx",
       "runtimeArgs": [

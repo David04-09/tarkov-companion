@@ -28,6 +28,7 @@ export const DEFAULT_SETTINGS: StoredSettings = {
   initialBackfillDone: false,
   paused: false,
   scanHotkey: 'Alt+Shift+S',
+  assistantHotkey: '',
   knownProfileId: null,
   knownGameVersion: null,
   setupDone: false,
