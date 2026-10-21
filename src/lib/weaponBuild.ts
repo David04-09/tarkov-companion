@@ -392,7 +392,18 @@ export function matchingPreset(weapon: Item, parts: BuildParts, items: ItemsById
 // Part picker rows (shared by the List view and the Modding view)
 // ---------------------------------------------------------------------------
 
-export type PartSort = 'name' | 'ergonomics' | 'recoil' | 'price'
+export type PartSort = 'best' | 'name' | 'ergonomics' | 'recoil' | 'price'
+
+/**
+ * How much better a part makes the gun, for "Best first": recoil counts most (each 1% less recoil
+ * is a point), ergonomics half as much (each +1 ergo is half a point). Parts that change neither
+ * (mounts, most sights) score 0.
+ */
+export function partScore(item: Item): number {
+  const m = item.mod
+  if (!m) return 0
+  return -m.recoilModifier * 100 + m.ergonomics * 0.5
+}
 
 export interface PartOption {
   item: Item
@@ -425,6 +436,8 @@ export function partOptions(
     .filter((it) => !needle || it.name.toLowerCase().includes(needle) || it.shortName.toLowerCase().includes(needle))
     .map((it) => ({ item: it, price: priceOf(it), conflict: findConflict(it.id, installed, items, ignore) }))
   const by: Record<PartSort, (a: PartOption, b: PartOption) => number> = {
+    // Best first; among equally good parts (often all 0: mounts, sights) the cheaper one first.
+    best: (a, b) => partScore(b.item) - partScore(a.item) || (a.price ?? Infinity) - (b.price ?? Infinity),
     name: (a, b) => a.item.name.localeCompare(b.item.name),
     ergonomics: (a, b) => (b.item.mod?.ergonomics ?? 0) - (a.item.mod?.ergonomics ?? 0),
     recoil: (a, b) => (a.item.mod?.recoilModifier ?? 0) - (b.item.mod?.recoilModifier ?? 0),

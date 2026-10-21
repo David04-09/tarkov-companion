@@ -658,7 +658,7 @@ function PartPicker({
   indent: number
 }) {
   const [search, setSearch] = useState('')
-  const [sort, setSort] = useState<PartSort>('name')
+  const [sort, setSort] = useState<PartSort>('best')
 
   // Parts that would be removed by a swap do not block the new part (partOptions handles it).
   const rows = useMemo(
@@ -688,6 +688,7 @@ function PartPicker({
           />
         </label>
         <select value={sort} onChange={(e) => setSort(e.target.value as PartSort)} aria-label="Sort parts" className={selectClass}>
+          <option value="best">Best first</option>
           <option value="name">By name</option>
           <option value="ergonomics">Best ergonomics</option>
           <option value="recoil">Least recoil</option>

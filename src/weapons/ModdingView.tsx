@@ -26,6 +26,7 @@ import {
   type SlotPath,
   type SlotSide,
 } from '../lib/weaponBuild'
+import { gunLayers, layersBounds, type Layer } from './gunComposite'
 
 // ---------------------------------------------------------------------------
 // Small helpers
@@ -77,6 +78,31 @@ function Picture({ src, className }: { src: string | null; className: string }) 
   return <Crosshair className={`${className} p-2 text-ink-dim`} aria-hidden />
 }
 
+/**
+ * A modded gun drawn from its parts' pictures (see gunComposite.ts), fitted into the frame.
+ * Positions are percentages of the combined box, so it scales with the frame.
+ */
+function GunPicture({ layers, className }: { layers: Layer[]; className: string }) {
+  const b = layersBounds(layers)
+  return (
+    <div className={`${className} flex items-center justify-center`}>
+      <div className="relative w-full" style={{ aspectRatio: `${b.w} / ${b.h}`, maxHeight: '100%', maxWidth: `calc(100% * ${b.w / b.h})` }}>
+        {layers.map((l) => (
+          <img
+            key={l.id}
+            src={l.src}
+            alt=""
+            draggable={false}
+            loading="lazy"
+            className="pointer-events-none absolute object-contain"
+            style={{ left: `${((l.x - b.x) / b.w) * 100}%`, top: `${((l.y - b.y) / b.h) * 100}%`, width: `${(l.w / b.w) * 100}%`, height: `${(l.h / b.h) * 100}%` }}
+          />
+        ))}
+      </div>
+    </div>
+  )
+}
+
 interface Line {
   key: string
   x1: number
@@ -124,6 +150,12 @@ export function ModdingView({
 
   const preset = useMemo(() => (path.length ? null : matchingPreset(weapon, parts, items)), [path.length, weapon, parts, items])
   const centreSrc = picture(preset ?? focusItem, true)
+  // No preset with exactly these parts: put the gun together from the parts' own pictures.
+  const layers = useMemo(() => {
+    if (preset || !focusItem) return null
+    const l = gunLayers(focusItem, level, items)
+    return l && l.length > 1 ? l : null
+  }, [preset, focusItem, level, items])
 
   // Paths (joined) of empty required slots anywhere in the build.
   const missing = useMemo(() => missingRequired(weapon, parts, items).map((f) => f.path.join('/')), [weapon, parts, items])
@@ -223,11 +255,12 @@ export function ModdingView({
   const centre = (
     <div className="flex min-w-0 flex-col items-center gap-2 text-center">
       <div ref={centreRef} className="flex h-44 w-full max-w-[30rem] items-center justify-center rounded-lg border border-line bg-surface p-2 sm:h-56">
-        <Picture src={centreSrc} className="h-full w-full" />
+        {layers ? <GunPicture layers={layers} className="h-full w-full" /> : <Picture src={centreSrc} className="h-full w-full" />}
       </div>
       <div className="min-w-0 max-w-full">
         <p className="truncate text-sm font-semibold" title={focusItem?.name}>{focusItem?.name ?? 'Unknown part'}</p>
         {preset && <p className="truncate text-xs text-ink-dim">Same parts as the ready-made build "{preset.name}"</p>}
+        {layers && <p className="truncate text-xs text-ink-dim">Put together from the parts' pictures (approximate)</p>}
         {(preset ?? focusItem)?.pictureOf && <p className="text-xs text-ink-dim">Picture of the standard version: tarkov.dev has no picture of this one yet.</p>}
         {!centreSrc && <p className="text-xs text-ink-dim">tarkov.dev has no picture of this item yet.</p>}
         {focusItem?.mod && <ModStatLine item={focusItem} className="text-xs" />}
@@ -417,7 +450,7 @@ function PartGridPicker({
   onClose: () => void
 }) {
   const [search, setSearch] = useState('')
-  const [sort, setSort] = useState<PartSort>('name')
+  const [sort, setSort] = useState<PartSort>('best')
   const rows = useMemo(
     () => partOptions(slot, node, installed, items, acquireCost, search, sort),
     [slot, node, installed, items, search, sort],
@@ -456,6 +489,7 @@ function PartGridPicker({
           />
         </label>
         <select value={sort} onChange={(e) => setSort(e.target.value as PartSort)} aria-label="Sort parts" className={fieldClass}>
+          <option value="best">Best first</option>
           <option value="name">By name</option>
           <option value="ergonomics">Best ergonomics</option>
           <option value="recoil">Least recoil</option>
