@@ -11,6 +11,9 @@ import { buildMapTasks, type MapTask } from '../maps/overlay/mapTasks'
 import { useAssistantStore } from '../store/assistant'
 import { useAssistantMemory } from '../store/assistantMemory'
 import { useRaidLogStore } from '../store/raidLog'
+import { useTimersStore } from '../desktop/timers'
+import { useSyncHistory } from '../desktop/syncHistory'
+import { usePositionStore } from '../maps/position'
 import { useAssistantChat, type ChatMessage } from '../store/assistantChat'
 import { useAssistantListenStore } from '../store/assistantListen'
 import { useAssistantRouteStore } from '../store/assistantRoute'
@@ -116,6 +119,23 @@ export function AssistantHost() {
     return list
   }
 
+  /** What is happening right now: the raid clock, the last screenshot position, hand-ins and habits. */
+  const liveInfo = (data: GameData, items: ItemsById | undefined) => {
+    const timers = useTimersStore.getState()
+    const pos = usePositionStore.getState().pos
+    const mode = useProgressStore.getState().gameMode
+    return {
+      now: Date.now(),
+      raid: timers.raidStartedAt ? { startedAt: timers.raidStartedAt, durationS: timers.raidDurationSeconds, mapNameId: timers.raidMapNameId } : null,
+      position: pos ? { x: pos.x, z: pos.z, mapKey: pos.mapKey, at: pos.at } : null,
+      scavCooldownEndsAt: timers.scavCooldownEndsAt,
+      handIns: useSyncHistory.getState().entries.filter((e) => e.mode === mode && !e.undone).map((e) => ({ taskId: e.taskId, at: e.at })),
+      habits: useAssistantMemory.getState().habits,
+      needs: () => needsFor(data, items),
+      isDesktop: !!window.desktop,
+    }
+  }
+
   /** Everything an answer may use; the item list only if it is already loaded (it is large). */
   const context = (data: GameData, items: ItemsById | undefined): AssistantContext => {
     const eligible = new Set(tasks.map((t) => t.id))
@@ -132,6 +152,7 @@ export function AssistantHost() {
       needFor: (itemId) => needsFor(data, items).find((n) => n.itemId === itemId || n.alternatives.includes(itemId)),
       tasksOnMap: (map: GameMap) => tasksOnMapFor(data, map, eligible, faction),
       heading: (map, from, to) => headingOnMap(map.normalizedName, from, to),
+      live: liveInfo(data, items),
     }
   }
 

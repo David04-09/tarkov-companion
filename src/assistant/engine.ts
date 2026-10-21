@@ -9,6 +9,7 @@ import type { MapTask } from '../maps/overlay/mapTasks'
 import { labelKey, nearestPlace, placeEntries, type Place } from './places'
 import { compact, findNames, sayDistance, words, type NameEntry } from './text'
 import { closestTo, orderStops, parseSide, pmcSpawns, spawnOnSide } from './route/routePlan'
+import { raidAnswer, type LiveInfo } from './raidAnswers'
 import { collectAnswer, expandNicknames, findItem, infoAnswer, itemQuestionKind, needAnswer, parseCount, priceAnswer, whereAnswer, type ItemContext } from './items'
 
 export interface MapPoint {
@@ -74,6 +75,8 @@ export interface AssistantContext extends Pick<ItemContext, 'collected' | 'needF
   /** Where the player last said they were. */
   lastPlace: Place | null
   playerLevel: number
+  /** Live facts (raid clock, screenshot position, hand-ins, habits); absent in tests that do not need them. */
+  live?: LiveInfo
 }
 
 interface Index {
@@ -158,6 +161,10 @@ const HELP: Reply = {
     '"Debut" or "how do I do Debut" — what a quest needs.',
     '"What is the LEDX for?" or "price of a GPU" — which of your quests need an item, what a key opens, and its flea price.',
     '"My progress" — level, quests done, Kappa.',
+    'In raid: "how long is left?", "what time is it in Tarkov?", "where am I?" (from your last screenshot), "bosses on Customs", "where is Killa?", "where are the Goons?"',
+    'Loot and danger: "safes on Customs", "loot near Dorms", "minefields on Woods", "locked doors near Dorms", "what keys do I need for Debut?"',
+    'Gear: "best ammo for 5.45", "will M995 go through class 5?", "should I keep the LEDX?", "what should I loot on Customs?"',
+    'After raid: "what did I hand in today?", "my stats", "what does Debut unlock?", "when does Prapor restock?", "when can I scav?", "what should I play tonight?"',
   ],
 }
 
@@ -202,6 +209,14 @@ export function answer(question: string, ctx: AssistantContext): Reply {
     const map = mapByLabelKey(ctx, place.mapKey, contextMap)
     if (!map) return { text: `I know ${place.name}, but not which map it belongs to.` }
     return { ...nearestQuest(place, map, ctx), youAt: place }
+  }
+
+  // In and after a raid: time left, Tarkov time, where am I, bosses, loot, hazards, keys, ammo, keep or sell, stats… (raidAnswers.ts).
+  if (!wantsRoute && !wantsNearest) {
+    const quest = findNames(q, index.quests).find((h) => h.len >= 5)?.value ?? null
+    const { place } = pickPlace(places, contextMap)
+    const raid = raidAnswer(ctx, ctx.live, { said, q, map: contextMap, place, quest, mapOf: (key) => mapByLabelKey(ctx, key, contextMap) ?? ctx.data.maps.find((m) => m.normalizedName === key) })
+    if (raid) return raid
   }
 
   // 2a. Item Collection: "collected 5 wires", "used 2 wires", "how many wires do I still need".

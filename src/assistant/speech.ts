@@ -3,6 +3,7 @@
  * does the work: no download, no model, next to no memory or CPU, and nothing leaves the PC
  * for the standard Windows voices.
  */
+import { forSpeech } from './speakable'
 import type { VoiceEngine, VoiceGender } from '../store/assistant'
 import { NATURAL_VOICES, speakNatural, stopNatural } from './naturalVoice'
 
@@ -74,8 +75,10 @@ function speaking(on: boolean) {
  * Says `text` with the chosen engine; if the natural voice cannot load, the Windows voice says it
  * instead. Resolves when it has finished talking.
  */
-export function speak(text: string, opts: SpeakOptions): Promise<void> {
-  if (!text.trim()) return Promise.resolve()
+export function speak(said: string, opts: SpeakOptions): Promise<void> {
+  if (!said.trim()) return Promise.resolve()
+  // Room and key numbers digit by digit, codes letter by letter (speakable.ts).
+  const text = forSpeech(said)
   const token = ++speakingToken
   speaking(true)
   const done = () => {
