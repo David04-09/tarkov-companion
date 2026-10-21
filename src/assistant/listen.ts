@@ -34,7 +34,8 @@ export interface ListenHandlers {
   /** What has been heard so far. */
   onPartial: (text: string) => void
   /** The finished question (empty when nothing was understood). */
-  onResult: (text: string) => void
+  /** `alt`: what the small Vosk model heard (it only knows game words), as a second opinion. */
+  onResult: (text: string, alt?: string) => void
   onError: (message: string) => void
 }
 
@@ -75,13 +76,14 @@ export function loadModel(onState: ListenHandlers['onState']): Promise<VoskClien
   return modelPromise
 }
 
-/** Moonshine's text for the recorded question; the Vosk text if Moonshine fails. */
-export async function questionText(samples: Float32Array, voskText: string, onState: ListenHandlers['onState']): Promise<string> {
+/** Moonshine's text for the recorded question (the Vosk text if Moonshine fails), and Vosk's as `alt`. */
+export async function questionText(samples: Float32Array, voskText: string, onState: ListenHandlers['onState']): Promise<{ text: string; alt: string }> {
+  const alt = spokenToText(voskText)
   try {
     const text = writtenToText(await transcribe(samples, (m) => onState('loading', m)))
-    return text || spokenToText(voskText)
+    return { text: text || alt, alt }
   } catch {
-    return spokenToText(voskText)
+    return { text: alt, alt }
   }
 }
 
@@ -163,9 +165,9 @@ export function listenOnce(vocabulary: string[], h: ListenHandlers): () => void 
           return h.onResult('')
         }
         h.onState('thinking', 'Working out what you said…')
-        void questionText(recording.take(), heard(), h.onState).then((text) => {
+        void questionText(recording.take(), heard(), h.onState).then(({ text, alt }) => {
           h.onState('idle')
-          h.onResult(text)
+          h.onResult(text, alt)
         })
       }
       // Done once the player has said something and then stayed quiet for a moment (a pause in

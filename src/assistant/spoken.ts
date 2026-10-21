@@ -95,12 +95,15 @@ export function spokenToText(heard: string): string {
 }
 
 /** Words the assistant's questions are made of (the recogniser picks only from these, which makes it far more accurate). */
-const COMMAND_WORDS = `i im i'm am at in on near by from to the a an and of is are my me it what whats what's where wheres where's which how do does did get go
+export const COMMAND_WORDS = `i im i'm am at in on near by from to the a an and of is are my me it what whats what's where wheres where's which how do does did get go
 route path way take guide walk head run show find locate closest nearest next close quest quests task tasks objective objectives extract extracts exit exits
 spawned spawn spawned standing currently am here there map maps help hello hi progress level kappa price worth cost sell buy need needed for key keys open opens
 mark tick finished completed complete done untick not undo build me gun weapon item items about tell can you please stop thanks thank
 yes yeah yep approve approved accept accepted confirm sure okay ok go ahead no nope cancel never mind collected picked up found used sold add added
-that's that all it's thank thanks you stop listening goodbye bye hey g p u led x`.split(/\s+/)
+that's that all it's thank thanks you stop listening goodbye bye hey g p u led x
+long left time much many tarkov night day boss bosses goons loot safes safe jackets drawers containers minefields minefield mines snipers sniper hazards locked doors door
+ammo rounds round class armor armour keep stash should unlock unlocks restock restocks scav stats raids raid today hand handed remember forget know short detail
+tonight play best safest side north south east west then collection value draw spot loose why when who will`.split(/\s+/)
 
 /** Every word the recogniser may hear: command words, numbers, letters and the words of every known name. */
 export function voiceVocabulary(names: string[]): string[] {

@@ -29,7 +29,8 @@ export interface WakeHandlers {
   /** The name was said: answer ("Yes sir?"). */
   onWake: () => void
   /** A finished question in a conversation. */
-  onQuestion: (text: string) => void
+  /** `alt`: what the small Vosk model heard, as a second opinion. */
+  onQuestion: (text: string, alt?: string) => void
   /** "Thanks, that's all" (or nothing said for a while: `idle`). */
   onEnd: (idle: boolean) => void
   onPartial: (text: string) => void
@@ -108,7 +109,7 @@ export function startWakeListening(name: WakeName, vocabulary: string[], h: Wake
         questionStart = -1
         quietSince = -1
         h.onState('thinking', 'Working out what you said…')
-        void questionText(samples, voskText, h.onState).then((text) => {
+        void questionText(samples, voskText, h.onState).then(({ text, alt }) => {
           if (stopped || mode !== 'conversation') return
           if (!text) return h.onState('listening', 'I did not catch that. Ask again.')
           // Vosk knows the end phrase as well (it is in its word list): either one ends it.
@@ -117,7 +118,7 @@ export function startWakeListening(name: WakeName, vocabulary: string[], h: Wake
             h.onEnd(false)
           } else {
             h.onState('listening', `Listening. Say "thanks, that's all" when you are done.`)
-            h.onQuestion(text)
+            h.onQuestion(text, alt)
           }
         })
       }

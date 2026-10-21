@@ -31,6 +31,7 @@ import { cutCount, onSpeakingChange, speak, stopSpeaking } from './speech'
 import { applyWords, askKind, asksAboutOwn, findNote, firstSentence, FORGET_ALL, FORGET_LAST, greetingText, parseMeant, parseRemember, parseStyle, parseTeach, subjectOf, wantsShort, WHAT_YOU_KNOW } from './memory'
 import { greetingFacts, habitsFromLogs, knowReply, noteReply, RECOMMEND, recommendReply } from './memoryAnswers'
 import { words } from './text'
+import { buildSoundNames, snapToNames, type SoundName } from './phonetic'
 import { voiceVocabulary } from './spoken'
 import { startWakeListening, type WakeListener } from './wake'
 import { withWalk } from './withWalk'
@@ -350,6 +351,41 @@ export function AssistantHost() {
       .then((r) => r.items)
       .catch(() => undefined)
 
+  // Spoken questions: game names put back where the speech model wrote English ("pox a ram" →
+  // Poxeram, phonetic.ts), and Vosk's version used when Moonshine's cannot be understood.
+  const soundCache = useRef<{ names: string[]; items: ItemsById | undefined; list: SoundName[] } | null>(null)
+  const soundNamesFor = (items: ItemsById | undefined) => {
+    const c = soundCache.current
+    if (c && c.names === names && c.items === items) return c.list
+    const data = gameData.data
+    const extra = data ? [...data.traders.map((t) => t.name), ...Object.values(data.mobNames)] : []
+    const itemNames = items ? Object.values(items).flatMap((it) => [it.name, it.shortName]) : []
+    const list = buildSoundNames([...names, ...extra, ...itemNames])
+    soundCache.current = { names, items, list }
+    return list
+  }
+  const understood = (text: string) => {
+    const data = gameData.data
+    if (!data) return true
+    const items = queryClient.getQueryData<{ items: ItemsById }>(itemKeys.mode(gameMode))?.items
+    const r = answer(text, context(data, items))
+    return !/^(Sorry, I did not|Which item\?|I could not find|I did not find)/.test(r.text)
+  }
+  const heard = (text: string, alt?: string): string => {
+    const items = queryClient.getQueryData<{ items: ItemsById }>(itemKeys.mode(gameMode))?.items
+    const list = soundNamesFor(items)
+    const main = snapToNames(text, list).text
+    // Memory commands ("remember that …") are kept as Moonshine heard them: Vosk only knows game words.
+    if (!alt || alt === main || /^(remember|note to self|forget|no i meant|i meant|when i say|keep it short|more detail|what do you know)/.test(words(main).join(' '))) return main
+    if (understood(main)) return main
+    const second = snapToNames(alt, list).text
+    return understood(second) ? second : main
+  }
+  const heardRef = useRef(heard)
+  useEffect(() => {
+    heardRef.current = heard
+  })
+
   const stopListening = useRef<(() => void) | null>(null)
   const askRef = useRef(ask)
   const runRef = useRef(run)
@@ -387,9 +423,9 @@ export function AssistantHost() {
         if (state === 'idle') stopListening.current = null
       },
       onPartial: (text) => setListen({ state: 'listening', detail: text }),
-      onResult: (text) => {
+      onResult: (text, alt) => {
         stopListening.current = null
-        if (text) askRef.current(text)
+        if (text) askRef.current(heardRef.current(text, alt))
         else setListen({ state: 'idle', detail: 'I did not catch that. Try again.' })
       },
       onError: (message) => {
@@ -437,7 +473,7 @@ export function AssistantHost() {
           if (greeting) setMessages((m) => [...m, { id: nextId.current++, from: 'assistant', text: greeting, at: Date.now() }])
           say(greeting ?? 'Yes sir?')
         },
-        onQuestion: (text) => askRef.current(text),
+        onQuestion: (text, alt) => askRef.current(heardRef.current(text, alt)),
         onEnd: (idle) => {
           chat().set({ talking: false })
           setListen({ state: 'idle', detail: waitingText })
