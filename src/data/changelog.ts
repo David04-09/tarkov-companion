@@ -17,6 +17,7 @@ export const UNRELEASED: string[] = [
   'Assistant: listening no longer cuts you off. It waits until you have been quiet for about 2 seconds (up to 25 seconds in total), and it now knows item names, so "battery price" or "where can I find the dorm 303 key" work by voice. Spoken numbers like "three oh three" or "six hundred fifty" become 303 and 650.',
   'Assistant: item questions. "Where can I find X" shows its loose-loot spots on the map (most-spawning map first), traders that sell it, its flea price and the quests that need it; "price of X" gives flea and trader prices; "what is X for" lists quests and what a key opens. Items are found by their words, so "dorm 303 key" finds Dorm room 303 key.',
   "Assistant: it no longer keeps asking where you are. \"Closest quest\" uses the place you named last, tips asking for a place are shown but not read out, and Test voice says a neutral line.",
+  "Weapon builder: the Modding view is one page now. Every slot of the gun is shown at once, grouped by the part it belongs to (the weapon's own slots first, each fitted part's slots right under it), so there is no more clicking into parts with Modify. The part picker opens at the side of the window.",
   "Weapon builder: when your build matches no ready-made one exactly, the picture is now the real picture of the closest ready-made build, with what differs listed underneath (\"+ ARFX, − M4SS\"). Inside a part you see that part's own picture. The parts layout from 2.0.0 is still there as an experimental switch.",
 ]
 
