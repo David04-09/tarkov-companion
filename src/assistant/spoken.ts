@@ -9,7 +9,25 @@ const TENS = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 
 const LETTERS = 'abcdefghijklmnopqrstuvwxyz'.split('')
 
 /** "z b ten thirteen" -> "zb 1013" style: spoken numbers become digits, spelled letters join up. */
+/**
+ * Acronyms the speech model has no word for come out as other words ("GPU" -> "gp you").
+ * Each is listed the ways it is heard, longest first.
+ */
+const ACRONYMS: [RegExp, string][] = [
+  [/\b(g p you|gp you|g p u|gee pee you|g pu)\b/g, 'gpu'],
+  [/\b(led x|l e d x|ledex|led ex|let x)\b/g, 'ledx'],
+  [/\b(f i r|f ir)\b/g, 'fir'],
+  [/\bm four\b/g, 'm4'],
+  [/\b(s a s|s as)\b/g, 'sas'],
+  [/\b(a k|ak) (seventy four|74)\b/g, 'ak74'],
+  [/\b(v p o)\b/g, 'vpo'],
+  [/\b(s v d)\b/g, 'svd'],
+  [/\b(m p five|mp five)\b/g, 'mp5'],
+  [/\b(r b|r be) (k s m)\b/g, 'rb ksm'],
+]
+
 export function spokenToText(heard: string): string {
+  heard = ACRONYMS.reduce((t, [re, to]) => t.replace(re, to), ` ${heard.toLowerCase()} `).trim()
   const w = heard.toLowerCase().split(/\s+/).filter(Boolean)
   const out: string[] = []
   for (let i = 0; i < w.length; i++) {
@@ -61,7 +79,8 @@ const COMMAND_WORDS = `i im i'm am at in on near by from to the a an and of is a
 route path way take guide walk head run show find locate closest nearest next close quest quests task tasks objective objectives extract extracts exit exits
 spawned spawn spawned standing currently am here there map maps help hello hi progress level kappa price worth cost sell buy need needed for key keys open opens
 mark tick finished completed complete done untick not undo build me gun weapon item items about tell can you please stop thanks thank
-yes yeah yep approve approved accept accepted confirm sure okay ok go ahead no nope cancel never mind collected picked up found used sold add added`.split(/\s+/)
+yes yeah yep approve approved accept accepted confirm sure okay ok go ahead no nope cancel never mind collected picked up found used sold add added
+that's that all it's thank thanks you stop listening goodbye bye hey g p u led x`.split(/\s+/)
 
 /** Every word the recogniser may hear: command words, numbers, letters and the words of every known name. */
 export function voiceVocabulary(names: string[]): string[] {

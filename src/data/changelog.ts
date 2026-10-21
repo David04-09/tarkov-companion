@@ -13,6 +13,7 @@ export interface ChangelogEntry {
 
 /** Committed, waiting for the next update. */
 export const UNRELEASED: string[] = [
+  'Assistant: wake word. Turn on "Wake word" in the Voice panel and pick a name (Ranger, Atlas, Nova, Echo or Raven). Say "Hey Ranger", it answers "Yes sir?", then ask as many questions as you like; say "thanks, that\'s all" (or "stop listening", "goodbye") and it goes back to waiting. While waiting it only listens for its name, uses the speech model already on this PC and sends nothing anywhere; it works while this tab is open.',
   "Look and layout: nine new colour themes (Labs, Desert, Woods, Night vision, Thermal, Steel, Lighthouse, Cultist and the light Arctic). The sidebar is sorted into sections (Overview, Quests & story, Raid, Gear & hideout, Trading). Settings → General → Sidebar tabs can hide any tab or give it a colour.",
   'Assistant: a natural voice (Kitten TTS, made on this PC; a 57 MB download the first time). Pick Natural or Windows in the Voice panel, then a female or male voice. A sentence takes about a second to prepare on one CPU core; the Windows voices are still there if you want no download and almost no CPU.',
   'Assistant: listening no longer cuts you off. It waits until you have been quiet for about 2 seconds (up to 25 seconds in total), and it now knows item names, so "battery price" or "where can I find the dorm 303 key" work by voice. Spoken numbers like "three oh three" or "six hundred fifty" become 303 and 650.',

@@ -54,28 +54,47 @@ export function pickNaturalVoice(gender: VoiceGender, picked: string | null | un
   return picked && list.includes(picked) ? picked : list[0]
 }
 
-/** Says `text` with the chosen engine; if the natural voice cannot load, the Windows voice says it instead. */
-export function speak(text: string, opts: SpeakOptions): void {
-  if (!text.trim()) return
+/** Listeners told when the assistant starts and stops talking (the wake word ignores the mic meanwhile). */
+const speakingListeners = new Set<(speaking: boolean) => void>()
+let speakingToken = 0
+export function onSpeakingChange(cb: (speaking: boolean) => void): () => void {
+  speakingListeners.add(cb)
+  return () => speakingListeners.delete(cb)
+}
+function speaking(on: boolean) {
+  for (const cb of speakingListeners) cb(on)
+}
+
+/**
+ * Says `text` with the chosen engine; if the natural voice cannot load, the Windows voice says it
+ * instead. Resolves when it has finished talking.
+ */
+export function speak(text: string, opts: SpeakOptions): Promise<void> {
+  if (!text.trim()) return Promise.resolve()
+  const token = ++speakingToken
+  speaking(true)
+  const done = () => {
+    if (token === speakingToken) speaking(false)
+  }
+  let p: Promise<void>
   if (opts.engine === 'natural') {
     stopWindows()
-    speakNatural(text, { voice: pickNaturalVoice(opts.gender, opts.naturalVoice), volume: opts.volume, rate: opts.rate, onLoading: (m) => opts.onStatus?.(m) })
+    p = speakNatural(text, { voice: pickNaturalVoice(opts.gender, opts.naturalVoice), volume: opts.volume, rate: opts.rate, onLoading: (m) => opts.onStatus?.(m) })
       .then(() => opts.onStatus?.(null))
       .catch((e: unknown) => {
         opts.onStatus?.(`The natural voice could not start (${e instanceof Error ? e.message : String(e)}); using the Windows voice.`)
-        speakWindows(text, opts)
+        return speakWindows(text, opts)
       })
-    return
-  }
-  speakWindows(text, opts)
+  } else p = speakWindows(text, opts)
+  return p.finally(done)
 }
 
 function stopWindows() {
   if (speechAvailable()) window.speechSynthesis.cancel()
 }
 
-function speakWindows(text: string, opts: SpeakOptions): void {
-  if (!speechAvailable()) return
+function speakWindows(text: string, opts: SpeakOptions): Promise<void> {
+  if (!speechAvailable()) return Promise.resolve()
   const synth = window.speechSynthesis
   synth.cancel()
   const u = new SpeechSynthesisUtterance(text)
@@ -86,10 +105,16 @@ function speakWindows(text: string, opts: SpeakOptions): void {
   }
   u.volume = opts.volume
   u.rate = opts.rate
-  synth.speak(u)
+  return new Promise((resolve) => {
+    u.onend = () => resolve()
+    u.onerror = () => resolve()
+    synth.speak(u)
+  })
 }
 
 export function stopSpeaking(): void {
   stopWindows()
   stopNatural()
+  speakingToken++
+  speaking(false)
 }

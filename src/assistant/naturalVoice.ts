@@ -85,8 +85,13 @@ export function sentences(text: string): string[] {
   return (text.match(/[^.!?]+[.!?]*/g) ?? [text]).map((s) => s.trim()).filter(Boolean)
 }
 
+/** Resolves the playing answer's promise when it is stopped. */
+let finishPlaying: (() => void) | null = null
+
 export function stopNatural(): void {
   generation++
+  finishPlaying?.()
+  finishPlaying = null
   for (const s of playing) {
     try {
       s.stop()
@@ -97,7 +102,7 @@ export function stopNatural(): void {
   playing = []
 }
 
-/** Speaks `text`; resolves when everything has been queued for playing. Throws when the voice cannot load. */
+/** Speaks `text`; resolves when it has finished playing (or was stopped). Throws when the voice cannot load. */
 export async function speakNatural(text: string, opts: { voice: string; volume: number; rate: number; onLoading?: (message: string) => void }): Promise<void> {
   stopNatural()
   const mine = generation
@@ -109,6 +114,7 @@ export async function speakNatural(text: string, opts: { voice: string; volume: 
   gain.gain.value = opts.volume
   gain.connect(ctx.destination)
   let at = ctx.currentTime
+  let last: AudioBufferSourceNode | null = null
   try {
     for (const part of sentences(text)) {
       const { samples, rate } = await generate(part, opts.voice, opts.rate)
@@ -122,6 +128,7 @@ export async function speakNatural(text: string, opts: { voice: string; volume: 
       src.start(at)
       at += buffer.duration
       playing.push(src)
+      last = src
       src.onended = () => {
         playing = playing.filter((p) => p !== src)
       }
@@ -129,4 +136,10 @@ export async function speakNatural(text: string, opts: { voice: string; volume: 
   } finally {
     scheduleUnload()
   }
+  const end = last
+  if (!end || mine !== generation) return
+  await new Promise<void>((resolve) => {
+    finishPlaying = resolve
+    end.addEventListener('ended', () => resolve(), { once: true })
+  })
 }

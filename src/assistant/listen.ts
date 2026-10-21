@@ -45,7 +45,8 @@ function modelUrl(): string {
   return appFile(`voice/${VOICE_MODEL_FILE}`)
 }
 
-function loadModel(onState: ListenHandlers['onState']): Promise<VoskClient> {
+/** The shared recogniser (also used by the wake word, wake.ts). */
+export function loadModel(onState: ListenHandlers['onState']): Promise<VoskClient> {
   window.clearTimeout(unloadTimer)
   if (!modelPromise) {
     modelPromise = (async () => {
@@ -70,8 +71,17 @@ function loadModel(onState: ListenHandlers['onState']): Promise<VoskClient> {
   return modelPromise
 }
 
-function scheduleUnload() {
+/** Things keeping the recogniser loaded (the wake word while it is on). */
+let holders = 0
+export function holdModel(on: boolean): void {
+  holders = Math.max(0, holders + (on ? 1 : -1))
+  if (on) window.clearTimeout(unloadTimer)
+  else scheduleUnload()
+}
+
+export function scheduleUnload() {
   window.clearTimeout(unloadTimer)
+  if (holders > 0) return
   unloadTimer = window.setTimeout(() => {
     const p = modelPromise
     modelPromise = null

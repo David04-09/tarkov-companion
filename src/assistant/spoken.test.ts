@@ -26,3 +26,11 @@ describe('voiceVocabulary', () => {
     expect(v).not.toContain('1013')
   })
 })
+
+describe('acronyms', () => {
+  it('turns acronyms heard as words back into their letters', () => {
+    expect(spokenToText('where can i find gp you')).toBe('where can i find gpu')
+    expect(spokenToText('price of a led x')).toBe('price of a ledx')
+    expect(spokenToText('build me an m four')).toBe('build me an m4')
+  })
+})

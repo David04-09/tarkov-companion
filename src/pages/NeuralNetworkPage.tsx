@@ -13,11 +13,12 @@ import type { Place } from '../assistant/places'
 import { withWalk } from '../assistant/withWalk'
 import { confirmWord } from '../assistant/items'
 import { listenOnce, type ListenState } from '../assistant/listen'
+import { startWakeListening, WAKE_NAMES, type WakeListener } from '../assistant/wake'
 import { ALL_PLACES } from '../assistant/places'
 import { voiceVocabulary } from '../assistant/spoken'
 import { useAssistantListenStore } from '../store/assistantListen'
 import { answer, type AssistantAction, type AssistantContext, type MapCard, type Reply } from '../assistant/engine'
-import { listVoices, pickNaturalVoice, pickVoice, speak, speechAvailable, stopSpeaking, voiceGender } from '../assistant/speech'
+import { listVoices, onSpeakingChange, pickNaturalVoice, pickVoice, speak, speechAvailable, stopSpeaking, voiceGender } from '../assistant/speech'
 import { NATURAL_VOICES } from '../assistant/naturalVoice'
 import { computeTaskStatuses, isFactionEligible } from '../lib/taskStatus'
 import { findMapConfig, resolveBaseLayer } from '../maps/mapConfig'
@@ -82,6 +83,18 @@ function VoicePanel() {
         <input type="checkbox" checked={s.speak} onChange={(e) => s.set({ speak: e.target.checked })} className="h-4 w-4" />
         Read answers out loud
       </label>
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="flex items-center gap-2">
+          <input type="checkbox" checked={s.wakeWord} onChange={(e) => s.set({ wakeWord: e.target.checked })} className="h-4 w-4" />
+          Wake word
+        </label>
+        <select value={s.wakeName} onChange={(e) => s.set({ wakeName: e.target.value as typeof s.wakeName })} aria-label="Wake word name" className="rounded border border-line bg-surface px-2 py-1 text-xs">
+          {WAKE_NAMES.map((n) => (
+            <option key={n} value={n}>Hey {n[0].toUpperCase() + n.slice(1)}</option>
+          ))}
+        </select>
+        <span className="text-xs text-ink-dim">While this tab is open: say the name, it answers "Yes sir?", ask away, and say "thanks, that's all" to finish. The mic stays open while it waits; only the name is listened for and nothing leaves this PC.</span>
+      </div>
       <div className="flex flex-wrap items-center gap-2">
         <span className="w-16 text-ink-muted">Engine</span>
         <div className="inline-flex overflow-hidden rounded border border-line" role="group" aria-label="Voice engine">
@@ -320,7 +333,17 @@ export function NeuralNetworkPage() {
   useEffect(() => {
     askRef.current = ask
   })
+  // Wake word ("Hey Ranger"): while it is on, the mic button and hotkey start a conversation instead.
+  const wakeRef = useRef<WakeListener | null>(null)
+  const voiceRef = useRef(voice)
+  useEffect(() => {
+    voiceRef.current = voice
+  })
   const startListening = useCallback(async () => {
+    if (wakeRef.current) {
+      wakeRef.current.wake()
+      return
+    }
     if (stopListening.current || !names.length) return
     stopSpeaking()
     let cancelled = false
@@ -359,6 +382,57 @@ export function NeuralNetworkPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- vocabularyFor reads a ref; names covers its inputs
   }, [names, queryClient, gameMode])
   useEffect(() => () => stopListening.current?.(), [])
+
+  const wakeOn = voice.wakeWord
+  const wakeName = voice.wakeName
+  useEffect(() => {
+    if (!wakeOn || !names.length) return
+    let cancelled = false
+    let listener: WakeListener | null = null
+    let offSpeaking = () => {}
+    const called = wakeName[0].toUpperCase() + wakeName.slice(1)
+    const waitingText = `Say "Hey ${called}" to talk to the assistant.`
+    const say = (text: string) => {
+      const v = voiceRef.current
+      if (v.speak) void speak(text, v)
+    }
+    void (async () => {
+      let items = queryClient.getQueryData<{ items: ItemsById }>(itemKeys.mode(gameMode))?.items
+      if (!items) {
+        setListen({ state: 'loading', detail: 'Loading item names (first time)…' })
+        items = await queryClient
+          .fetchQuery({ queryKey: itemKeys.mode(gameMode), queryFn: ({ signal }) => fetchItems(gameMode, signal) })
+          .then((r) => r.items)
+          .catch(() => undefined)
+      }
+      if (cancelled) return
+      listener = startWakeListening(wakeName, vocabularyFor(items), {
+        onState: (state, detail) => setListen({ state: state === 'waiting' ? 'idle' : state, detail: state === 'waiting' ? waitingText : detail }),
+        onWake: () => {
+          stopSpeaking()
+          setListen({ state: 'listening', detail: `Listening. Say "thanks, that's all" when you are done.` })
+          say('Yes sir?')
+        },
+        onQuestion: (text) => askRef.current(text),
+        onEnd: (idle) => {
+          setListen({ state: 'idle', detail: waitingText })
+          if (!idle) say('Anytime.')
+        },
+        onPartial: (text) => setListen({ state: 'listening', detail: text }),
+        onError: (message) => setListen({ state: 'idle', detail: message }),
+      })
+      wakeRef.current = listener
+      // Do not listen to its own voice.
+      offSpeaking = onSpeakingChange((on) => listener?.pause(on))
+    })()
+    return () => {
+      cancelled = true
+      offSpeaking()
+      listener?.stop()
+      wakeRef.current = null
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- vocabularyFor reads a ref; names covers its inputs
+  }, [wakeOn, wakeName, names, queryClient, gameMode])
   // The desktop hotkey asks to listen (also when it switched to this tab just now).
   const listenRequest = useAssistantListenStore((st) => st.request)
   const handledRequest = useRef(0)
