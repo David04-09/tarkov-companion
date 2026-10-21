@@ -3,6 +3,7 @@ import type { Item, ItemsById, ModSlot } from '../api/types'
 import {
   buildAsText,
   closestPreset,
+  partScore,
   buildConflicts,
   buildTotals,
   findConflict,
@@ -227,5 +228,13 @@ describe('modding view helpers', () => {
     expect(sides.right.map((s) => s.nameId)).toEqual(['mod_pistol_grip'])
     expect(sides.bottom.map((s) => s.nameId)).toEqual(['mod_handguard', 'mod_launcher'])
     expect(Object.values(sides).flat()).toHaveLength(many.length)
+  })
+})
+
+describe('partScore', () => {
+  it('ranks less recoil first, then ergonomics', () => {
+    const p = (id: string, ergonomics: number, recoilModifier: number) => ({ id, mod: { ergonomics, recoilModifier, weight: 0, slots: [] } }) as unknown as Item
+    const ranked = [p('mount', 0, 0), p('grip', 8, 0), p('sup', -18, -0.07), p('brk', -2, -0.09)].sort((a, b) => partScore(b) - partScore(a)).map((x) => x.id)
+    expect(ranked).toEqual(['brk', 'grip', 'mount', 'sup'])
   })
 })

@@ -3,7 +3,6 @@ import {
   AlertTriangle,
   ArrowLeft,
   Check,
-  ChevronDown,
   Copy,
   Crosshair,
   Eraser,
@@ -11,7 +10,6 @@ import {
   Save,
   Search,
   Trash2,
-  X,
 } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 import { useItems } from '../api/hooks'
@@ -28,16 +26,12 @@ import {
   formatErgo,
   formatPercent,
   installedIds,
-  partOptions,
   presetToBuild,
   setPart,
   weaponPresets,
   type BuildParts,
-  type FlatSlot,
-  type PartSort,
   type SlotPath,
 } from '../lib/weaponBuild'
-import { readBuilderView, writeBuilderView, type BuilderView } from '../weapons/builderView'
 import { ModdingView } from '../weapons/ModdingView'
 import { useProgressStore } from '../store/progress'
 import { useWeaponBuildsStore, type SavedBuild } from '../store/weaponBuilds'
@@ -48,6 +42,12 @@ const buttonClass =
   'inline-flex items-center gap-1.5 rounded border border-line bg-surface-3 px-2.5 py-1.5 text-sm hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-50'
 
 type WeaponItem = Item & { weapon: NonNullable<Item['weapon']> }
+
+/** A gun's picture as people know it: its default ready-made build (the base item is often just the bare receiver). */
+function gunPreview(item: Item | undefined, items: ItemsById): Item | undefined {
+  const preset = item?.weapon?.defaultPreset ? items[item.weapon.defaultPreset] : undefined
+  return preset?.iconLink && !preset.pictureOf ? preset : item
+}
 
 function ItemIcon({ item, size = 'h-8 w-8' }: { item: Item | undefined; size?: string }) {
   if (item?.iconLink) return <img src={item.iconLink} alt="" className={`${size} shrink-0 object-contain`} loading="lazy" />
@@ -171,7 +171,7 @@ function WeaponList({
             {saved.map((b) => (
               <li key={b.id}>
                 <button type="button" onClick={() => onOpen(b.weaponId, b.id)} className={`${buttonClass} max-w-full`}>
-                  <ItemIcon item={items[b.weaponId]} size="h-5 w-5" />
+                  <ItemIcon item={gunPreview(items[b.weaponId], items)} size="h-5 w-5" />
                   <span className="truncate">{b.name}</span>
                   <span className="truncate text-xs text-ink-dim">{items[b.weaponId]?.shortName}</span>
                 </button>
@@ -231,7 +231,7 @@ function WeaponList({
               <tr key={item.id} className="cursor-pointer hover:bg-surface-3" onClick={() => onOpen(item.id)}>
                 <td className="px-2 py-1.5">
                   <button type="button" onClick={(e) => { e.stopPropagation(); onOpen(item.id) }} className="flex items-center gap-2 text-left hover:text-accent">
-                    <ItemIcon item={item} size="h-7 w-12" />
+                    <ItemIcon item={gunPreview(item, items)} size="h-7 w-12" />
                     <span>{item.name}</span>
                   </button>
                 </td>
@@ -285,7 +285,6 @@ function Builder({
   const [parts, setParts] = useState<BuildParts>(start.parts)
   const [unplaced, setUnplaced] = useState<Item[]>(start.unplaced)
   const [name, setName] = useState(() => builds.find((b) => b.id === initialBuildId)?.name ?? `My ${weapon.shortName}`)
-  const [openPath, setOpenPath] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const copyTimer = useRef<number | undefined>(undefined)
   useEffect(() => () => window.clearTimeout(copyTimer.current), [])
@@ -304,7 +303,6 @@ function Builder({
   const replace = (next: BuildParts, notPlaced: Item[] = []) => {
     setParts(next)
     setUnplaced(notPlaced)
-    setOpenPath(null)
   }
   const loadPreset = (presetId: string) => {
     const p = items[presetId]
@@ -314,13 +312,6 @@ function Builder({
   }
   const choosePath = (path: SlotPath, itemId: string | null) => {
     setParts((prev) => setPart(prev, path, itemId, items))
-    setOpenPath(null)
-  }
-  const choose = (f: FlatSlot, itemId: string | null) => choosePath(f.path, itemId)
-  const [view, setView] = useState<BuilderView>(readBuilderView)
-  const switchView = (v: BuilderView) => {
-    setView(v)
-    writeBuilderView(v)
   }
   const save = () => {
     if (active) {
@@ -365,7 +356,7 @@ function Builder({
         <ArrowLeft className="h-4 w-4" aria-hidden /> All weapons
       </button>
       <div className="mt-2 flex flex-wrap items-center gap-3">
-        <ItemIcon item={weapon} size="h-12 w-24" />
+        <ItemIcon item={gunPreview(weapon, items)} size="h-12 w-24" />
         <div className="min-w-0">
           <h1 className="text-2xl font-semibold">{weapon.name}</h1>
           <p className="text-sm text-ink-muted">
@@ -446,41 +437,11 @@ function Builder({
         <div className="min-w-0 rounded-lg border border-line bg-surface-2">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-3 py-2">
             <h2 className="text-sm font-semibold">Parts</h2>
-            <div role="group" aria-label="Builder view" className="inline-flex overflow-hidden rounded border border-line text-xs">
-              {(['modding', 'list'] as const).map((v) => (
-                <button
-                  key={v}
-                  type="button"
-                  onClick={() => switchView(v)}
-                  aria-pressed={view === v}
-                  className={`px-2.5 py-1 ${view === v ? 'bg-accent/20 text-accent' : 'bg-surface-3 text-ink-muted hover:text-ink'}`}
-                >
-                  {v === 'modding' ? 'Modding view' : 'List view'}
-                </button>
-              ))}
-            </div>
           </div>
-          {flat.length > 0 && view === 'modding' ? (
+          {flat.length > 0 ? (
             <ModdingView weapon={weapon} items={items} parts={parts} installed={installed} onChoose={choosePath} />
-          ) : flat.length === 0 ? (
-            <p className="px-3 py-8 text-center text-sm text-ink-muted">This weapon has no slots for parts.</p>
           ) : (
-            <ul className="divide-y divide-line">
-              {flat.map((f) => {
-                const key = f.path.join('/')
-                return (
-                  <SlotRow
-                    key={key}
-                    flat={f}
-                    items={items}
-                    installed={installed}
-                    open={openPath === key}
-                    onToggle={() => setOpenPath(openPath === key ? null : key)}
-                    onChoose={(id) => choose(f, id)}
-                  />
-                )
-              })}
-            </ul>
+            <p className="px-3 py-8 text-center text-sm text-ink-muted">This weapon has no slots for parts.</p>
           )}
         </div>
 
@@ -573,165 +534,3 @@ function Stat({ label, value, sub, subTone = 'text-ink-dim', hint }: { label: st
   )
 }
 
-// ---------------------------------------------------------------------------
-// One slot + its part picker
-// ---------------------------------------------------------------------------
-
-
-function ModStatsInline({ item }: { item: Item }) {
-  const m = item.mod
-  if (!m) return null
-  return (
-    <span className="flex shrink-0 items-center gap-2 text-xs tabular-nums">
-      <span className={toneFor(m.ergonomics, false)} title="Ergonomics">{m.ergonomics ? `${signed(m.ergonomics)} ergo` : '0 ergo'}</span>
-      <span className={toneFor(m.recoilModifier, true)} title="Recoil change">{formatPercent(m.recoilModifier)} recoil</span>
-    </span>
-  )
-}
-
-function SlotRow({
-  flat,
-  items,
-  installed,
-  open,
-  onToggle,
-  onChoose,
-}: {
-  flat: FlatSlot
-  items: ItemsById
-  installed: string[]
-  open: boolean
-  onToggle: () => void
-  onChoose: (itemId: string | null) => void
-}) {
-  const { item, slot, label, depth } = flat
-  const indent = Math.min(depth, 6) * 16
-  const empty = !item
-  return (
-    <li>
-      <div className="flex items-center gap-2 px-3 py-1.5" style={{ paddingLeft: 12 + indent }}>
-        <div className="w-28 shrink-0 text-xs text-ink-muted sm:w-36">
-          <span className="block truncate" title={label}>{label}</span>
-          {slot.required && <span className={`text-[10px] uppercase tracking-wide ${empty ? 'text-danger' : 'text-ink-dim'}`}>required</span>}
-        </div>
-        <button
-          type="button"
-          onClick={onToggle}
-          aria-expanded={open}
-          className={`flex min-w-0 flex-1 items-center gap-2 rounded border px-2 py-1 text-left text-sm hover:border-accent ${open ? 'border-accent' : slot.required && empty ? 'border-danger/60' : 'border-line'} bg-surface-3`}
-        >
-          {item ? (
-            <>
-              <ItemIcon item={item} size="h-7 w-7" />
-              <span className="min-w-0 flex-1 truncate" title={item.name}>{item.name}</span>
-              <span className="hidden sm:flex"><ModStatsInline item={item} /></span>
-            </>
-          ) : (
-            <span className="flex-1 text-ink-dim">Empty: choose a part</span>
-          )}
-          <ChevronDown className={`h-4 w-4 shrink-0 text-ink-dim transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden />
-        </button>
-        {item && (
-          <button type="button" onClick={() => onChoose(null)} title="Remove this part" aria-label={`Remove ${item.name}`} className="shrink-0 rounded p-1 text-ink-dim hover:text-danger">
-            <X className="h-4 w-4" aria-hidden />
-          </button>
-        )}
-      </div>
-      {open && <PartPicker flat={flat} items={items} installed={installed} onChoose={onChoose} onClose={onToggle} indent={indent} />}
-    </li>
-  )
-}
-
-function PartPicker({
-  flat,
-  items,
-  installed,
-  onChoose,
-  onClose,
-  indent,
-}: {
-  flat: FlatSlot
-  items: ItemsById
-  installed: string[]
-  onChoose: (itemId: string | null) => void
-  onClose: () => void
-  indent: number
-}) {
-  const [search, setSearch] = useState('')
-  const [sort, setSort] = useState<PartSort>('best')
-
-  // Parts that would be removed by a swap do not block the new part (partOptions handles it).
-  const rows = useMemo(
-    () => partOptions(flat.slot, flat.node, installed, items, acquireCost, search, sort),
-    [flat.slot, flat.node, items, installed, search, sort],
-  )
-
-  return (
-    <div
-      className="border-t border-line bg-surface px-3 py-2"
-      style={{ paddingLeft: 12 + indent }}
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') onClose()
-      }}
-    >
-      <div className="flex flex-wrap items-center gap-2">
-        <label className="relative min-w-0 flex-1">
-          <Search className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-dim" />
-          <input
-            type="search"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder={`Search ${flat.label.toLowerCase()} parts…`}
-            aria-label="Search parts"
-            autoFocus
-            className={`${selectClass} w-full pl-8`}
-          />
-        </label>
-        <select value={sort} onChange={(e) => setSort(e.target.value as PartSort)} aria-label="Sort parts" className={selectClass}>
-          <option value="best">Best first</option>
-          <option value="name">By name</option>
-          <option value="ergonomics">Best ergonomics</option>
-          <option value="recoil">Least recoil</option>
-          <option value="price">Cheapest</option>
-        </select>
-      </div>
-      <ul className="mt-2 max-h-80 overflow-y-auto rounded border border-line bg-surface-2">
-        {flat.node && (
-          <li>
-            <button type="button" onClick={() => onChoose(null)} className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm text-ink-muted hover:bg-surface-3">
-              <X className="h-4 w-4" aria-hidden /> Leave this slot empty
-            </button>
-          </li>
-        )}
-        {rows.map(({ item, price, conflict }) => {
-          const current = flat.node?.itemId === item.id
-          return (
-            <li key={item.id}>
-              <button
-                type="button"
-                disabled={conflict != null}
-                onClick={() => onChoose(item.id)}
-                title={conflict ? `Cannot be used together with ${conflict.name}` : item.name}
-                className={`flex w-full flex-wrap items-center gap-x-2 gap-y-0.5 px-2 py-1.5 text-left text-sm hover:bg-surface-3 disabled:cursor-not-allowed disabled:opacity-50 ${current ? 'bg-accent/10' : ''}`}
-              >
-                <ItemIcon item={item} size="h-7 w-7" />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate">{item.name}</span>
-                  {conflict && <span className="block truncate text-xs text-danger">Does not fit with {conflict.shortName}</span>}
-                  {!conflict && slotCount(item) > 0 && <span className="block text-xs text-ink-dim">{slotCount(item)} more slot{slotCount(item) === 1 ? '' : 's'}</span>}
-                </span>
-                <ModStatsInline item={item} />
-                <span className="w-20 shrink-0 text-right text-xs tabular-nums text-ink-muted">{price == null ? 'no price' : formatRoubles(price)}</span>
-              </button>
-            </li>
-          )
-        })}
-        {rows.length === 0 && <li className="px-2 py-4 text-center text-sm text-ink-muted">No parts match.</li>}
-      </ul>
-    </div>
-  )
-}
-
-function slotCount(item: Item): number {
-  return item.mod?.slots.length ?? 0
-}

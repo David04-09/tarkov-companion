@@ -23,14 +23,10 @@ import {
   type PartSort,
   type SlotPath,
 } from '../lib/weaponBuild'
-import { gunLayers, layersBounds, type Layer } from './gunComposite'
 
 // ---------------------------------------------------------------------------
 // Small helpers
 // ---------------------------------------------------------------------------
-
-/** localStorage: show the experimental parts layout instead of real pictures. */
-const LAYOUT_KEY = 'tc-gun-layout'
 
 const fieldClass =
   'rounded border border-line bg-surface-2 px-2 py-1.5 text-sm text-ink focus:border-accent focus:outline-none'
@@ -75,30 +71,6 @@ function Picture({ src, className }: { src: string | null; className: string }) 
   return <Crosshair className={`${className} p-2 text-ink-dim`} aria-hidden />
 }
 
-/**
- * A modded gun drawn from its parts' pictures (see gunComposite.ts), fitted into the frame.
- * Positions are percentages of the combined box, so it scales with the frame.
- */
-function GunPicture({ layers, className }: { layers: Layer[]; className: string }) {
-  const b = layersBounds(layers)
-  return (
-    <div className={`${className} flex items-center justify-center`}>
-      <div className="relative w-full" style={{ aspectRatio: `${b.w} / ${b.h}`, maxHeight: '100%', maxWidth: `calc(100% * ${b.w / b.h})` }}>
-        {layers.map((l) => (
-          <img
-            key={l.id}
-            src={l.src}
-            alt=""
-            draggable={false}
-            loading="lazy"
-            className="pointer-events-none absolute object-contain"
-            style={{ left: `${((l.x - b.x) / b.w) * 100}%`, top: `${((l.y - b.y) / b.h) * 100}%`, width: `${(l.w / b.w) * 100}%`, height: `${(l.h / b.h) * 100}%` }}
-          />
-        ))}
-      </div>
-    </div>
-  )
-}
 
 
 // ---------------------------------------------------------------------------
@@ -123,31 +95,9 @@ export function ModdingView({
   const [picker, setPicker] = useState<SlotPath | null>(null)
 
   const preset = useMemo(() => matchingPreset(weapon, parts, items), [weapon, parts, items])
-  // No preset with exactly these parts: the real picture of the most similar ready-made build
-  // (a rendered gun looks right; the parts layout is a rough sketch and opt-in).
+  // No preset with exactly these parts: the real picture of the most similar ready-made build.
+  // (Pictures are never stitched together from parts: that never looked like a gun.)
   const closest = useMemo(() => (preset || !Object.keys(parts).length ? null : closestPreset(weapon, parts, items)), [preset, weapon, parts, items])
-  const [layoutOn, setLayoutOn] = useState(() => {
-    try {
-      return localStorage.getItem(LAYOUT_KEY) === '1'
-    } catch {
-      return false
-    }
-  })
-  const toggleLayout = () =>
-    setLayoutOn((on) => {
-      try {
-        localStorage.setItem(LAYOUT_KEY, on ? '0' : '1')
-      } catch {
-        // per-viewer convenience only
-      }
-      return !on
-    })
-  const layers = useMemo(() => {
-    if (!layoutOn || preset) return null
-    const l = gunLayers(weapon, parts, items)
-    return l && l.length > 1 ? l : null
-  }, [layoutOn, preset, weapon, parts, items])
-  const canLayout = !preset && Object.keys(parts).length > 0
   const centreSrc = picture(preset ?? closest?.preset ?? weapon, true)
 
   // Paths (joined) of empty required slots anywhere in the build.
@@ -201,13 +151,12 @@ export function ModdingView({
       <div className="mt-3 grid items-start gap-4 lg:grid-cols-[minmax(0,24rem)_minmax(0,1fr)]">
         <div className="flex min-w-0 flex-col items-center gap-2 text-center lg:sticky lg:top-3">
           <div className="flex h-44 w-full items-center justify-center rounded-lg border border-line bg-surface p-2 sm:h-56">
-            {layers ? <GunPicture layers={layers} className="h-full w-full" /> : <Picture src={centreSrc} className="h-full w-full" />}
+            <Picture src={centreSrc} className="h-full w-full" />
           </div>
           <div className="min-w-0 max-w-full">
             <p className="truncate text-sm font-semibold" title={weapon.name}>{weapon.name}</p>
             {preset && <p className="truncate text-xs text-ink-dim">Same parts as the ready-made build "{preset.name}"</p>}
-            {layers && <p className="truncate text-xs text-ink-dim">Rough layout from the parts' pictures (experimental)</p>}
-            {!layers && closest && (
+            {closest && (
               <div className="text-xs text-ink-dim">
                 <p className="truncate">Picture of the closest ready-made build "{closest.preset.name}"</p>
                 {(closest.added.length > 0 || closest.removed.length > 0) && (
@@ -217,11 +166,6 @@ export function ModdingView({
                   </p>
                 )}
               </div>
-            )}
-            {canLayout && (
-              <button type="button" onClick={toggleLayout} className="mt-0.5 block w-full text-xs text-ink-muted underline hover:text-accent">
-                {layers ? 'Show the ready-made picture' : 'Try the parts layout (experimental)'}
-              </button>
             )}
             {(preset ?? weapon).pictureOf && <p className="text-xs text-ink-dim">Picture of the standard version: tarkov.dev has no picture of this one yet.</p>}
             {!centreSrc && <p className="text-xs text-ink-dim">tarkov.dev has no picture of this item yet.</p>}
