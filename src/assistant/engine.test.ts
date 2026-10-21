@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { GameData, GameMap, Item, Task } from '../api/types'
 import type { MapTask } from '../maps/overlay/mapTasks'
 import { answer, type AssistantContext } from './engine'
-import { confirmWord } from './items'
+import { confirmWord, itemQuestionKind } from './items'
 import { placeEntries } from './places'
 import { compassFromScreen, findNames, words } from './text'
 
@@ -145,5 +145,69 @@ describe('compassFromScreen', () => {
     expect(compassFromScreen(0, -1)).toBe('north')
     expect(compassFromScreen(1, 0)).toBe('east')
     expect(compassFromScreen(-1, 1)).toBe('south-west')
+  })
+})
+
+describe('asking for exactly what was said', () => {
+  const part = (id: string, n: number) => task(id, `Signal - Part ${n}`, shoreline)
+  const parts = { ...ctx, data: { ...ctx.data, tasks: [part('s3', 3), part('s4', 4)] } as unknown as GameData, tasks: [part('s3', 3), part('s4', 4)] }
+
+  it('never swaps a quest part number, and says when the data has no such part', () => {
+    expect(answer('signal part 3', parts).text).toContain('Signal - Part 3 is from Prapor')
+    const r = answer('show signal part 1', parts)
+    expect(r.text).toBe('There is no Signal - Part 1 in the game data, sir. It has Signal - Part 3 and Signal - Part 4.')
+  })
+
+  it('keeps shortened numbers ("zb 013" is ZB-1013) but not changed ones', () => {
+    const places = placeEntries()
+    expect(findNames(words('dorm room 314'), places).every((h) => !/303|302/.test(h.value.name))).toBe(true)
+  })
+})
+
+describe('route planning', () => {
+  const spawnsAt = (ps: [number, number][]) => ps.map(([x, z]) => ({ position: { x, y: 0, z }, sides: ['pmc'], categories: ['player'], zoneName: '' }))
+  const plan = {
+    ...ctx,
+    data: {
+      ...ctx.data,
+      mapDetails: {
+        'm-customs': {
+          extracts: [{ id: 'x1', name: 'Crossroads', faction: 'pmc', position: { x: 700, y: 0, z: 650 }, outline: [] }, { id: 'x2', name: 'Far Exit', faction: 'pmc', position: { x: -900, y: 0, z: 0 }, outline: [] }],
+          locks: [],
+          // West = negative x on this test compass.
+          spawns: spawnsAt([[-500, 100], [-400, 600], [500, 100]]),
+        },
+      },
+    } as unknown as GameData,
+    heading: (_m: GameMap, a: { x: number }, b: { x: number }) => (b.x < a.x ? 'west' : 'east'),
+  } as AssistantContext
+
+  it('starts from a side of the map: the PMC spawn there closest to the target', () => {
+    const r = answer('path from the west side to dorms on customs', plan)
+    expect(r.text).toBe('From the west spawn to Dorms.')
+    expect(r.map?.route?.[0]).toEqual({ x: -500, y: 0, z: 100 })
+  })
+
+  it('starts from the closest PMC spawn when no start is said', () => {
+    const r = answer('draw me a path to dorms on customs', plan)
+    expect(r.map?.route?.[0]).toEqual({ x: 500, y: 0, z: 100 })
+    expect(r.lines?.some((l) => l.includes('closest to the first stop'))).toBe(true)
+  })
+
+  it('visits every objective of a quest in a short order, then extracts', () => {
+    const twoStops = { ...plan, tasksOnMap: () => [{ ...spot(far, 600, 600, 'Far thing'), objectives: [...spot(far, 600, 600, 'Far thing').objectives, ...spot(far, 450, 120, 'Near thing').objectives] }] } as AssistantContext
+    const r = answer('draw me the best path for far one from dorms then extract', twoStops)
+    expect(r.text).toBe('Far One on Customs: 2 stops, then out at Crossroads, from Dorms.')
+    expect(r.map?.points.map((p) => p.label)).toEqual(['You: Dorms', '1. Near thing', '2. Far thing', 'Crossroads (extract)'])
+    expect(r.lines?.some((l) => l.includes('safest'))).toBe(true)
+  })
+})
+
+describe('item questions', () => {
+  it('answers the price when asked what something is worth', () => {
+    expect(itemQuestionKind('what is the price to buy a gpu')).toBe('price')
+    expect(itemQuestionKind('what is the value of a gpu')).toBe('price')
+    expect(itemQuestionKind('where can i buy a gpu')).toBe('where')
+    expect(itemQuestionKind('where does a gpu spawn and what is it worth')).toBe('where')
   })
 })

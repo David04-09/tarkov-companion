@@ -210,7 +210,12 @@ export function priceAnswer(m: ItemMatch, ctx: ItemContext): Reply {
     : sell
       ? `${it.name}: ${traderName(ctx, sell.traderId)} pays ${rub(sell.priceRUB)}; it has no flea price.`
       : `${it.name}: there is no price for it in the data.`
-  return { text, lines: [...priceLines(it, ctx), ...alsoLine(m)] }
+  // How many are still needed is shown, not said: the question was about the price.
+  const { id, need } = collectionTarget(it, ctx)
+  const have = ctx.collected?.[id] ?? 0
+  const still = need ? Math.max(0, need.total - have) : 0
+  const needLine = still > 0 ? [`Still needed: ${still} more (${need!.sources.slice(0, 3).map((s) => s.name).join(', ')}${need!.sources.length > 3 ? ', …' : ''})`] : []
+  return { text, lines: [...priceLines(it, ctx), ...needLine, ...alsoLine(m)] }
 }
 
 /** "Where can I find the Dorm room 303 key?" */
@@ -268,8 +273,9 @@ function alsoLine(m: ItemMatch): string[] {
 
 /** Which kind of item answer a question wants. */
 export function itemQuestionKind(said: string): 'where' | 'price' | 'info' {
+  // Asking what it is worth gets the price, even with "buy" or "find" in it ("price to buy a GPU").
+  if (/\b(price|prices|cost|costs|worth|value|sell|sells|selling|how much)\b/.test(said) && !/\b(where|spawn|spawns|located|location)\b/.test(said)) return 'price'
   if (/\b(where|find|spawn|spawns|loot|located|location|get one|get it|buy)\b/.test(said)) return 'where'
-  if (/\b(price|prices|cost|costs|worth|value|sell|sells|selling|how much)\b/.test(said)) return 'price'
   return 'info'
 }
 

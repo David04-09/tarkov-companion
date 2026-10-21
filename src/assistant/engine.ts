@@ -8,6 +8,7 @@ import type { TaskStatus } from '../lib/taskStatus'
 import type { MapTask } from '../maps/overlay/mapTasks'
 import { labelKey, nearestPlace, placeEntries, type Place } from './places'
 import { compact, findNames, sayDistance, words, type NameEntry } from './text'
+import { closestTo, orderStops, parseSide, pmcSpawns, spawnOnSide } from './route/routePlan'
 import { collectAnswer, expandNicknames, findItem, infoAnswer, itemQuestionKind, needAnswer, parseCount, priceAnswer, whereAnswer, type ItemContext } from './items'
 
 export interface MapPoint {
@@ -20,8 +21,8 @@ export interface MapPoint {
 export interface MapCard {
   map: GameMap
   points: MapPoint[]
-  /** A straight line from the first to the second spot; with `walk` the page replaces it by a route over the terrain. */
-  route: [Position, Position] | null
+  /** Straight lines through these spots in order (start, stops…); with `walk` the page replaces them by a route over the terrain. */
+  route: Position[] | null
   /** Walking route over the terrain, filled in by the page (see route/walk.ts). */
   path?: Position[]
 }
@@ -179,7 +180,7 @@ export function answer(question: string, ctx: AssistantContext): Reply {
 
   const wantsNearest = /\b(closest|nearest|next|near me|close by|nearby)\b/.test(said) && /\b(quest|quests|task|tasks|objective|objectives|mission)\b/.test(said)
   const saysWhereIAm = /\b(i m|im|i am|iam|standing|currently)\b.*\b(at|in|near|by|on|inside|around)\b/.test(said)
-  const wantsRoute = /\b(get to|go to|route|path|way to|take me|guide me|walk to|head to|directions|navigate|get from|run to)\b/.test(said) || /\bfrom\b.*\bto\b/.test(said)
+  const wantsRoute = /\b(get to|go to|route|path|way to|take me|guide me|walk to|head to|directions|navigate|get from|run to|draw me|route for|path for)\b/.test(said) || /\bfrom\b.*\bto\b/.test(said)
 
   // 0. "I spawned at Crossroads, how do I get to Dorms?" — a walking route over the terrain.
   if (wantsRoute && !wantsNearest) {
@@ -208,13 +209,19 @@ export function answer(question: string, ctx: AssistantContext): Reply {
   const collecting = !asking && /\b(collected|picked up|grabbed|looted|got|found|add|added|have another)\b/.test(said)
   const using = !asking && /\b(used|sold|handed in|turned in|lost|gave|removed|remove|take away|took away|minus)\b/.test(said)
   const howMany = /\bhow many\b/.test(said) && /\b(need|needed|left|still|have|got)\b/.test(said)
-  if ((collecting || using || howMany) && !wantsRoute) {
+  // "What is a GPU I found worth?" is a price question, not "add one".
+  const asksPrice = /\b(price|prices|cost|costs|worth|value|how much)\b/.test(said) && !/\b(add|added|collected|picked up|used|sold|handed in)\b/.test(said)
+  if ((collecting || using || howMany) && !wantsRoute && !(asksPrice && !howMany)) {
     if (!ctx.items) return { text: 'Loading the item list…', needsItems: true }
     const { count, at } = parseCount(q)
     const hit = findItem(expandNicknames(q.filter((_, i) => i !== at && !mapWords.has(i))), ctx.items)
     if (hit) return howMany ? needAnswer(hit, ctx) : collectAnswer(hit, using ? -count : count, ctx)
     if (!howMany) return { text: 'Which item? Say its name, like "collected 5 wires".', quiet: true }
   }
+
+  // "Signal part 1" when the data has only parts 3 and 4: say so, never show another part.
+  const missingPart = missingQuestPart(q, index.quests)
+  if (missingPart) return missingPart
 
   // 2. Items: where to find one, what it is worth, what it is for. The item list is large, so it is
   // loaded only when a question needs it; places and quests are answered without it.
@@ -370,53 +377,112 @@ function findWeapon(said: string[], ctx: AssistantContext): { best: Item | null;
 }
 
 /** Routes: where to (after the last "to") and where from (before it, or where the player last said they were). */
-function route(q: string[], hits: { value: Place; start: number }[], contextMap: GameMap | null, ctx: AssistantContext, index: Index): Reply | null {
-  const toIdx = q.lastIndexOf('to')
+/** Is the question about the best / safest way (not just a way)? The data cannot say what is safe. */
+const SAFEST_NOTE = 'This is the shortest walking route on the map drawing. The data has nothing on cover, sight lines or where players fight, so a "safest" route cannot be worked out honestly.'
+
+function route(q: string[], hits: { value: Place; start: number; end: number }[], contextMap: GameMap | null, ctx: AssistantContext, index: Index): Reply | null {
+  const said = ` ${q.join(' ')} `
+  // A quest to do ("path for Delivery from the Past"): its name may contain "from", so it is found first.
+  const questHit = findNames(q, index.quests).find((h) => h.len >= 5 && q.slice(0, h.start).some((w) => w === 'to' || w === 'for' || w === 'route' || w === 'path' || w === 'do'))
+  const inQuest = (i: number) => !!questHit && i >= questHit.start && i <= questHit.end
+  const lastIdx = (w: string) => q.reduce((at, x, i) => (x === w && !inQuest(i) ? i : at), -1)
+  const toIdx = lastIdx('to')
   // "… to Dorms from Crossroads": the start comes after "from", the destination between "to" and "from".
-  const fromIdx = q.lastIndexOf('from')
+  const fromIdx = lastIdx('from')
   const destEnd = fromIdx > toIdx ? fromIdx : q.length
-  const after = hits.filter((h) => h.start > toIdx && h.start < destEnd)
-  const before = hits.filter((h) => h.start < toIdx || (fromIdx > toIdx && h.start > fromIdx))
-  const questHit = toIdx >= 0 ? findNames(q.slice(toIdx + 1, destEnd), index.quests)[0] : undefined
-  if (!after.length && !questHit) return null
+  const placeHits = hits.filter((h) => !inQuest(h.start))
+  const after = placeHits.filter((h) => h.start > toIdx && h.start < destEnd)
+  const before = placeHits.filter((h) => h.start < toIdx || (fromIdx > toIdx && h.start > fromIdx))
+  const toExtract = /\b(extract|extracts|extraction|exfil|leave|get out)\b/.test(said)
+  const side = parseSide(q)
+  const best = /\b(best|safest|safe|safer|quietest)\b/.test(said)
+  const quest = questHit?.value
+  const placeTargets = (quest ? [] : after).map((h) => h.value)
+  if (!quest && !placeTargets.length && !toExtract) return null
+
+  // The map: the quest's, the place's (shared with the start if one was named), else the one talked about.
   let origins = before.map((h) => h.value)
-  if (!origins.length && ctx.lastPlace) origins = [ctx.lastPlace]
-  if (!origins.length) {
-    const to = after[0]?.value.name ?? questHit?.value.name
-    return { text: `Tip: say where you start too, like "I spawned at Crossroads, how do I get to ${to}?"`, quiet: true }
+  let map: GameMap | undefined
+  if (quest) map = quest.map ?? contextMap ?? undefined
+  else if (placeTargets.length) {
+    const keys = [...new Set((origins.length ? origins : placeTargets).map((p) => p.mapKey))]
+    const preferred = contextMap ? labelKey(contextMap.normalizedName) : null
+    const shared = keys.filter((k) => placeTargets.some((t) => t.mapKey === k))
+    const mapKey = preferred && shared.includes(preferred) ? preferred : shared[0]
+    if (!mapKey) return { text: `${origins[0].name} and ${placeTargets[0].name} are not on the same map.` }
+    map = mapByLabelKey(ctx, mapKey, contextMap)
+  } else map = (origins[0] && mapByLabelKey(ctx, origins[0].mapKey, contextMap)) ?? contextMap ?? (ctx.lastPlace ? mapByLabelKey(ctx, ctx.lastPlace.mapKey, null) : undefined)
+  if (!map) return { text: quest ? `${quest.name} has no single map in the data. Which map?` : 'Which map? Say it in the question, like "path to the closest extract on Customs".', quiet: !quest }
+  const key = labelKey(map.normalizedName)
+  origins = origins.filter((p) => p.mapKey === key)
+
+  // The stops.
+  type Stop = { position: Position; label: string; kind: MapPoint['kind'] }
+  let stops: Stop[] = []
+  if (quest) {
+    const mt = ctx.tasksOnMap(map).find((m) => m.task.id === quest.id)
+    const objectives = (mt?.objectives ?? []).filter((o) => !o.anywhere && o.placements.length)
+    if (!objectives.length) return { text: `${quest.name} has no spots on ${map.name} in the data.` }
+    stops = objectives.map((o) => ({ position: o.placements[0].position, label: o.objective.description, kind: 'quest' as const }))
+  } else {
+    const target = placeTargets.find((p) => p.mapKey === key)
+    if (target) stops = [{ position: target.position, label: target.name, kind: target.kind === 'extract' ? 'extract' : 'place' }]
   }
-  const targets = after.map((h) => h.value)
-  // Both ends on one map: the map named or talked about, else any map they share.
-  const keys = [...new Set(origins.map((p) => p.mapKey))]
-  const preferred = contextMap ? labelKey(contextMap.normalizedName) : null
-  const shared = keys.filter((k) => !targets.length || targets.some((t) => t.mapKey === k))
-  const mapKey = preferred && shared.includes(preferred) ? preferred : shared[0]
-  if (!mapKey) return { text: `${origins[0].name} and ${targets[0].name} are not on the same map.` }
-  const map = mapByLabelKey(ctx, mapKey, contextMap)
-  if (!map) return null
-  const from = origins.find((p) => p.mapKey === mapKey) as Place
-  let to = targets.find((p) => p.mapKey === mapKey)
-  let kind: MapPoint['kind'] = to?.kind === 'extract' ? 'extract' : 'place'
-  if (!to && questHit) {
-    const spots = ctx.tasksOnMap(map).find((m) => m.task.id === questHit.value.id)?.placements ?? []
-    if (!spots.length) return { text: `${questHit.value.name} has no spot on ${map.name} in the data.` }
-    const best = spots.reduce((a, b) => (dist(a.position, from.position) <= dist(b.position, from.position) ? a : b))
-    to = { mapKey, name: questHit.value.name, position: best.position }
-    kind = 'quest'
+  const firstAim = stops[0]?.position ?? origins[0]?.position ?? ctx.lastPlace?.position
+
+  // Where it starts: a named place, a side of the map, where the player said they are, else the closest PMC spawn.
+  const spawns = pmcSpawns(ctx.data.mapDetails[map.id])
+  let start: { position: Position; name: string; place?: Place } | null = null
+  const notes: string[] = []
+  if (origins.length) start = { position: origins[0].position, name: origins[0].name, place: origins[0] }
+  else if (side) {
+    const p = firstAim ? spawnOnSide(spawns, side, firstAim, (a, b) => ctx.heading(map, a, b)) : null
+    if (!p) return { text: `The data has no PMC spawn on the ${side} side of ${map.name}.` }
+    start = { position: p, name: `the ${side} spawn` }
+    notes.push(`Starts at the PMC spawn on the ${side} side closest to where you are going.`)
+  } else if (ctx.lastPlace && ctx.lastPlace.mapKey === key) start = { position: ctx.lastPlace.position, name: ctx.lastPlace.name, place: ctx.lastPlace }
+  else if (firstAim) {
+    const p = closestTo(spawns, firstAim)
+    if (!p) return { text: `Where do you start? Say a place or a side, like "from Crossroads" or "from the west side".`, quiet: true }
+    start = { position: p, name: 'the closest PMC spawn' }
+    notes.push('You did not say where you start, so this starts at the PMC spawn closest to the first stop. Say "from Crossroads" or "from the west side" for another start.')
   }
-  if (!to) return null
+  if (!start) return { text: 'Where do you start? Say a place or a side, like "from Crossroads" or "from the west side".', quiet: true }
+
+  // Quest stops in a short order from the start (one spot per objective; some have several possible spots).
+  if (quest) {
+    const mt = ctx.tasksOnMap(map).find((m) => m.task.id === quest.id)!
+    const objectives = mt.objectives.filter((o) => !o.anywhere && o.placements.length)
+    stops = orderStops(start.position, objectives.map((o) => ({ item: o, spots: o.placements.map((p) => p.position) }))).map((s, i) => ({
+      position: s.position,
+      label: `${i + 1}. ${s.item.objective.optional ? '(optional) ' : ''}${s.item.objective.description}`,
+      kind: 'quest' as const,
+    }))
+  }
+  // Ending at an extract: the closest PMC one to the last stop (or to the start, when it is the only goal).
+  if (toExtract && !(stops.length && stops[stops.length - 1].kind === 'extract')) {
+    const from = stops.length ? stops[stops.length - 1].position : start.position
+    const ex = (ctx.data.mapDetails[map.id]?.extracts ?? []).filter((e) => e.faction !== 'scav')
+    const out = ex.length ? ex.reduce((a, b) => (dist(a.position, from) <= dist(b.position, from) ? a : b)) : null
+    if (out) stops.push({ position: out.position, label: `${out.name} (extract)`, kind: 'extract' })
+    else notes.push(`The data has no PMC extracts for ${map.name}.`)
+  }
+  if (!stops.length) return null
+  if (best) notes.push(SAFEST_NOTE)
+  const last = stops[stops.length - 1]
+  const lastName = last.label.replace(/^\d+\. /, '')
   return {
-    text: `From ${from.name} to ${to.name}.`,
+    text: quest
+      ? `${quest.name} on ${map.name}: ${stops.filter((s) => s.kind === 'quest').length} stop${stops.filter((s) => s.kind === 'quest').length === 1 ? '' : 's'}${last.kind === 'extract' ? `, then out at ${lastName.replace(/ \(extract\)$/, '')}` : ''}, from ${start.name}.`
+      : `From ${start.name} to ${lastName}.`,
+    lines: [...(stops.length > 1 ? stops.map((s) => s.label) : []), ...notes],
     map: {
       map,
-      points: [
-        { id: 'you', position: from.position, label: `You: ${from.name}`, kind: 'you' },
-        { id: 'target', position: to.position, label: to.name, kind },
-      ],
-      route: [from.position, to.position],
+      points: [{ id: 'you', position: start.position, label: `You: ${start.name}`, kind: 'you' }, ...stops.map((s, i) => ({ id: `stop${i}`, position: s.position, label: s.label, kind: s.kind }))],
+      route: [start.position, ...stops.map((s) => s.position)],
     },
-    walk: { fromName: from.name, toName: to.name },
-    youAt: from,
+    walk: { fromName: start.name.replace(/^the /, 'The '), toName: lastName },
+    youAt: start.place,
     mapId: map.id,
   }
 }
@@ -470,6 +536,20 @@ function nearestQuest(place: Place, map: GameMap, ctx: AssistantContext): Reply 
     links: [{ label: `${best.mt.task.name} in Quests`, to: `/quests?q=${encodeURIComponent(best.mt.task.name)}` }],
     mapId: map.id,
   }
+}
+
+/** A quest part the game data does not have ("Signal part 1"), when other parts of it exist. */
+function missingQuestPart(q: string[], quests: NameEntry<Task>[]): Reply | null {
+  const at = q.indexOf('part')
+  const n = q[at + 1]
+  if (at < 1 || !n || !/^\d+$/.test(n)) return null
+  const base = q.slice(0, at).filter((w) => !['show', 'me', 'the', 'quest', 'task', 'what', 'is', 'about', 'how', 'do', 'i', 'open', 'tell'].includes(w))
+  if (!base.length) return null
+  const stem = `${base.join('')}part`
+  const parts = quests.filter((e) => e.key.startsWith(stem)).map((e) => e.value)
+  if (!parts.length || parts.some((t) => compact(t.name) === `${stem}${n}`)) return null
+  const name = parts[0].name.replace(/\d+\s*$/, n)
+  return { text: `There is no ${name} in the game data, sir. It has ${parts.map((t) => t.name).join(' and ')}.`, lines: ['tarkov.dev lists every quest the game has right now; older parts that were removed or renamed are not in it.'] }
 }
 
 function questInfo(t: Task, ctx: AssistantContext): Reply {

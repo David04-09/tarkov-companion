@@ -12,7 +12,11 @@ export interface ChangelogEntry {
 }
 
 /** Committed, waiting for the next update. */
-export const UNRELEASED: string[] = []
+export const UNRELEASED: string[] = [
+  "Assistant: asks are taken literally. Quest parts are never swapped (\"Signal part 1\" no longer shows Part 3); when the game data has no such part it says so and names the parts it has. Completed quests are found as well.",
+  "Assistant: price and value questions answer the price (\"what is a GPU I found worth\" used to count it towards your Item Collection). How many you still need is shown under the price, not read out; it is only said when you ask how many you need.",
+  "Assistant: better routes. \"Draw me a path to Dorms\" with no start begins at the PMC spawn closest to it; \"from the west side\" starts at a spawn out on that side of the map; \"path for Delivery from the Past\" visits every objective of the quest on its map in a short order; \"then extract\" or \"to the nearest extract\" ends at the closest PMC extract. Each leg's distance is listed. Asking for the best or safest route says honestly that it is the shortest one: the data has nothing on cover or where players fight.",
+]
 
 export const RELEASES: ChangelogEntry[] = [
   {

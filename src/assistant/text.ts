@@ -35,6 +35,19 @@ export interface NameHit<T> {
   len: number
 }
 
+/** The numbers in a name, in order ("signalpart3" → "3"): near misses must keep them exactly. */
+const digitsOf = (s: string) => (s.match(/\d+/g) ?? []).join('')
+
+/**
+ * Near misses may drop leading digits ("ZB 013" for ZB-1013) but never change them: "Signal part 1"
+ * is not "Signal part 3", "dorm 302" is not "dorm 303".
+ */
+export function sameNumbers(a: string, b: string): boolean {
+  const x = digitsOf(a)
+  const y = digitsOf(b)
+  return x === y || (x.length >= 2 && y.length >= 2 && (x.endsWith(y) || y.endsWith(x)))
+}
+
 /** Words that never start or make up a name on their own. */
 const FILLER = new Set(['the', 'a', 'an', 'at', 'in', 'on', 'to', 'of', 'is', 'im', 'i', 'me', 'my', 'and', 'or', 'for', 'what', 'where', 'which', 'how', 'do', 'does', 'whats', 'wheres', 'next', 'closest', 'nearest', 'quest', 'task', 'show', 'near', 'by', 'from', 'it', 'its'])
 
@@ -60,6 +73,8 @@ export function findNames<T>(question: string[], entries: NameEntry<T>[], maxWor
       if (fillerStart || text.length < 4) continue
       for (const e of entries) {
         if (e.key === text || Math.abs(e.key.length - text.length) > 2) continue
+        // "Signal part 1" is not a typo of "Signal part 3", "Dorm 303" not of "Dorm 302".
+        if (!sameNumbers(e.key, text)) continue
         // Singular/plural and one-letter typos for short names; a little more for long ones.
         const s = similarity(text, e.key)
         const need = e.key.length >= 10 ? 0.84 : e.key.length >= 6 ? 0.82 : 0.79
