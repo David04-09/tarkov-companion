@@ -12,13 +12,19 @@ export interface ChangelogEntry {
 }
 
 /** Committed, waiting for the next update. */
-export const UNRELEASED: string[] = [
-  'Assistant: it learns from you, all on this PC. "Remember that I keep the 314 key in my case" is kept and "where is my 314 key?" gets it back. When it gets a word wrong, say "no, I meant the Red Rebel" (or "when I say red one I mean red rebel") and it understands you from then on. It learns which maps you play, when, and how they go (from the game log and the after-raid card), and "what should I play tonight?" picks a map from your open quests and your habits. If you keep cutting its answers off it only reads the first sentence ("keep it short" / "more detail" set it yourself). Once a day it greets you with real numbers ("Evening, sir. 13 quests left on the way to Kappa…"). Ask "what do you know about me?", or see and delete everything under Memory on the Neural network tab. It is also in the progress export and the daily backups.',
-  'Assistant: much better speech recognition. Your questions are now turned into text by Moonshine, a modern offline model that copes with real microphones, background noise and accents (a 28 MB download the first time; about a fifth of a second per question on one CPU core). Before, "how much is a LEDX worth" through a headset came out as "how march is leg word"; now it is heard right. The old recogniser only listens for "Hey Ranger" and for when you stop talking.',
-  'Assistant: the natural voice talks at a normal pace. Each voice was measured and tuned to about 170 words a minute at Speed 1.0× (Bella and Leo were at about 100), and the long silences between sentences are gone.',
-]
+export const UNRELEASED: string[] = []
 
 export const RELEASES: ChangelogEntry[] = [
+  {
+    version: '2.2.0',
+    date: '2026-10-21',
+    title: 'A smarter assistant: better hearing, normal pace, learns from you',
+    changes: [
+      'Assistant: it learns from you, all on this PC. "Remember that I keep the 314 key in my case" is kept and "where is my 314 key?" gets it back. When it gets a word wrong, say "no, I meant the Red Rebel" (or "when I say red one I mean red rebel") and it understands you from then on. It learns which maps you play, when, and how they go (from the game log and the after-raid card), and "what should I play tonight?" picks a map from your open quests and your habits. If you keep cutting its answers off it only reads the first sentence ("keep it short" / "more detail" set it yourself). Once a day it greets you with real numbers ("Evening, sir. 13 quests left on the way to Kappa…"). Ask "what do you know about me?", or see and delete everything under Memory on the Neural network tab. It is also in the progress export and the daily backups.',
+      'Assistant: much better speech recognition. Your questions are now turned into text by Moonshine, a modern offline model that copes with real microphones, background noise and accents (a 28 MB download the first time; about a fifth of a second per question on one CPU core). Before, "how much is a LEDX worth" through a headset came out as "how march is leg word"; now it is heard right. The old recogniser only listens for "Hey Ranger" and for when you stop talking.',
+      'Assistant: the natural voice talks at a normal pace. Each voice was measured and tuned to about 170 words a minute at Speed 1.0× (Bella and Leo were at about 100), and the long silences between sentences are gone.',
+    ],
+  },
   {
     version: '2.1.0',
     date: '2026-10-21',
