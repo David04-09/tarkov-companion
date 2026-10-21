@@ -8,12 +8,13 @@ import type { TaskStatus } from '../lib/taskStatus'
 import type { MapTask } from '../maps/overlay/mapTasks'
 import { labelKey, nearestPlace, placeEntries, type Place } from './places'
 import { compact, findNames, sayDistance, words, type NameEntry } from './text'
+import { findItem, infoAnswer, itemQuestionKind, priceAnswer, whereAnswer } from './items'
 
 export interface MapPoint {
   id: string
   position: Position
   label: string
-  kind: 'you' | 'quest' | 'place' | 'extract'
+  kind: 'you' | 'quest' | 'place' | 'extract' | 'loot'
 }
 
 export interface MapCard {
@@ -191,7 +192,24 @@ export function answer(question: string, ctx: AssistantContext): Reply {
     return { ...nearestQuest(place, map, ctx), youAt: place }
   }
 
-  // 2. Extracts on a map.
+  // 2. Items: where to find one, what it is worth, what it is for. The item list is large, so it is
+  // loaded only when a question needs it; places and quests are answered without it.
+  const priceWords = /\b(price|prices|cost|costs|worth|value|sell|sells|selling|buy|key|keys|keycard|how much)\b/.test(said)
+  const itemCue = priceWords || /\b(find|spawn|spawns|loot|need|needed|for|used)\b/.test(said)
+  if (itemCue && !wantsRoute) {
+    if (!ctx.items) {
+      if (priceWords || !places.length) return { text: 'Loading the item list…', needsItems: true }
+    } else {
+      const neededIds = new Set(ctx.tasks.filter((t) => ctx.statuses[t.id] !== 'completed').flatMap((t) => t.objectives.flatMap((o) => o.itemIds)))
+      const hit = findItem(q, ctx.items, mapWords, (it) => (neededIds.has(it.id) ? 1 : 0))
+      if (hit) {
+        const kind = itemQuestionKind(said)
+        return kind === 'where' ? whereAnswer(hit, ctx) : kind === 'price' ? priceAnswer(hit, ctx) : infoAnswer(hit, ctx)
+      }
+    }
+  }
+
+  // 3. Extracts on a map.
   if (/\b(extract|extracts|extraction|extractions|exit|exits)\b/.test(said) && contextMap) {
     const ex = ctx.data.mapDetails[contextMap.id]?.extracts ?? []
     if (!ex.length) return { text: `The data has no extracts for ${contextMap.name}.`, mapId: contextMap.id }
@@ -291,11 +309,13 @@ export function answer(question: string, ctx: AssistantContext): Reply {
 
   if (questHit && questHit.len >= 5) return questInfo(questHit.value, ctx)
 
-  // 7. An item by name (the item list is large, so it loads only when a question needs it).
-  if (index.items) {
-    const itemHit = findNames(q, index.items, 6).filter((h) => h.len >= 3)[0]
-    if (itemHit) return itemInfo(itemHit.value, ctx)
-  } else if (/\b(item|price|worth|cost|sell|buy|for|need|needed|key|open|opens)\b/.test(said)) {
+  // 8. An item named on its own ("LEDX", "dorm 303 key").
+  if (ctx.items) {
+    const hit = findItem(q, ctx.items, mapWords)
+    if (hit) return infoAnswer(hit, ctx)
+    const itemHit = index.items ? findNames(q, index.items, 6).filter((h) => h.len >= 3)[0] : undefined
+    if (itemHit) return infoAnswer({ item: itemHit.value, others: [] }, ctx)
+  } else if (/\b(item|open|opens)\b/.test(said)) {
     return { text: 'Loading the item list…', needsItems: true }
   }
 
@@ -446,21 +466,3 @@ function questInfo(t: Task, ctx: AssistantContext): Reply {
   }
 }
 
-function itemInfo(it: Item, ctx: AssistantContext): Reply {
-  const quests = ctx.tasks.filter((t) => ctx.statuses[t.id] !== 'completed' && t.objectives.some((o) => o.itemIds.includes(it.id) && /give|hand|find/i.test(o.type)))
-  const keyQuests = ctx.tasks.filter((t) => ctx.statuses[t.id] !== 'completed' && t.objectives.some((o) => o.requiredKeys.some((alt) => alt.includes(it.id))))
-  const locks = ctx.data.maps.flatMap((m) => ((ctx.data.mapDetails[m.id]?.locks ?? []).some((l) => l.keyId === it.id) ? [m.name] : []))
-  const price = it.avg24hPrice ?? it.lastLowPrice
-  const lines: string[] = []
-  if (quests.length) lines.push(`Still needed for: ${quests.map((t) => t.name).join(', ')}`)
-  if (keyQuests.length) lines.push(`Key for quests: ${keyQuests.map((t) => t.name).join(', ')}`)
-  if (locks.length) lines.push(`Opens locks on: ${[...new Set(locks)].join(', ')}`)
-  if (price) lines.push(`Flea: about ${price.toLocaleString()} ₽ (24 h average)`)
-  else lines.push('No flea price in the data (it may not be sellable on the flea).')
-  const uses = quests.length + keyQuests.length
-  return {
-    text: uses ? `${it.name}: you still need it for ${uses} quest${uses === 1 ? '' : 's'}.` : `${it.name}: none of your open quests need it.`,
-    lines,
-    links: locks.length ? [{ label: 'Open in Keys', to: '/keys' }] : [],
-  }
-}

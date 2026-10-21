@@ -26,6 +26,25 @@ export function spokenToText(heard: string): string {
       }
     }
     const prev = out[out.length - 1]
+    // "six hundred fifty" -> 650, "three hundred three" -> 303.
+    if (word === 'hundred' && prev !== undefined && /^[1-9]$/.test(prev)) {
+      let value = Number(prev) * 100
+      const a = w[i + 1]
+      const b = w[i + 2]
+      if (a && TENS.indexOf(a) >= 2) {
+        value += TENS.indexOf(a) * 10
+        i++
+        if (b && UNITS.indexOf(b) > 0 && UNITS.indexOf(b) < 10) {
+          value += UNITS.indexOf(b)
+          i++
+        }
+      } else if (a && UNITS.indexOf(a) > 0) {
+        value += UNITS.indexOf(a)
+        i++
+      }
+      out[out.length - 1] = String(value)
+      continue
+    }
     if (n !== null) {
       // Digits said one after another belong to one number ("zero one three" -> 013).
       if (prev !== undefined && /^\d+$/.test(prev)) out[out.length - 1] = prev + String(n)

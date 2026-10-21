@@ -3,7 +3,8 @@
  * does the work: no download, no model, next to no memory or CPU, and nothing leaves the PC
  * for the standard Windows voices.
  */
-import type { VoiceGender } from '../store/assistant'
+import type { VoiceEngine, VoiceGender } from '../store/assistant'
+import { NATURAL_VOICES, speakNatural, stopNatural } from './naturalVoice'
 
 /** First names of common Windows, macOS and browser voices; speechSynthesis does not say which voices are male or female. */
 const FEMALE = /\b(zira|hazel|susan|aria|jenny|michelle|sonia|libby|catherine|natasha|heera|linda|eva|helen|samantha|karen|moira|tessa|fiona|victoria|ana|emma|ava|clara|elsa|hedda|katja|julie|hortense|paulina|irina|maria|sabina|zoe|female|woman)\b/i
@@ -36,8 +37,45 @@ export function pickVoice(voices: SpeechSynthesisVoice[], gender: VoiceGender, u
   return english.find((v) => voiceGender(v) === gender) ?? voices.find((v) => voiceGender(v) === gender) ?? english[0] ?? voices[0] ?? null
 }
 
-export function speak(text: string, opts: { gender: VoiceGender; voiceUri: string | null; volume: number; rate: number }): void {
-  if (!speechAvailable() || !text.trim()) return
+export interface SpeakOptions {
+  engine?: VoiceEngine
+  naturalVoice?: string | null
+  gender: VoiceGender
+  voiceUri: string | null
+  volume: number
+  rate: number
+  /** Status while the natural voice downloads or starts, and when it falls back to Windows. */
+  onStatus?: (message: string | null) => void
+}
+
+/** The natural voice to use: the one picked if it fits the gender, else the first of that gender. */
+export function pickNaturalVoice(gender: VoiceGender, picked: string | null | undefined): string {
+  const list: readonly string[] = NATURAL_VOICES[gender]
+  return picked && list.includes(picked) ? picked : list[0]
+}
+
+/** Says `text` with the chosen engine; if the natural voice cannot load, the Windows voice says it instead. */
+export function speak(text: string, opts: SpeakOptions): void {
+  if (!text.trim()) return
+  if (opts.engine === 'natural') {
+    stopWindows()
+    speakNatural(text, { voice: pickNaturalVoice(opts.gender, opts.naturalVoice), volume: opts.volume, rate: opts.rate, onLoading: (m) => opts.onStatus?.(m) })
+      .then(() => opts.onStatus?.(null))
+      .catch((e: unknown) => {
+        opts.onStatus?.(`The natural voice could not start (${e instanceof Error ? e.message : String(e)}); using the Windows voice.`)
+        speakWindows(text, opts)
+      })
+    return
+  }
+  speakWindows(text, opts)
+}
+
+function stopWindows() {
+  if (speechAvailable()) window.speechSynthesis.cancel()
+}
+
+function speakWindows(text: string, opts: SpeakOptions): void {
+  if (!speechAvailable()) return
   const synth = window.speechSynthesis
   synth.cancel()
   const u = new SpeechSynthesisUtterance(text)
@@ -52,5 +90,6 @@ export function speak(text: string, opts: { gender: VoiceGender; voiceUri: strin
 }
 
 export function stopSpeaking(): void {
-  if (speechAvailable()) window.speechSynthesis.cancel()
+  stopWindows()
+  stopNatural()
 }

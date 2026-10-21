@@ -13,6 +13,7 @@ const STYLE: Record<MapPoint['kind'], L.CircleMarkerOptions> = {
   quest: { color: '#0b0b0b', weight: 2, fillColor: '#f59e0b', fillOpacity: 1, radius: 8 },
   place: { color: '#0b0b0b', weight: 2, fillColor: '#a78bfa', fillOpacity: 1, radius: 8 },
   extract: { color: '#0b0b0b', weight: 1.5, fillColor: '#22c55e', fillOpacity: 0.95, radius: 6 },
+  loot: { color: '#0b0b0b', weight: 1.5, fillColor: '#facc15', fillOpacity: 0.95, radius: 6 },
 }
 
 function Fit({ points, layer }: { points: Position[]; layer: BaseLayerConfig }) {

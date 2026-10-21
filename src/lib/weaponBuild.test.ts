@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { Item, ItemsById, ModSlot } from '../api/types'
 import {
   buildAsText,
+  closestPreset,
   buildConflicts,
   buildTotals,
   findConflict,
@@ -188,6 +189,18 @@ describe('preset placement search', () => {
 })
 
 describe('modding view helpers', () => {
+  it('finds the closest preset with a picture and says what differs', () => {
+    const withPicture = { ...items, preset: { ...items.preset, image512Link: 'https://x/preset.webp' } } as ItemsById
+    const { parts } = presetToBuild(withPicture.preset, withPicture)
+    const swapped = setPart(parts, ['s-grip'], 'grip2', withPicture)
+    const c = closestPreset(rifle, swapped, withPicture)
+    expect(c?.preset.id).toBe('preset')
+    expect(c?.added.map((i) => i.id)).toEqual(['grip2'])
+    expect(c?.removed.map((i) => i.id)).toEqual(['grip'])
+    // Presets without a picture are not offered.
+    expect(closestPreset(rifle, swapped, items)).toBeNull()
+  })
+
   it('finds the preset that has exactly the installed parts', () => {
     const { parts } = presetToBuild(items.preset, items)
     expect(matchingPreset(rifle, parts, items)?.id).toBe('preset')

@@ -53,6 +53,9 @@ public/ocr/
 public/voice/
 public/vosk/
 
+# Natural voice for the assistant (generated: npm run tts:assets)
+public/tts/
+
 # Tesseract model downloaded by older OCR test runs (the app ships public/ocr)
 /eng.traineddata
 

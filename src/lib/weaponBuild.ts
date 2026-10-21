@@ -388,6 +388,35 @@ export function matchingPreset(weapon: Item, parts: BuildParts, items: ItemsById
   return null
 }
 
+export interface ClosestPreset {
+  preset: Item
+  /** Parts in the build that the preset's picture does not show. */
+  added: Item[]
+  /** Parts the preset's picture shows that the build does not have. */
+  removed: Item[]
+}
+
+/**
+ * The ready-made build (with a picture) that shares the most parts with this build, to show a real
+ * picture of a similar gun when no preset matches exactly. Null when no preset shares any part.
+ */
+export function closestPreset(weapon: Item, parts: BuildParts, items: ItemsById): ClosestPreset | null {
+  const mine = new Set(installedIds(parts))
+  let best: { p: Item; score: number; theirs: Set<string> } | null = null
+  for (const p of weaponPresets(weapon, items)) {
+    if (!p.image512Link || p.pictureOf) continue
+    const theirs = new Set(p.preset!.parts.filter((id) => items[id]?.mod))
+    let shared = 0
+    for (const id of theirs) if (mine.has(id)) shared++
+    const score = shared / Math.max(1, new Set([...mine, ...theirs]).size)
+    if (shared > 0 && (!best || score > best.score)) best = { p, score, theirs }
+  }
+  if (!best) return null
+  const theirs = best.theirs
+  const list = (ids: Iterable<string>) => [...ids].map((id) => items[id]).filter((it): it is Item => Boolean(it))
+  return { preset: best.p, added: list([...mine].filter((id) => !theirs.has(id))), removed: list([...theirs].filter((id) => !mine.has(id))) }
+}
+
 // ---------------------------------------------------------------------------
 // Part picker rows (shared by the List view and the Modding view)
 // ---------------------------------------------------------------------------

@@ -7,6 +7,9 @@ describe('spokenToText', () => {
     expect(spokenToText('route to z b ten thirteen')).toBe('route to zb 1013')
     expect(spokenToText('warehouse seventeen')).toBe('warehouse 17')
     expect(spokenToText('gunsmith part twenty two')).toBe('gunsmith part 22')
+    expect(spokenToText('about six hundred fifty meters')).toBe('about 650 meters')
+    expect(spokenToText('dorm room three hundred three key')).toBe('dorm room 303 key')
+    expect(spokenToText('dorm room three oh three key')).toBe('dorm room 303 key')
   })
 
   it('leaves normal words alone', () => {

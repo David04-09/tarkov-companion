@@ -12,6 +12,7 @@ import { acquireCost } from '../lib/economy'
 import { formatRoubles } from '../lib/format'
 import {
   arrangeSlots,
+  closestPreset,
   formatErgo,
   formatPercent,
   getNode,
@@ -34,6 +35,9 @@ import { gunLayers, layersBounds, type Layer } from './gunComposite'
 
 /** Below this width (px) of the view, tiles go in a plain grid under the picture. */
 const WIDE_MIN = 640
+
+/** localStorage: show the experimental parts layout instead of real pictures. */
+const LAYOUT_KEY = 'tc-gun-layout'
 
 const fieldClass =
   'rounded border border-line bg-surface-2 px-2 py-1.5 text-sm text-ink focus:border-accent focus:outline-none'
@@ -149,13 +153,32 @@ export function ModdingView({
   const sides = useMemo(() => arrangeSlots(slots), [slots])
 
   const preset = useMemo(() => (path.length ? null : matchingPreset(weapon, parts, items)), [path.length, weapon, parts, items])
-  const centreSrc = picture(preset ?? focusItem, true)
-  // No preset with exactly these parts: put the gun together from the parts' own pictures.
+  // No preset with exactly these parts: the real picture of the most similar ready-made build
+  // (a rendered gun looks right; the parts layout below is a rough sketch and opt-in).
+  const closest = useMemo(() => (path.length || preset || !Object.keys(parts).length ? null : closestPreset(weapon, parts, items)), [path.length, preset, weapon, parts, items])
+  const [layoutOn, setLayoutOn] = useState(() => {
+    try {
+      return localStorage.getItem(LAYOUT_KEY) === '1'
+    } catch {
+      return false
+    }
+  })
+  const toggleLayout = () =>
+    setLayoutOn((on) => {
+      try {
+        localStorage.setItem(LAYOUT_KEY, on ? '0' : '1')
+      } catch {
+        // per-viewer convenience only
+      }
+      return !on
+    })
   const layers = useMemo(() => {
-    if (preset || !focusItem) return null
+    if (!layoutOn || preset || !focusItem) return null
     const l = gunLayers(focusItem, level, items)
     return l && l.length > 1 ? l : null
-  }, [preset, focusItem, level, items])
+  }, [layoutOn, preset, focusItem, level, items])
+  const canLayout = !preset && Object.keys(level).length > 0
+  const centreSrc = picture(preset ?? closest?.preset ?? focusItem, true)
 
   // Paths (joined) of empty required slots anywhere in the build.
   const missing = useMemo(() => missingRequired(weapon, parts, items).map((f) => f.path.join('/')), [weapon, parts, items])
@@ -260,7 +283,23 @@ export function ModdingView({
       <div className="min-w-0 max-w-full">
         <p className="truncate text-sm font-semibold" title={focusItem?.name}>{focusItem?.name ?? 'Unknown part'}</p>
         {preset && <p className="truncate text-xs text-ink-dim">Same parts as the ready-made build "{preset.name}"</p>}
-        {layers && <p className="truncate text-xs text-ink-dim">Put together from the parts' pictures (approximate)</p>}
+        {layers && <p className="truncate text-xs text-ink-dim">Rough layout from the parts' pictures (experimental)</p>}
+        {!layers && closest && (
+          <div className="text-xs text-ink-dim">
+            <p className="truncate">Picture of the closest ready-made build "{closest.preset.name}"</p>
+            {(closest.added.length > 0 || closest.removed.length > 0) && (
+              <p className="truncate" title={[...closest.added.map((i) => `+ ${i.name}`), ...closest.removed.map((i) => `− ${i.name}`)].join('\n')}>
+                Yours differs: {[...closest.added.slice(0, 3).map((i) => `+ ${i.shortName}`), ...closest.removed.slice(0, 3).map((i) => `− ${i.shortName}`)].join(', ')}
+                {closest.added.length + closest.removed.length > 6 ? ' …' : ''}
+              </p>
+            )}
+          </div>
+        )}
+        {canLayout && (
+          <button type="button" onClick={toggleLayout} className="mt-0.5 block w-full text-xs text-ink-muted underline hover:text-accent">
+            {layers ? (path.length ? "Show this part's picture" : 'Show the ready-made picture') : 'Try the parts layout (experimental)'}
+          </button>
+        )}
         {(preset ?? focusItem)?.pictureOf && <p className="text-xs text-ink-dim">Picture of the standard version: tarkov.dev has no picture of this one yet.</p>}
         {!centreSrc && <p className="text-xs text-ink-dim">tarkov.dev has no picture of this item yet.</p>}
         {focusItem?.mod && <ModStatLine item={focusItem} className="text-xs" />}

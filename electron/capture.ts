@@ -54,9 +54,9 @@ export function readGameScreenshot(name: string): Uint8Array {
   return new Uint8Array(fs.readFileSync(path.join(gameScreenshotsDir(), name)))
 }
 
-const RESOURCE_DIRS = ['scan', 'ocr', 'tiles', 'voice']
+const RESOURCE_DIRS = ['scan', 'ocr', 'tiles', 'voice', 'tts']
 /** Folders that come from a downloaded content pack in installed builds (see packs.ts). */
-const PACKED: Record<string, PackName> = { tiles: 'lighthouse', scan: 'scan', voice: 'voice' }
+const PACKED: Record<string, PackName> = { tiles: 'lighthouse', scan: 'scan', voice: 'voice', tts: 'tts' }
 
 function resourcePath(rel: string, devServer: boolean): string {
   const clean = path.normalize(rel).replace(/^([/\\])+/, '')

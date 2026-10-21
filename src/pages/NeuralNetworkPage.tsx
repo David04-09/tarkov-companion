@@ -14,7 +14,8 @@ import { ALL_PLACES } from '../assistant/places'
 import { voiceVocabulary } from '../assistant/spoken'
 import { useAssistantListenStore } from '../store/assistantListen'
 import { answer, type AssistantAction, type AssistantContext, type MapCard, type Reply } from '../assistant/engine'
-import { listVoices, pickVoice, speak, speechAvailable, stopSpeaking, voiceGender } from '../assistant/speech'
+import { listVoices, pickNaturalVoice, pickVoice, speak, speechAvailable, stopSpeaking, voiceGender } from '../assistant/speech'
+import { NATURAL_VOICES } from '../assistant/naturalVoice'
 import { computeTaskStatuses, isFactionEligible } from '../lib/taskStatus'
 import { findMapConfig, resolveBaseLayer } from '../maps/mapConfig'
 import { buildMapTasks, type MapTask } from '../maps/overlay/mapTasks'
@@ -59,16 +60,19 @@ const EXAMPLES = ["I'm at Dorms, what's the closest quest?", 'Where is Crackhous
 function VoicePanel() {
   const s = useAssistantStore()
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>(() => listVoices())
+  const [status, setStatus] = useState<string | null>(null)
   useEffect(() => {
     if (!speechAvailable()) return
     const update = () => setVoices(listVoices())
     window.speechSynthesis.addEventListener('voiceschanged', update)
     return () => window.speechSynthesis.removeEventListener('voiceschanged', update)
   }, [])
-  if (!speechAvailable()) return <p className="text-xs text-ink-dim">Speaking is not available on this system.</p>
+  const natural = s.engine === 'natural'
   const ofGender = voices.filter((v) => voiceGender(v) === s.gender)
   const current = pickVoice(voices, s.gender, s.voiceUri)
-  const noMatch = voices.length > 0 && ofGender.length === 0
+  const noMatch = !natural && voices.length > 0 && ofGender.length === 0
+  const naturalList: readonly string[] = NATURAL_VOICES[s.gender]
+  const segment = (on: boolean) => `px-3 py-1 ${on ? 'bg-accent/20 text-accent' : 'text-ink-muted hover:bg-surface-3'}`
   return (
     <div className="space-y-3 text-sm">
       <label className="flex items-center gap-2">
@@ -76,23 +80,40 @@ function VoicePanel() {
         Read answers out loud
       </label>
       <div className="flex flex-wrap items-center gap-2">
+        <span className="w-16 text-ink-muted">Engine</span>
+        <div className="inline-flex overflow-hidden rounded border border-line" role="group" aria-label="Voice engine">
+          <button type="button" onClick={() => s.set({ engine: 'natural' })} className={segment(natural)}>Natural</button>
+          <button type="button" onClick={() => s.set({ engine: 'windows' })} className={segment(!natural)}>Windows</button>
+        </div>
+        <span className="text-xs text-ink-dim">{natural ? 'Neural voice on this PC (57 MB download the first time; ~1 s per sentence on one CPU core).' : 'The voices built into Windows: no download, almost no CPU, robotic.'}</span>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
         <span className="w-16 text-ink-muted">Voice</span>
         <div className="inline-flex overflow-hidden rounded border border-line" role="group" aria-label="Voice">
           {(['female', 'male'] as const).map((g) => (
-            <button key={g} type="button" onClick={() => s.set({ gender: g, voiceUri: null })} className={`px-3 py-1 capitalize ${s.gender === g ? 'bg-accent/20 text-accent' : 'text-ink-muted hover:bg-surface-3'}`}>
+            <button key={g} type="button" onClick={() => s.set({ gender: g, voiceUri: null, naturalVoice: null })} className={`${segment(s.gender === g)} capitalize`}>
               {g}
             </button>
           ))}
         </div>
-        {ofGender.length > 1 && (
-          <select value={current?.voiceURI ?? ''} onChange={(e) => s.set({ voiceUri: e.target.value || null })} aria-label="Which voice" className="min-w-0 max-w-full rounded border border-line bg-surface px-2 py-1 text-xs">
-            {ofGender.map((v) => (
-              <option key={v.voiceURI} value={v.voiceURI}>{v.name}</option>
+        {natural ? (
+          <select value={pickNaturalVoice(s.gender, s.naturalVoice)} onChange={(e) => s.set({ naturalVoice: e.target.value })} aria-label="Which voice" className="rounded border border-line bg-surface px-2 py-1 text-xs">
+            {naturalList.map((v) => (
+              <option key={v} value={v}>{v}</option>
             ))}
           </select>
+        ) : (
+          ofGender.length > 1 && (
+            <select value={current?.voiceURI ?? ''} onChange={(e) => s.set({ voiceUri: e.target.value || null })} aria-label="Which voice" className="min-w-0 max-w-full rounded border border-line bg-surface px-2 py-1 text-xs">
+              {ofGender.map((v) => (
+                <option key={v.voiceURI} value={v.voiceURI}>{v.name}</option>
+              ))}
+            </select>
+          )
         )}
       </div>
       {noMatch && <p className="text-xs text-ink-dim">No {s.gender} voice is installed; using {current?.name ?? 'the default voice'}. Windows: Settings → Time & language → Speech adds more.</p>}
+      {!natural && !speechAvailable() && <p className="text-xs text-ink-dim">Windows voices are not available on this system.</p>}
       <label className="flex items-center gap-2">
         <span className="w-16 text-ink-muted">Volume</span>
         <input type="range" min={0} max={1} step={0.05} value={s.volume} onChange={(e) => s.set({ volume: Number(e.target.value) })} className="w-48 accent-[var(--color-accent)]" aria-label="Volume" />
@@ -103,9 +124,12 @@ function VoicePanel() {
         <input type="range" min={0.5} max={2} step={0.1} value={s.rate} onChange={(e) => s.set({ rate: Number(e.target.value) })} className="w-48 accent-[var(--color-accent)]" aria-label="Speaking speed" />
         <span className="w-10 tabular-nums text-xs text-ink-dim">{s.rate.toFixed(1)}×</span>
       </label>
-      <button type="button" className="btn" onClick={() => speak('Ready when you are. Where are you on the map?', s)}>
-        <Volume2 className="h-4 w-4" /> Test voice
-      </button>
+      <div className="flex flex-wrap items-center gap-2">
+        <button type="button" className="btn" onClick={() => speak('Ready when you are. Where are you on the map?', { ...s, onStatus: setStatus })}>
+          <Volume2 className="h-4 w-4" /> Test voice
+        </button>
+        {status && <span className="text-xs text-ink-dim">{status}</span>}
+      </div>
     </div>
   )
 }
@@ -113,7 +137,7 @@ function VoicePanel() {
 /**
  * The in-app assistant. Built to be light enough to use while the game runs: no AI model, no
  * background work. Each question is matched against names from the app's own data in well under
- * a millisecond; voices are the ones built into Windows; the small map only exists while an
+ * a millisecond; the voice is generated on this PC only while speaking; the small map only exists while an
  * answer shows one. The large item list is loaded only when a question is about an item.
  */
 export function NeuralNetworkPage() {
@@ -173,7 +197,7 @@ export function NeuralNetworkPage() {
       if (reply.mapId) lastMapId.current = reply.mapId
       if (reply.youAt) lastPlace.current = reply.youAt
       setCard(reply.map ?? null)
-      if (voice.speak) speak(reply.text, voice)
+      if (voice.speak) speak(reply.text, { ...voice, onStatus: (m) => m && setListen((l) => (l.state === 'idle' ? { state: 'idle', detail: m } : l)) })
     },
     [voice],
   )
@@ -230,22 +254,49 @@ export function NeuralNetworkPage() {
   useEffect(() => () => stopSpeaking(), [])
 
   // Voice input: the words it may hear are the app's own names plus question words.
-  const vocabulary = useMemo(() => {
+  const names = useMemo(() => {
     const data = gameData.data
     if (!data) return []
     const extracts = Object.values(data.mapDetails).flatMap((d) => (d?.extracts ?? []).map((e) => e.name))
-    return voiceVocabulary([...data.maps.map((m) => m.name), ...ALL_PLACES.map((p) => p.name), ...extracts, ...tasks.map((t) => t.name)])
+    return [...data.maps.map((m) => m.name), ...ALL_PLACES.map((p) => p.name), ...extracts, ...tasks.map((t) => t.name)]
   }, [gameData.data, tasks])
+  // Item names too ("battery", "LEDX", "dorm 303 key"), worked out once per item list.
+  const vocabCache = useRef<{ names: string[]; items: ItemsById | undefined; words: string[] } | null>(null)
+  const vocabularyFor = (items: ItemsById | undefined) => {
+    const c = vocabCache.current
+    if (c && c.names === names && c.items === items) return c.words
+    const itemNames = items ? Object.values(items).flatMap((it) => [it.name, it.shortName]) : []
+    const result = voiceVocabulary([...names, ...itemNames])
+    vocabCache.current = { names, items, words: result }
+    return result
+  }
   const [listen, setListen] = useState<{ state: ListenState; detail?: string }>({ state: 'idle' })
   const stopListening = useRef<(() => void) | null>(null)
   const askRef = useRef(ask)
   useEffect(() => {
     askRef.current = ask
   })
-  const startListening = useCallback(() => {
-    if (stopListening.current || !vocabulary.length) return
+  const startListening = useCallback(async () => {
+    if (stopListening.current || !names.length) return
     stopSpeaking()
-    stopListening.current = listenOnce(vocabulary, {
+    let cancelled = false
+    stopListening.current = () => {
+      cancelled = true
+    }
+    let items = queryClient.getQueryData<{ items: ItemsById }>(itemKeys.mode(gameMode))?.items
+    if (!items) {
+      setListen({ state: 'loading', detail: 'Loading item names (first time)…' })
+      items = await queryClient
+        .fetchQuery({ queryKey: itemKeys.mode(gameMode), queryFn: ({ signal }) => fetchItems(gameMode, signal) })
+        .then((r) => r.items)
+        .catch(() => undefined)
+    }
+    if (cancelled) {
+      stopListening.current = null
+      setListen({ state: 'idle' })
+      return
+    }
+    stopListening.current = listenOnce(vocabularyFor(items), {
       onState: (state, detail) => {
         setListen({ state, detail })
         if (state === 'idle') stopListening.current = null
@@ -261,16 +312,17 @@ export function NeuralNetworkPage() {
         setListen({ state: 'idle', detail: message })
       },
     })
-  }, [vocabulary])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- vocabularyFor reads a ref; names covers its inputs
+  }, [names, queryClient, gameMode])
   useEffect(() => () => stopListening.current?.(), [])
   // The desktop hotkey asks to listen (also when it switched to this tab just now).
   const listenRequest = useAssistantListenStore((st) => st.request)
   const handledRequest = useRef(0)
   useEffect(() => {
-    if (!listenRequest || listenRequest === handledRequest.current || !vocabulary.length) return
+    if (!listenRequest || listenRequest === handledRequest.current || !names.length) return
     handledRequest.current = listenRequest
-    startListening()
-  }, [listenRequest, vocabulary, startListening])
+    void startListening()
+  }, [listenRequest, names, startListening])
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-4">
@@ -345,8 +397,8 @@ export function NeuralNetworkPage() {
           <button
             type="button"
             className={`btn ${listen.state === 'listening' ? 'border-red-500 text-red-400' : ''}`}
-            disabled={!vocabulary.length || listen.state === 'loading'}
-            onClick={() => (stopListening.current ? stopListening.current() : startListening())}
+            disabled={!names.length || listen.state === 'loading'}
+            onClick={() => (stopListening.current ? stopListening.current() : void startListening())}
             title={listen.state === 'listening' ? 'Stop listening' : 'Ask by voice (recognised on this PC)'}
             aria-label={listen.state === 'listening' ? 'Stop listening' : 'Ask by voice'}
           >
