@@ -41,6 +41,7 @@ import { askNotificationPermission, notificationPermission, notify } from '../li
 import { formatDateTime, formatRoubles } from '../lib/format'
 import { JSON_API_BASE } from '../api/client'
 import { persister } from '../api/persist'
+import { useAssistantStore } from '../store/assistant'
 import type { DesktopSettings, UpdateMode } from '../shared/desktop-api'
 
 
@@ -461,8 +462,11 @@ function MapsSection() {
   const autoUntick = useMapOverlayStore((s) => s.autoUntickCompleted)
   const setAutoUntick = useMapOverlayStore((s) => s.setAutoUntickCompleted)
   const [openOnRaid, setOpenOnRaid] = useDesktopSetting('openMapOnRaid', true)
+  const briefing = useAssistantStore((s) => s.briefing)
+  const briefingVoice = useAssistantStore((s) => s.briefingVoice)
+  const setAssistant = useAssistantStore((s) => s.set)
   return (
-    <Section id="maps" title="Maps" icon={MapIcon} keywords="map marker size icon bring box untick completed quests raid open">
+    <Section id="maps" title="Maps" icon={MapIcon} keywords="map marker size icon bring box untick completed quests raid open briefing voice">
       <Row label="Marker size" hint="Quest, extract, boss and position markers.">
         <Slider value={markerScale} min={60} max={200} step={10} onChange={setMarkerScale} label="Marker size" />
       </Row>
@@ -475,6 +479,16 @@ function MapsSection() {
       {isDesktop() && (
         <Row label="Open the map when a raid starts" hint="Jumps to the raid's map as soon as the game loads it.">
           <Switch checked={openOnRaid} onChange={setOpenOnRaid} label="Open map on raid" />
+        </Row>
+      )}
+      {isDesktop() && (
+        <Row label="Raid briefing" hint="When the game loads a map: a card with your quests there (ticked on the Maps tab, else started in the game) and the keys and items they need. Started quests are put on the map.">
+          <Switch checked={briefing} onChange={(on) => setAssistant({ briefing: on })} label="Raid briefing" />
+        </Row>
+      )}
+      {isDesktop() && briefing && (
+        <Row label="Read the briefing out loud" hint="Uses the assistant's voice (Neural network tab).">
+          <Switch checked={briefingVoice} onChange={(on) => setAssistant({ briefingVoice: on })} label="Read the briefing out loud" />
         </Row>
       )}
     </Section>

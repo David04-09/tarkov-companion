@@ -25,6 +25,7 @@ import { findMapConfig, resolveBaseLayer } from '../maps/mapConfig'
 import { buildMapTasks, type MapTask } from '../maps/overlay/mapTasks'
 import { useAssistantStore } from '../store/assistant'
 import { useAssistantRouteStore } from '../store/assistantRoute'
+import { useRaidBriefingStore } from '../store/raidBriefing'
 import { useMapOverlayStore } from '../store/mapOverlay'
 import { useUiStore } from '../store/ui'
 import { useProfile, useProgressStore } from '../store/progress'
@@ -224,7 +225,8 @@ export function NeuralNetworkPage() {
       tasks,
       items,
       playerLevel: profile.playerLevel,
-      lastMapId: lastMapId.current,
+      // Before anything was asked, follow-ups ("extracts?") are about the map being raided.
+      lastMapId: lastMapId.current ?? useRaidBriefingStore.getState().current?.mapId ?? null,
       lastPlace: lastPlace.current,
       collected: inventory.collected,
       needFor: (itemId) => needsFor(data, items).find((n) => n.itemId === itemId || n.alternatives.includes(itemId)),

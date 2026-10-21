@@ -17,6 +17,7 @@ import { ItemLookup } from './ItemLookup'
 import { StoryTimerWatcher } from '../story/StoryTimerWatcher'
 import { AutoUntickCompleted } from '../maps/AutoUntick'
 import { RaidResultPrompt } from '../stats/RaidResultPrompt'
+import { RaidBriefingHost } from '../briefing/RaidBriefingHost'
 import { PositionListener } from '../maps/position'
 import { AutoBackup } from '../desktop/HealthAndBackups'
 import { Sidebar } from './Sidebar'
@@ -79,6 +80,10 @@ export function Layout() {
       <ErrorBoundary area="Story timers" quiet>
         <StoryTimerWatcher />
         <AutoUntickCompleted />
+      </ErrorBoundary>
+      <ErrorBoundary area="Raid briefing" quiet>
+        {/* Briefs when the game log (desktop) says a map is loading. */}
+        <RaidBriefingHost />
       </ErrorBoundary>
       {isDesktop() && (
         <ErrorBoundary area="Game log features" quiet>
