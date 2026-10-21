@@ -7,8 +7,9 @@
  * microphone is ignored so it does not hear itself. All waiting is measured in microphone audio
  * time, not with timers: a background window gets its timers slowed down, the audio keeps flowing.
  */
-import { holdModel, loadModel, type ListenState } from './listen'
+import { holdModel, loadModel, questionText, type ListenState } from './listen'
 import { spokenToText } from './spoken'
+import { prepareTranscriber, Recording } from './transcribe'
 import { words } from './text'
 import type { VoskRecognizer } from './voskClient'
 
@@ -95,19 +96,30 @@ export function startWakeListening(name: WakeName, vocabulary: string[], h: Wake
       let quietSince = -1
       let lastSpeech = 0
       let recognizer: VoskRecognizer | null = null
+      // The question's audio (from just before speech was noticed) for Moonshine.
+      const recording = new Recording()
 
       const finishQuestion = () => {
-        const text = spokenToText(clean([...said, partial].join(' ')))
+        const voskText = clean([...said, partial].join(' '))
+        const samples = recording.take()
         said = []
         partial = ''
         lastPartial = ''
         questionStart = -1
         quietSince = -1
-        if (!text) return
-        if (isEndPhrase(text)) {
-          switchMode?.('waiting')
-          h.onEnd(false)
-        } else h.onQuestion(text)
+        h.onState('thinking', 'Working out what you said…')
+        void questionText(samples, voskText, h.onState).then((text) => {
+          if (stopped || mode !== 'conversation') return
+          if (!text) return h.onState('listening', 'I did not catch that. Ask again.')
+          // Vosk knows the end phrase as well (it is in its word list): either one ends it.
+          if (isEndPhrase(text) || isEndPhrase(spokenToText(voskText))) {
+            switchMode?.('waiting')
+            h.onEnd(false)
+          } else {
+            h.onState('listening', `Listening. Say "thanks, that's all" when you are done.`)
+            h.onQuestion(text)
+          }
+        })
       }
 
       const makeRecognizer = () => {
@@ -115,15 +127,14 @@ export function startWakeListening(name: WakeName, vocabulary: string[], h: Wake
         const grammar = mode === 'waiting' ? [`hey ${name}`, name, '[unk]'] : [...vocabulary, '[unk]']
         recognizer = model.recognizer(SAMPLE_RATE, grammar, {
           onPartial: (p) => {
-            if (mode !== 'conversation') return
-            const t = clean(p)
-            if (!t || t === lastPartial) return
-            lastPartial = t
-            partial = t
+            if (mode !== 'conversation' || !p.trim() || p === lastPartial) return
+            // Any speech counts, also words Vosk does not know ("[unk]"): Moonshine reads them.
+            lastPartial = p
+            partial = clean(p)
             lastSpeech = now
             quietSince = -1
             if (questionStart < 0) questionStart = now
-            h.onPartial(spokenToText(clean([...said, partial].join(' '))))
+            h.onPartial('…')
           },
           onResult: (text) => {
             const t = clean(text)
@@ -136,8 +147,9 @@ export function startWakeListening(name: WakeName, vocabulary: string[], h: Wake
             }
             partial = ''
             lastPartial = ''
-            if (t) {
-              said.push(t)
+            if (text.trim()) {
+              if (t) said.push(t)
+              if (questionStart < 0) questionStart = now
               lastSpeech = now
               quietSince = now
             }
@@ -148,6 +160,8 @@ export function startWakeListening(name: WakeName, vocabulary: string[], h: Wake
 
       switchMode = (m) => {
         mode = m
+        recording.clear()
+        if (m === 'conversation') void prepareTranscriber().catch(() => undefined)
         said = []
         partial = ''
         lastPartial = ''
@@ -164,10 +178,11 @@ export function startWakeListening(name: WakeName, vocabulary: string[], h: Wake
         now += samples.length / e.inputBuffer.sampleRate
         recognizer.accept(samples, e.inputBuffer.sampleRate)
         if (mode !== 'conversation') return
+        recording.push(samples, questionStart >= 0)
         // Quiet for a moment after speaking: the question is done.
-        if (said.length && quietSince >= 0 && !partial && now - quietSince >= END_AFTER_QUIET_S) finishQuestion()
+        if (questionStart >= 0 && quietSince >= 0 && now - quietSince >= END_AFTER_QUIET_S) finishQuestion()
         else if (questionStart >= 0 && now - questionStart >= MAX_QUESTION_S) finishQuestion()
-        else if (!said.length && !partial && now - lastSpeech >= CONVERSATION_IDLE_S) {
+        else if (questionStart < 0 && now - lastSpeech >= CONVERSATION_IDLE_S) {
           switchMode?.('waiting')
           h.onEnd(true)
         }

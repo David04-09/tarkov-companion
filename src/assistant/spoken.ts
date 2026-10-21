@@ -26,6 +26,26 @@ const ACRONYMS: [RegExp, string][] = [
   [/\b(r b|r be) (k s m)\b/g, 'rb ksm'],
 ]
 
+/**
+ * Tarkov words a general speech model writes as ordinary English (tested with Moonshine on
+ * noisy, headset-like audio): "Alexa" for LEDX, "Shelleys" for Chalets, "Tetris" for Tetriz.
+ */
+const TARKOV_WORDS: [RegExp, string][] = [
+  [/\b(alexa|a lexa|ledex|led ex|lex)\b/g, 'ledx'],
+  [/\b(?:a )?lexworth\b/g, 'ledx worth'],
+  [/\b(shelleys|shellies|shelly's|shelley's|chalet's|shalets|shallays)\b/g, 'chalets'],
+  [/\btetris\b/g, 'tetriz'],
+  [/\b(gpus|gp us)\b/g, 'gpu'],
+  [/\b(dorm's|doors)\b(?= (?:room|\d))/g, 'dorm'],
+  [/\bbitcoins?\b/g, 'bitcoin'],
+]
+
+/** Free-form text from the speech model (capitals, punctuation, "5", "314") to question text. */
+export function writtenToText(heard: string): string {
+  const plain = ` ${heard.toLowerCase().replace(/[^a-z0-9' -]+/g, ' ').replace(/\s+/g, ' ')} `
+  return spokenToText(TARKOV_WORDS.reduce((t, [re, to]) => t.replace(re, to), plain).trim())
+}
+
 export function spokenToText(heard: string): string {
   heard = ACRONYMS.reduce((t, [re, to]) => t.replace(re, to), ` ${heard.toLowerCase()} `).trim()
   const w = heard.toLowerCase().split(/\s+/).filter(Boolean)

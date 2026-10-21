@@ -42,6 +42,20 @@ async function phonemes(text: string): Promise<string> {
   return parts.join(' ')
 }
 
+/**
+ * Kitten leaves ~0.4 s of silence before and ~0.3 s after every sentence, which made answers drag.
+ * Keep a short natural pause instead (sentences are generated and played one after another).
+ */
+function trimSilence(s: Float32Array): Float32Array {
+  const quiet = 0.01
+  let a = 0
+  while (a < s.length && Math.abs(s[a]) < quiet) a++
+  let b = s.length - 1
+  while (b > a && Math.abs(s[b]) < quiet) b--
+  if (a >= b) return s
+  return s.slice(Math.max(0, a - 0.03 * 24000), Math.min(s.length, b + 1 + 0.12 * 24000))
+}
+
 self.onmessage = async (e: MessageEvent<Message>) => {
   const m = e.data
   try {
@@ -65,7 +79,7 @@ self.onmessage = async (e: MessageEvent<Message>) => {
       speed: new ort.Tensor('float32', new Float32Array([m.speed]), [1]),
     })
     const audio = out[session.outputNames[0]].data as Float32Array
-    const samples = audio.slice(0, Math.max(0, audio.length - 5000))
+    const samples = trimSilence(audio.slice(0, Math.max(0, audio.length - 5000)))
     self.postMessage({ type: 'audio', id: m.id, samples, rate: 24000 }, [samples.buffer])
   } catch (err) {
     self.postMessage({ type: 'error', id: m.type === 'speak' ? m.id : undefined, message: err instanceof Error ? err.message : String(err) })

@@ -12,7 +12,10 @@ export interface ChangelogEntry {
 }
 
 /** Committed, waiting for the next update. */
-export const UNRELEASED: string[] = []
+export const UNRELEASED: string[] = [
+  'Assistant: much better speech recognition. Your questions are now turned into text by Moonshine, a modern offline model that copes with real microphones, background noise and accents (a 28 MB download the first time; about a fifth of a second per question on one CPU core). Before, "how much is a LEDX worth" through a headset came out as "how march is leg word"; now it is heard right. The old recogniser only listens for "Hey Ranger" and for when you stop talking.',
+  'Assistant: the natural voice talks at a normal pace. Each voice was measured and tuned to about 170 words a minute at Speed 1.0× (Bella and Leo were at about 100), and the long silences between sentences are gone.',
+]
 
 export const RELEASES: ChangelogEntry[] = [
   {

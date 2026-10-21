@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { spokenToText, voiceVocabulary } from './spoken'
+import { spokenToText, voiceVocabulary, writtenToText } from './spoken'
 
 describe('spokenToText', () => {
   it('turns spoken numbers and spelled letters into text', () => {
@@ -32,5 +32,17 @@ describe('acronyms', () => {
     expect(spokenToText('where can i find gp you')).toBe('where can i find gpu')
     expect(spokenToText('price of a led x')).toBe('price of a ledx')
     expect(spokenToText('build me an m four')).toBe('build me an m4')
+  })
+})
+
+describe('writtenToText', () => {
+  it('turns the speech model text into question text and fixes misheard Tarkov words', () => {
+    expect(writtenToText('Where can I find a GPU?')).toBe('where can i find a gpu')
+    expect(writtenToText('How much is Alexa worth?')).toBe('how much is ledx worth')
+    expect(writtenToText('How much is a Lexworth?')).toBe('how much is ledx worth')
+    expect(writtenToText('How do I get to the lighthouse from the Shelleys?')).toBe('how do i get to the lighthouse from the chalets')
+    expect(writtenToText('Price of a Tetris.')).toBe('price of a tetriz')
+    expect(writtenToText('Add 5 wires to my collection.')).toBe('add 5 wires to my collection')
+    expect(writtenToText('Where is the dorm room 314 key?')).toBe('where is the dorm room 314 key')
   })
 })

@@ -75,6 +75,9 @@ jobs:
       - name: Natural voice for the assistant (Kitten TTS)
         run: npm run tts:assets
 
+      - name: Speech recognition for the assistant (Moonshine)
+        run: npm run asr:assets
+
       - name: Unit tests and lint
         run: |
           npm test

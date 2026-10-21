@@ -21,6 +21,7 @@
     "ocr:assets": "node scripts/fetch-ocr-assets.mjs",
     "voice:assets": "node scripts/fetch-voice-model.mjs",
     "tts:assets": "node scripts/fetch-natural-voice.mjs",
+    "asr:assets": "node scripts/fetch-speech-model.mjs",
     "notices": "node scripts/build-notices.mjs",
     "packs": "node scripts/build-packs.mjs"
   },
@@ -83,6 +84,7 @@
       "!dist/scan/**",
       "!dist/voice/**",
       "!dist/tts/**",
+      "!dist/asr/**",
       "!dist/assets/ort-wasm-*.wasm",
       "dist-electron/**",
       "build/icon.png",

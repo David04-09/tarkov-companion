@@ -11,7 +11,7 @@ const SHIPPED = [
   '@tanstack/react-query', '@tanstack/query-core', '@tanstack/react-query-persist-client', '@tanstack/query-persist-client-core',
   '@tanstack/react-virtual', '@tanstack/virtual-core', 'zustand', 'use-sync-external-store',
   'leaflet', 'react-leaflet', '@react-leaflet/core', '@geoman-io/leaflet-geoman-free', 'lucide-react', 'idb-keyval',
-  'tesseract.js', 'tesseract.js-core', 'tailwindcss', 'vosk-browser',
+  'tesseract.js', 'tesseract.js-core', 'tailwindcss', 'vosk-browser', 'onnxruntime-web', 'onnxruntime-common', 'phonemizer',
   'electron', 'electron-updater', 'builder-util-runtime', 'debug', 'ms', 'sax', 'fs-extra', 'graceful-fs', 'jsonfile', 'universalify',
   'js-yaml', 'argparse', 'semver', 'lazy-val', 'lodash.escaperegexp', 'lodash.isequal', 'tiny-typed-emitter',
 ]
@@ -42,6 +42,9 @@ const parts = [
   '- Tesseract English model (tessdata, via @tesseract.js-data/eng): Apache-2.0.',
   '- Vosk small English speech model (vosk-model-small-en-us-0.15, alphacephei.com): Apache-2.0. The',
   '  recogniser (Vosk / Kaldi compiled to WebAssembly) ships as the vosk-browser worker, Apache-2.0.',
+  '- Kitten TTS micro 0.8 (KittenML, huggingface.co/KittenML): Apache-2.0. The natural voice, a content pack.',
+  '- Moonshine tiny speech recognition (Useful Sensors, huggingface.co/UsefulSensors/moonshine-tiny; ONNX by',
+  '  onnx-community): MIT. Turns spoken questions into text; a content pack.',
   '- Map place names (tarkov.dev src/data/maps.json labels): MIT.',
   '',
 ]

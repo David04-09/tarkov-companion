@@ -13,6 +13,13 @@ export const NATURAL_VOICES = {
   male: ['Jasper', 'Bruno', 'Hugo', 'Leo'],
 } as const
 
+/**
+ * Each voice talks at its own pace at Kitten's speed 1 (measured 2026-10-21, words per minute
+ * without pauses: Bella 101, Leo 103, Rosie 126, Luna 135, Bruno 147, Hugo 152, Jasper 156,
+ * Kiki 160). These factors bring every voice to a normal ~170 at the Speed slider's 1.0×.
+ */
+export const VOICE_PACE: Record<string, number> = { Bella: 1.68, Leo: 1.65, Rosie: 1.35, Luna: 1.26, Bruno: 1.16, Hugo: 1.12, Jasper: 1.09, Kiki: 1.06 }
+
 const UNLOAD_AFTER_MS = 3 * 60_000
 
 type Reply = { type: 'ready' } | { type: 'audio'; id: number; samples: Float32Array; rate: number } | { type: 'error'; id?: number; message: string }
@@ -117,7 +124,7 @@ export async function speakNatural(text: string, opts: { voice: string; volume: 
   let last: AudioBufferSourceNode | null = null
   try {
     for (const part of sentences(text)) {
-      const { samples, rate } = await generate(part, opts.voice, opts.rate)
+      const { samples, rate } = await generate(part, opts.voice, opts.rate * (VOICE_PACE[opts.voice] ?? 1))
       if (mine !== generation) return
       const buffer = ctx.createBuffer(1, samples.length, rate)
       buffer.copyToChannel(samples as Float32Array<ArrayBuffer>, 0)

@@ -1,5 +1,8 @@
 /**
- * Voice input for the assistant: Vosk with its small English model, recognised on this PC.
+ * Voice input for the assistant, recognised on this PC. Two parts: Vosk's small model listens
+ * along to notice when you start and stop talking (and hears the wake word, wake.ts), then the
+ * recorded question goes to Moonshine (transcribe.ts), which gets real microphones and accents
+ * far more right than the small Vosk model did ("how much" came out as "how march").
  * Kept light for use while the game runs:
  * - nothing is loaded until the first time the mic is used (the recogniser is a worker file; the
  *   42 MB model is a content pack on desktop, cached in IndexedDB by the worker);
@@ -10,7 +13,8 @@
  * - the recogniser is unloaded again 3 minutes after the last question, freeing its memory.
  */
 import { isDesktop } from '../desktop/useDesktop'
-import { spokenToText } from './spoken'
+import { spokenToText, writtenToText } from './spoken'
+import { prepareTranscriber, Recording, transcribe } from './transcribe'
 import { VoskClient } from './voskClient'
 
 export const VOICE_MODEL_FILE = 'vosk-model-small-en-us-0.15.tar.gz'
@@ -71,6 +75,16 @@ export function loadModel(onState: ListenHandlers['onState']): Promise<VoskClien
   return modelPromise
 }
 
+/** Moonshine's text for the recorded question; the Vosk text if Moonshine fails. */
+export async function questionText(samples: Float32Array, voskText: string, onState: ListenHandlers['onState']): Promise<string> {
+  try {
+    const text = writtenToText(await transcribe(samples, (m) => onState('loading', m)))
+    return text || spokenToText(voskText)
+  } catch {
+    return spokenToText(voskText)
+  }
+}
+
 /** Things keeping the recogniser loaded (the wake word while it is on). */
 let holders = 0
 export function holdModel(on: boolean): void {
@@ -122,6 +136,10 @@ export function listenOnce(vocabulary: string[], h: ListenHandlers): () => void 
       const said: string[] = []
       let partial = ''
       let lastPartial = ''
+      // Something was said (even words Vosk does not know: they come as "[unk]").
+      let spoke = false
+      const recording = new Recording()
+      void prepareTranscriber().catch(() => undefined)
       let done = false
       let maxTimer: number | undefined
       let quietTimer: number | undefined
@@ -140,8 +158,15 @@ export function listenOnce(vocabulary: string[], h: ListenHandlers): () => void 
         void audio.close()
         recognizer.remove()
         scheduleUnload()
-        h.onState('idle')
-        h.onResult(spokenToText(heard()))
+        if (!spoke) {
+          h.onState('idle')
+          return h.onResult('')
+        }
+        h.onState('thinking', 'Working out what you said…')
+        void questionText(recording.take(), heard(), h.onState).then((text) => {
+          h.onState('idle')
+          h.onResult(text)
+        })
       }
       // Done once the player has said something and then stayed quiet for a moment (a pause in
       // the middle of a question is shorter); nothing said at all ends the wait sooner.
@@ -151,8 +176,11 @@ export function listenOnce(vocabulary: string[], h: ListenHandlers): () => void 
       }
       const recognizer = model.recognizer(audio.sampleRate, [...vocabulary, '[unk]'], {
         onPartial: (p) => {
+          if (p.trim()) spoke = true
           const text = clean(p)
-          if (!text || text === lastPartial) return
+          if (!p.trim() || p === lastPartial) return
+          window.clearTimeout(quietTimer)
+          if (!text) return
           // Still talking: keep listening.
           lastPartial = text
           partial = text
@@ -161,11 +189,12 @@ export function listenOnce(vocabulary: string[], h: ListenHandlers): () => void 
         },
         // A result comes at every pause: keep it and wait to see whether more is coming.
         onResult: (text) => {
+          if (text.trim()) spoke = true
           const t = clean(text)
           partial = ''
           lastPartial = ''
           if (t) said.push(t)
-          if (said.length) {
+          if (spoke) {
             h.onPartial(spokenToText(heard()))
             waitForQuiet(END_AFTER_QUIET_MS)
           }
@@ -176,7 +205,10 @@ export function listenOnce(vocabulary: string[], h: ListenHandlers): () => void 
         },
       })
       node.onaudioprocess = (e) => {
-        if (!done) recognizer.accept(e.inputBuffer.getChannelData(0), e.inputBuffer.sampleRate)
+        if (done) return
+        const samples = e.inputBuffer.getChannelData(0)
+        recording.push(samples, spoke)
+        recognizer.accept(samples, e.inputBuffer.sampleRate)
       }
       source.connect(node)
       node.connect(audio.destination)
