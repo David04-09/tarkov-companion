@@ -55,6 +55,11 @@ interface AssistantMemoryState {
   seed: (habits: Habits, at: number) => void
   forgetAll: () => void
   notForMe: (text: string) => void
+  /** Answer length for one topic ("prices" short), learned from "too long" / "tell me more". */
+  setKindStyle: (kind: string, pref: StylePref) => void
+  /** "Tell me more" for a topic; the second time that topic is read in full from then on. */
+  askedMore: (kind: string) => boolean
+  setAddress: (address: string) => void
   forMe: (text: string) => void
   clearChatter: () => void
 }
@@ -104,6 +109,14 @@ export const useAssistantMemory = create<AssistantMemoryState>()(
       seed: (habits, at) => set({ habits, seededAt: at }),
       forgetAll: () => set(fresh()),
       notForMe: (text) => set((s) => ({ chatter: addChatter(s.chatter, text) })),
+      setKindStyle: (kind, pref) => set((s) => ({ style: { ...s.style, byKind: { ...(s.style.byKind ?? {}), [kind]: pref } } })),
+      askedMore: (kind) => {
+        const n = (get().style.more?.[kind] ?? 0) + 1
+        const full = n >= 2 && get().learning
+        set((s) => ({ style: { ...s.style, more: { ...(s.style.more ?? {}), [kind]: n }, byKind: full ? { ...(s.style.byKind ?? {}), [kind]: 'full' } : s.style.byKind } }))
+        return full
+      },
+      setAddress: (address) => set((s) => ({ style: { ...s.style, address } })),
       forMe: (text) => set((s) => ({ chatter: s.chatter.filter((c) => c !== words(text).join(' ')) })),
       clearChatter: () => set({ chatter: [] }),
     }),

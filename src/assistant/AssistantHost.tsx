@@ -29,6 +29,8 @@ import { confirmWord } from './items'
 import { listenOnce, type ListenState } from './listen'
 import { ALL_PLACES, type Place } from './places'
 import { cutCount, onSpeakingChange, speak, stopSpeaking } from './speech'
+import { addressed, naturalSpeech } from './humanize'
+import { GOOD_ANSWER, kindWords, parseAddress, TELL_MORE, TOO_LONG } from './memory'
 import { applyWords, askKind, asksAboutOwn, findNote, firstSentence, FORGET_ALL, FORGET_LAST, greetingText, isLearnedChatter, NOT_FOR_YOU, parseMeant, parseRemember, parseStyle, parseTeach, subjectOf, wantsShort, WAS_FOR_YOU, WHAT_YOU_KNOW } from './memory'
 import { greetingFacts, habitsFromLogs, knowReply, noteReply, RECOMMEND, recommendReply, resolveName } from './memoryAnswers'
 import { compact, words } from './text'
@@ -193,8 +195,15 @@ export function AssistantHost() {
     greetingRef.current = greetingToday
   })
 
+  /** The topic of the question being answered (askKind), and the last answer, for "too long" / "tell me more". */
+  const currentKind = useRef('other')
+  const lastReply = useRef<{ reply: Reply; kind: string } | null>(null)
+
   const present = useCallback(
-    (id: number, reply: Reply) => {
+    (id: number, given: Reply) => {
+      // How the player wants to be called ("sir", their name, nothing).
+      const style = useAssistantMemory.getState().style
+      const reply = { ...given, text: addressed(given.text, style.address ?? 'sir') }
       setMessages((m) => m.map((x) => (x.id === id ? { ...x, text: reply.text, reply } : x)))
       if (reply.mapId) lastMapId.current = reply.mapId
       if (reply.youAt) lastPlace.current = reply.youAt
@@ -203,7 +212,11 @@ export function AssistantHost() {
       chat().set({ card: reply.map ?? null })
       if (voice.speak && !reply.quiet) {
         const cutBefore = cutCount()
-        const said = wantsShort(useAssistantMemory.getState().style) ? firstSentence(reply.text) : reply.text
+        // Short or full as learned for this topic, then said the way a person would say it.
+        const kind = currentKind.current
+        let said = wantsShort(style, kind) ? firstSentence(reply.text) : reply.text
+        if (style.byKind?.[kind] === 'full' && reply.lines?.length) said = `${said} ${reply.lines.slice(0, 2).join('. ')}.`
+        said = naturalSpeech(said, { opener: true })
         void speak(said, { ...voice, onStatus: (m) => m && chat().listen.state === 'idle' && setListen({ state: 'idle', detail: m }) }).then(() => useAssistantMemory.getState().spoke(cutCount() > cutBefore))
       }
     },
@@ -269,6 +282,36 @@ export function AssistantHost() {
     }
     if (pending && yesNo === 'no') {
       show(id, { text: 'Okay, nothing changed.' })
+      return
+    }
+    // Answer etiquette, learned from the player: how to call them, "too long", "tell me more", "perfect".
+    currentKind.current = 'other'
+    const plain = words(text).join(' ')
+    const mem0 = useAssistantMemory.getState()
+    const address = parseAddress(text)
+    if (address !== null) {
+      mem0.setAddress(address)
+      show(id, { text: address === 'sir' ? 'Very good, sir.' : address ? `Got it, I'll call you ${address}.` : 'Alright, no more "sir".' })
+      return
+    }
+    const prev = lastReply.current
+    if (prev && TOO_LONG.test(plain)) {
+      mem0.setKindStyle(prev.kind, 'short')
+      show(id, { text: `Got it, I'll keep ${kindWords(prev.kind)} short from now on.` })
+      return
+    }
+    if (prev && TELL_MORE.test(plain)) {
+      const rest = (prev.reply.lines ?? []).filter((l) => !l.startsWith('I took that as'))
+      const full = mem0.askedMore(prev.kind)
+      currentKind.current = prev.kind
+      show(id, {
+        text: rest.length ? rest.slice(0, 4).map((l) => l.replace(/[.:]$/, '')).join('. ') + '.' : "That's everything I've got on that.",
+        lines: [...rest.slice(4), ...(full ? [`From now on I'll give you the full answer for ${kindWords(prev.kind)}.`] : [])],
+      })
+      return
+    }
+    if (prev && GOOD_ANSWER.test(plain)) {
+      show(id, { text: 'Glad that helped, sir.' })
       return
     }
     // "Forget everything I learned about you?" → yes / no.
@@ -371,6 +414,7 @@ export function AssistantHost() {
     }
     const finish = (r: Reply) => {
       if (conversation) lastAnswered.current = text
+      lastReply.current = { reply: r, kind: currentKind.current }
       show(id, prefix ? { ...r, text: prefix + r.text } : r)
     }
 
@@ -385,6 +429,7 @@ export function AssistantHost() {
     const own = asksAboutOwn(question) ? findNote(mem.notes, question) : null
     if (own) return finish(noteReply(own))
     mem.ask(askKind(question))
+    currentKind.current = askKind(question)
     const cachedItems = queryClient.getQueryData<{ items: ItemsById }>(itemKeys.mode(gameMode))?.items
     // Not understood: offer to learn the word ("xeno means …").
     const teachHint = (r: Reply): Reply => {
@@ -599,7 +644,7 @@ export function AssistantHost() {
           setListen({ state: 'listening', detail: `Listening. Say "thanks, that's all" when you are done.` })
           const greeting = greetingRef.current()
           if (greeting) setMessages((m) => [...m, { id: nextId.current++, from: 'assistant', text: greeting, at: Date.now() }])
-          say(greeting ?? 'Yes sir?')
+          say(addressed(greeting ?? 'Yes sir?', useAssistantMemory.getState().style.address ?? 'sir'))
         },
         onQuestion: (text, alt) => askRef.current(heardRef.current(text, alt), { conversation: true }),
         onEnd: (idle) => {

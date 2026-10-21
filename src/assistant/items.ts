@@ -3,6 +3,7 @@
  * found, what it is worth and what it is for. Only data the app has: loose-loot spots (containers
  * such as jackets and safes are not in the data), trader offers, flea prices, quests and locks.
  */
+import { talkName } from './humanize'
 import type { GameData, Item, ItemsById } from '../api/types'
 import type { ItemNeed } from '../lib/needs'
 import type { TaskStatus } from '../lib/taskStatus'
@@ -166,9 +167,9 @@ function collectionTarget(it: Item, ctx: ItemContext): { id: string; need: ItemN
 }
 
 function haveLine(name: string, have: number, need: ItemNeed | undefined): string {
-  if (!need || need.total === 0) return `You have ${have}; none of your open quests, hideout levels or favourite crafts need ${name}.`
+  if (!need || need.total === 0) return `nothing you're working on needs ${name}${have ? `, and you've got ${have}` : ''}.`
   const left = Math.max(0, need.total - have)
-  return left ? `You have ${have} of ${need.total} needed, ${left} to go.` : `You have ${have} of ${need.total} needed: done.`
+  return left ? `you need ${need.total} and you've got ${have}, so ${left} to go.` : `you've got all ${need.total} you need.`
 }
 
 /** "Collected 5 wires" / "used 2 wires": the change to make in the Item Collection and what to say. */
@@ -187,7 +188,7 @@ export function collectAnswer(m: ItemMatch, delta: number, ctx: ItemContext): Re
       itemId: id,
       from: before,
       to: after,
-      doneText: `${delta > 0 ? `Added ${amount} ${name} to` : `Took ${amount} ${name} off`} your Item Collection. ${haveLine(name, after, need)}`,
+      doneText: `${delta > 0 ? `Added ${amount} ${name} to` : `Took ${amount} ${name} off`} your Item Collection. ${capital(haveLine(name, after, need))}`,
     },
     actions: [{ kind: 'setCollected', itemId: id, count: after, label: delta > 0 ? `Yes, add ${amount}` : `Yes, take ${amount} off` }],
   }
@@ -206,9 +207,12 @@ export function needAnswer(m: ItemMatch, ctx: ItemContext): Reply {
   const { id, need } = collectionTarget(m.item, ctx)
   const have = ctx.collected?.[id] ?? 0
   const lines = need?.sources.slice(0, 6).map((s) => `${s.name}: ${s.count}${'fir' in s && s.fir ? ' (found in raid)' : ''}`) ?? []
-  return { text: `${m.item.name}: ${haveLine(m.item.name, have, need)}`, lines: [...lines, ...alsoLine(m)] }
+  const said = haveLine(talkName(m.item), have, need)
+  return { text: `For ${talkName(m.item)}, ${said}`, lines: [...lines, ...alsoLine(m)] }
 }
 
+/** First letter upper case ("the LEDX" → "The LEDX"). */
+const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 const rub = (n: number) => `${Math.round(n).toLocaleString('en-US')} ₽`
 
 function traderName(ctx: ItemContext, id: string): string {
@@ -238,11 +242,12 @@ export function priceAnswer(m: ItemMatch, ctx: ItemContext): Reply {
   const it = m.item
   const price = it.types.includes('noFlea') ? null : it.avg24hPrice
   const sell = [...it.sellToTrader].sort((a, b) => b.priceRUB - a.priceRUB)[0]
+  const name = talkName(it)
   const text = price
-    ? `${it.name} goes for about ${rub(price)} on the flea.`
+    ? `${capital(name)} is going for about ${rub(price)} on the flea right now.`
     : sell
-      ? `${it.name}: ${traderName(ctx, sell.traderId)} pays ${rub(sell.priceRUB)}; it has no flea price.`
-      : `${it.name}: there is no price for it in the data.`
+      ? `You can't sell ${name} on the flea, but ${traderName(ctx, sell.traderId)} will give you ${rub(sell.priceRUB)}.`
+      : `I don't have a price for ${name}.`
   // How many are still needed is shown, not said: the question was about the price.
   const { id, need } = collectionTarget(it, ctx)
   const have = ctx.collected?.[id] ?? 0
@@ -273,11 +278,14 @@ export function whereAnswer(m: ItemMatch, ctx: ItemContext): Reply {
   if (hand.length || keyFor.length) lines.push(`Your open quests that need it: ${[...hand, ...keyFor].map((t) => t.name).join(', ')}`)
   lines.push(...alsoLine(m))
   const top = perMap[0]
+  const name = talkName(it)
   const text = top
-    ? `${it.name} can spawn as loose loot at ${total} spot${total === 1 ? '' : 's'}${perMap.length > 1 ? `, most on ${top.map.name}` : ` on ${top.map.name}`}.${perMap.length > 1 ? ` Showing ${top.map.name}.` : ''}`
+    ? perMap.length > 1
+      ? `You can find ${name} lying around in ${total} spot${total === 1 ? '' : 's'}, mostly on ${top.map.name}, so I've put ${top.map.name} up.`
+      : `You can find ${name} lying around in ${total} spot${total === 1 ? '' : 's'} on ${top.map.name}.`
     : sellers.length
-      ? `${it.name} has no loose-loot spots in the data; you can buy it from traders.`
-      : `${it.name} has no loose-loot spots in the data. Check containers, the flea market or quest rewards.`
+      ? `${capital(name)} doesn't spawn loose anywhere I know of, but traders sell it.`
+      : `I don't know of any loose spawns for ${name}. Try containers, the flea or quest rewards.`
   const points: MapPoint[] | undefined = top?.spots.slice(0, 80).map((p, i) => ({ id: `loot${i}`, position: p, label: it.shortName, kind: 'loot' as const }))
   return { text, lines, map: top && points ? { map: top.map, points, route: null } : undefined, mapId: top?.map.id, links: locks.length ? [{ label: 'Open in Keys', to: '/keys' }] : [] }
 }
@@ -294,7 +302,7 @@ export function infoAnswer(m: ItemMatch, ctx: ItemContext): Reply {
   lines.push(...priceLines(it, ctx), ...alsoLine(m))
   const uses = hand.length + keyFor.length
   return {
-    text: uses ? `${it.name}: you still need it for ${uses} quest${uses === 1 ? '' : 's'}.` : `${it.name}: none of your open quests need it.`,
+    text: uses ? `You still need ${talkName(it)} for ${uses === 1 ? 'one of your quests' : `${uses} of your quests`}.` : `None of your open quests need ${talkName(it)}.`,
     lines,
     links: locks.length ? [{ label: 'Open in Keys', to: '/keys' }] : [],
   }

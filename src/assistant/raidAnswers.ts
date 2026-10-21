@@ -347,7 +347,7 @@ function bossAnswer(ctx: AssistantContext, h: RaidHelpers): Reply {
     const best = [...wanted].sort((a, b) => b.chance - a.chance)
     const first = best[0]
     return {
-      text: `${first.name}: ${best.map((r) => `${r.map.name} ${Math.round(r.chance * 100)}%`).join(', ')}.`,
+      text: `${first.name} shows up on ${best.map((r, i) => `${r.map.name} ${i === 0 ? 'about ' : ''}${Math.round(r.chance * 100)}%${i === 0 ? ' of the time' : ''}`).join(', ')}.`,
       lines: best.map((r) => `${r.map.name}: ${r.where.join(', ') || 'spawn spots without names'}`),
       map: first.points.length ? { map: first.map, points: first.points.slice(0, 30).map((p, i) => ({ id: `b${i}`, position: p, label: first.name, kind: 'quest' as MapPoint['kind'] })), route: null } : undefined,
       mapId: first.map.id,
@@ -357,7 +357,7 @@ function bossAnswer(ctx: AssistantContext, h: RaidHelpers): Reply {
   if (!map) return { text: 'Which map? Ask like "bosses on Customs".', quiet: true }
   const sorted = [...pick].sort((a, b) => b.chance - a.chance)
   return {
-    text: `On ${map.name}: ${sorted.map((r) => `${r.name} ${Math.round(r.chance * 100)}%`).join(', ')}.`,
+    text: `On ${map.name} you might run into ${sorted.map((r) => `${r.name} (${Math.round(r.chance * 100)}%)`).join(', ')}.`,
     lines: sorted.map((r) => `${r.name}: ${r.where.join(', ') || 'spawn spots without names'}`),
     mapId: map.id,
   }

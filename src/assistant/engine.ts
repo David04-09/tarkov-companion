@@ -10,6 +10,7 @@ import { labelKey, nearestPlace, placeEntries, type Place } from './places'
 import { compact, findNames, sayDistance, words, type NameEntry } from './text'
 import { closestTo, orderStops, parseSide, pmcSpawns, spawnOnSide } from './route/routePlan'
 import { raidAnswer, type LiveInfo } from './raidAnswers'
+import { possessive } from './humanize'
 import { collectAnswer, expandNicknames, findItem, infoAnswer, itemQuestionKind, needAnswer, nicknameItem, parseCount, priceAnswer, whereAnswer, type ItemContext } from './items'
 
 export interface MapPoint {
@@ -282,7 +283,7 @@ export function answer(question: string, ctx: AssistantContext): Reply {
     if (hit) {
       const r = howMany ? needAnswer(hit, ctx) : collectAnswer(hit, using ? -count : count, ctx)
       // "Am I lost" / "I got it": no number and a loose verb is a guess, not a clear "add 2 wires".
-      const loose = !howMany && at < 0 && !/(collected|picked up|looted|add|added|used|sold|handed in|turned in|removed|remove)/.test(said)
+      const loose = !howMany && at < 0 && !/\b(collected|picked up|looted|add|added|used|sold|handed in|turned in|removed|remove)\b/.test(said)
       return loose ? { ...r, weak: true } : r
     }
     if (!howMany) return { text: 'Which item? Say its name, like "collected 5 wires".', quiet: true }
@@ -325,7 +326,7 @@ export function answer(question: string, ctx: AssistantContext): Reply {
     const pmc = all.filter(([, s]) => s.pmc)
     const scavOnly = all.filter(([, s]) => !s.pmc)
     return {
-      text: `${contextMap.name} has ${pmc.length} PMC extract${pmc.length === 1 ? '' : 's'}${scavOnly.length ? ` and ${scavOnly.length} scav-only` : ''}.`,
+      text: `There ${pmc.length === 1 ? 'is one PMC extract' : `are ${pmc.length} PMC extracts`} on ${contextMap.name}${scavOnly.length ? `, plus ${scavOnly.length} for scavs only` : ''}.`,
       lines: [...pmc.map(([n, s]) => `${n}${s.scav ? ' (PMC and scav)' : ''}`), ...scavOnly.map(([n]) => `${n} (scav only)`)],
       map: { map: contextMap, points: ex.map((e) => ({ id: e.id, position: e.position, label: e.name, kind: 'extract' as const })), route: null },
       mapId: contextMap.id,
@@ -344,16 +345,16 @@ export function answer(question: string, ctx: AssistantContext): Reply {
     }
     if (place) {
       const map = mapByLabelKey(ctx, place.mapKey, contextMap)
-      if (map) return { text: `${place.name} is on ${map.name}. Here it is.`, map: { map, points: [{ id: 'place', position: place.position, label: place.name, kind: 'place' }], route: null }, mapId: map.id }
+      if (map) return { text: `${place.name} is on ${map.name}. Here you go.`, map: { map, points: [{ id: 'place', position: place.position, label: place.name, kind: 'place' }], route: null }, mapId: map.id }
     }
   }
 
   // 4. Quests on a map.
   if (/\b(quests|tasks|quest|task)\b/.test(said) && namedMap && !findNames(q, index.quests).length) {
     const here = ctx.tasksOnMap(namedMap).filter((m) => ctx.statuses[m.task.id] === 'available')
-    if (!here.length) return { text: `You have no available quests on ${namedMap.name}.`, mapId: namedMap.id }
+    if (!here.length) return { text: `There's nothing open for you on ${namedMap.name} right now.`, mapId: namedMap.id }
     return {
-      text: `You have ${here.length} available quest${here.length === 1 ? '' : 's'} on ${namedMap.name}.`,
+      text: `You've got ${here.length === 1 ? 'one quest' : `${here.length} quests`} you can do on ${namedMap.name}.`,
       lines: here.map((m) => questLine(m.task, ctx)),
       links: [{ label: `Open ${namedMap.name} on the map`, to: '/maps' }],
       mapId: namedMap.id,
@@ -367,7 +368,7 @@ export function answer(question: string, ctx: AssistantContext): Reply {
     const kappaDone = kappa.filter((t) => ctx.statuses[t.id] === 'completed').length
     const available = ctx.tasks.filter((t) => ctx.statuses[t.id] === 'available').length
     return {
-      text: `You are level ${ctx.playerLevel} with ${done} of ${ctx.tasks.length} quests done and ${available} available right now.`,
+      text: `You're level ${ctx.playerLevel}. You've done ${done} of ${ctx.tasks.length} quests, and ${available} are open right now.`,
       lines: [`Kappa: ${kappaDone} of ${kappa.length} required quests done (the data marks only ${kappa.length} as required).`],
     }
   }
@@ -543,7 +544,7 @@ function route(q: string[], hits: { value: Place; start: number; end: number }[]
   return {
     text: quest
       ? `${quest.name} on ${map.name}: ${stops.filter((s) => s.kind === 'quest').length} stop${stops.filter((s) => s.kind === 'quest').length === 1 ? '' : 's'}${last.kind === 'extract' ? `, then out at ${lastName.replace(/ \(extract\)$/, '')}` : ''}, from ${start.name}.`
-      : `From ${start.name} to ${lastName}.`,
+      : `Here's the way from ${start.name} to ${lastName}.`,
     lines: [...(stops.length > 1 ? stops.map((s) => s.label) : []), ...notes],
     map: {
       map,
@@ -587,7 +588,7 @@ function nearestQuest(place: Place, map: GameMap, ctx: AssistantContext): Reply 
   const nearText = near && near.place.name !== place.name ? `, near ${near.place.name}` : ''
   const others = options.filter((o) => o.mt.task.id !== best.mt.task.id).filter((o, i, all) => all.findIndex((x) => x.mt.task.id === o.mt.task.id) === i).slice(0, 3)
   return {
-    text: `Closest from ${place.name}: ${best.mt.task.name}, ${sayDistance(best.m)}${dir ? ` ${dir}` : ''}${nearText}.`,
+    text: `The closest one is ${best.mt.task.name}, ${sayDistance(best.m)}${dir ? ` ${dir}` : ''} of ${place.name}${nearText}.`,
     lines: [
       `Objective: ${best.text}`,
       ...others.map((o) => `Next: ${o.mt.task.name}, ${sayDistance(o.m)}`),
@@ -621,6 +622,15 @@ function missingQuestPart(q: string[], quests: NameEntry<Task>[]): Reply | null 
   return { text: `There is no ${name} in the game data, sir. It has ${parts.map((t) => t.name).join(' and ')}.`, lines: ['tarkov.dev lists every quest the game has right now; older parts that were removed or renamed are not in it.'] }
 }
 
+/** "Chemical - Part 1 is one of Therapist's, on Customs. You can do it now." */
+function questSentence(t: Task, status: TaskStatus, prereq: string[], level: number): string {
+  const whose = `${t.name} is one of ${possessive(t.trader.name)}${t.map ? `, on ${t.map.name}` : ''}.`
+  if (status === 'completed') return `You've already done ${t.name}. It's one of ${possessive(t.trader.name)}${t.map ? `, on ${t.map.name}` : ''}.`
+  if (status === 'available') return `${whose} You can do it now.`
+  const needs = [t.minPlayerLevel > level ? `level ${t.minPlayerLevel}` : '', prereq.length ? `to finish ${prereq[0]}${prereq.length > 1 ? ' and more' : ''}` : ''].filter(Boolean)
+  return `${whose} It's still locked${needs.length ? `: you'll need ${needs.join(' and ')} first` : ''}.`
+}
+
 function questInfo(t: Task, ctx: AssistantContext): Reply {
   const status = ctx.statuses[t.id] ?? 'locked'
   const objectives = t.objectives.map((o) => `${o.optional ? '(optional) ' : ''}${o.description}`)
@@ -631,7 +641,7 @@ function questInfo(t: Task, ctx: AssistantContext): Reply {
     if (spots.length) map = { map: t.map, points: spots.slice(0, 12).map((p, i) => ({ id: `q${i}`, position: p.position, label: t.name, kind: 'quest' as const })), route: null }
   }
   return {
-    text: `${t.name} is from ${t.trader.name}${t.map ? ` on ${t.map.name}` : ''}. It is ${STATUS_WORD[status]} for you${t.minPlayerLevel > 0 ? ` and needs level ${t.minPlayerLevel}` : ''}.`,
+    text: questSentence(t, status, prereq as string[], ctx.playerLevel),
     lines: [...objectives, ...(prereq.length ? [`Needs first: ${prereq.join(', ')}`] : []), ...(t.kappaRequired ? ['Required for Kappa.'] : [])],
     map,
     links: [{ label: 'Open in Quests', to: `/quests?q=${encodeURIComponent(t.name)}` }],

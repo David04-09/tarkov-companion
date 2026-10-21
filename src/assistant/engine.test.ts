@@ -65,13 +65,13 @@ describe('answer', () => {
 
   it('uses the map named in the question to settle it', () => {
     const r = answer('where is construction on shoreline', ctx)
-    expect(r.text).toBe('Construction is on Shoreline. Here it is.')
+    expect(r.text).toBe('Construction is on Shoreline. Here you go.')
     expect(answer('where is crackhouse on woods', ctx).text).toBe('There is no Crackhouse on Woods. It is on Customs.')
   })
 
   it('remembers the map of the last answer', () => {
     const r = answer('extracts', { ...ctx, lastMapId: 'm-woods' })
-    expect(r.text).toBe('Woods has 1 PMC extract.')
+    expect(r.text).toBe('There is one PMC extract on Woods.')
     expect(r.lines).toEqual(['UN Roadblock'])
   })
 
@@ -82,20 +82,20 @@ describe('answer', () => {
   it('plans a route from where the player spawned to a place', () => {
     const withExtract = { ...ctx, data: { ...ctx.data, mapDetails: { ...ctx.data.mapDetails, 'm-customs': { extracts: [{ id: 'x1', name: 'ZB-1013', faction: 'pmc', position: { x: 10, y: 0, z: 20 }, outline: [] }], locks: [] } } } as unknown as GameData }
     const r = answer('I spawned at zb 013, how do I get to dorms?', withExtract)
-    expect(r.text).toBe('From ZB-1013 to Dorms.')
+    expect(r.text).toBe("Here's the way from ZB-1013 to Dorms.")
     expect(r.walk).toEqual({ fromName: 'ZB-1013', toName: 'Dorms' })
     expect(r.map?.route).toEqual([{ x: 10, y: 0, z: 20 }, { x: 200, y: 0, z: 150 }])
     expect(r.youAt?.name).toBe('ZB-1013')
   })
 
   it('reads "to X from Y" too', () => {
-    expect(answer('route to crackhouse from dorms', ctx).text).toBe('From Dorms to Crackhouse.')
+    expect(answer('route to crackhouse from dorms', ctx).text).toBe("Here's the way from Dorms to Crackhouse.")
   })
 
   it('remembers where the player is for the next route', () => {
     const here = answer("I'm at dorms, closest quest?", ctx).youAt ?? null
     const r = answer('how do I get to crackhouse', { ...ctx, lastPlace: here })
-    expect(r.text).toBe('From Dorms to Crackhouse.')
+    expect(r.text).toBe("Here's the way from Dorms to Crackhouse.")
   })
 
   it('uses the last place named instead of asking again', () => {
@@ -120,12 +120,12 @@ describe('answer', () => {
     // Asked first; the change waits for a yes.
     expect(add.text).toBe('Add 5 Bundle of wires to your Item Collection?')
     expect(add.confirm).toMatchObject({ itemId: 'wires', from: 2, to: 7 })
-    expect(add.confirm?.doneText).toContain('7 of 12 needed')
+    expect(add.confirm?.doneText).toContain("You need 12 and you've got 7, so 5 to go.")
     expect(add.actions?.[0]).toMatchObject({ kind: 'setCollected', itemId: 'wires', count: 7 })
     expect(answer('i found two wire', c).confirm?.to).toBe(4)
     expect(answer('used 3 wires', c).confirm).toMatchObject({ itemId: 'wires', from: 2, to: 0 })
     expect(answer('picked up a gas analyser', c).confirm).toMatchObject({ itemId: 'gas', from: 0, to: 1 })
-    expect(answer('how many wires do i still need', c).text).toContain('2 of 12 needed, 10 to go')
+    expect(answer('how many wires do i still need', c).text).toContain("you need 12 and you've got 2, so 10 to go")
     // Asking where to find something is not collecting it.
     expect(answer('where can i find wires', c).confirm).toBeUndefined()
     expect(confirmWord('yes please')).toBe('yes')
@@ -153,7 +153,7 @@ describe('asking for exactly what was said', () => {
   const parts = { ...ctx, data: { ...ctx.data, tasks: [part('s3', 3), part('s4', 4)] } as unknown as GameData, tasks: [part('s3', 3), part('s4', 4)] }
 
   it('never swaps a quest part number, and says when the data has no such part', () => {
-    expect(answer('signal part 3', parts).text).toContain('Signal - Part 3 is from Prapor')
+    expect(answer('signal part 3', parts).text).toContain("Signal - Part 3 is one of Prapor's")
     const r = answer('show signal part 1', parts)
     expect(r.text).toBe('There is no Signal - Part 1 in the game data, sir. It has Signal - Part 3 and Signal - Part 4.')
   })
@@ -184,7 +184,7 @@ describe('route planning', () => {
 
   it('starts from a side of the map: the PMC spawn there closest to the target', () => {
     const r = answer('path from the west side to dorms on customs', plan)
-    expect(r.text).toBe('From the west spawn to Dorms.')
+    expect(r.text).toBe("Here's the way from the west spawn to Dorms.")
     expect(r.map?.route?.[0]).toEqual({ x: -500, y: 0, z: 100 })
   })
 
@@ -215,7 +215,7 @@ describe('item questions', () => {
 describe('the map you are on', () => {
   it('settles a place that exists on several maps by the raid you are in', () => {
     const inRaid = { ...ctx, live: { currentMapId: 'm-shore' } } as unknown as AssistantContext
-    expect(answer('where is construction', inRaid).text).toBe('Construction is on Shoreline. Here it is.')
+    expect(answer('where is construction', inRaid).text).toBe('Construction is on Shoreline. Here you go.')
     // A map named in the question still wins.
     expect(answer('where is construction on customs', inRaid).text).toMatch(/^There is no Construction on Customs/)
   })

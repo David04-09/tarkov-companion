@@ -49,6 +49,12 @@ export interface Style {
   /** Answers read out, and how many of them were cut off (Stop, or talking over them). */
   spoken: number
   cut: number
+  /** Learned per topic (askKind): "too long" after a price answer → prices short; "tell me more" twice → full. */
+  byKind?: Record<string, StylePref>
+  /** "Tell me more" per topic, counted towards reading that topic in full. */
+  more?: Record<string, number>
+  /** How to address the player: "sir", their name, or "" for nothing. */
+  address?: string
 }
 
 export const emptyHabits = (): Habits => ({ maps: {}, hours: Array(24).fill(0), days: Array(7).fill(0), asks: {} })
@@ -229,6 +235,7 @@ export function recordAsk(h: Habits, kind: string): Habits {
 /** What a question was about, for the habit counts. */
 export function askKind(question: string): string {
   const s = ` ${words(question).join(' ')} `
+  if (/\b(boss|bosses|goons|killa|tagilla|reshala|glukhar|sanitar|shturman|kaban|kollontay|zryachiy|partisan)\b/.test(s)) return 'bosses'
   if (/\b(price|cost|worth|sell|how much)\b/.test(s)) return 'prices'
   if (/\b(get to|route|way to|take me|from)\b/.test(s)) return 'routes'
   if (/\b(extract|extracts|exfil)\b/.test(s)) return 'extracts'
@@ -264,7 +271,9 @@ export function survivalText(m: MapHabit): string | null {
 
 // ---- Style -------------------------------------------------------------------------------
 
-export function wantsShort(s: Style): boolean {
+export function wantsShort(s: Style, kind?: string): boolean {
+  const learned = kind ? s.byKind?.[kind] : undefined
+  if (learned && learned !== 'auto') return learned === 'short'
   if (s.pref !== 'auto') return s.pref === 'short'
   return s.spoken >= MIN_SPOKEN && s.cut / s.spoken > CUT_RATIO
 }
@@ -325,3 +334,25 @@ export function isLearnedChatter(text: string, list: string[]): boolean {
     return same / Math.max(w.size, cw.size) >= 0.7
   })
 }
+
+// ---- Answer etiquette --------------------------------------------------------------------
+
+/** After an answer: it was too long, the player only wanted the main thing. */
+export const TOO_LONG = /^(?:that was )?(?:too long|way too long|shorter|shorter please|keep it short|just the (?:price|answer|number|name|map)|only the (?:price|answer|number)|get to the point|less talking|less detail|cut it short|too much)\b/
+/** After an answer: read the rest ("tell me more"). */
+export const TELL_MORE = /^(?:tell me more|more|go on|and|details|more detail|more details|what else|explain|keep going|anything else|continue|the rest)$/
+/** After an answer: it was right ("perfect"). */
+export const GOOD_ANSWER = /^(?:perfect|good answer|exactly|thats what i wanted|that is what i wanted|nice one|great answer|spot on|that helps|that helped|helpful|great|nice|good job)$/
+
+/** "Call me Dave" / "my name is Dave" → "Dave"; "don't call me sir" → ""; "call me sir" → "sir". */
+export function parseAddress(question: string): string | null {
+  const s = words(question).join(' ')
+  if (/\b(dont call me sir|do not call me sir|stop calling me sir|stop saying sir|no more sir|dont say sir)\b/.test(s)) return ''
+  if (/^(?:please )?call me sir$/.test(s)) return 'sir'
+  const m = /^(?:please )?(?:call me|my name is|you can call me) ([a-z]{2,15})$/.exec(s)
+  return m ? m[1][0].toUpperCase() + m[1].slice(1) : null
+}
+
+/** The topic of a question, in words for a reply ("prices", "routes"). */
+const KIND_WORDS: Record<string, string> = { prices: 'prices', routes: 'routes', extracts: 'extract answers', quests: 'quest answers', 'finding things': 'where-to-find answers', 'item collection': 'Item Collection answers', bosses: 'boss answers' }
+export const kindWords = (kind: string) => KIND_WORDS[kind] ?? 'answers like that'

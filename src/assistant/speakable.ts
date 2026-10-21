@@ -8,7 +8,7 @@ const DIGITS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', '
 const digitByDigit = (n: string) => n.split('').map((d) => DIGITS[Number(d)]).join(' ')
 
 /** Words after a number that make it an amount, not a name. */
-const UNIT = /^\s*(?:₽|%|roubles?|rubles?|metres?|meters?|m\b|km\b|minutes?|min\b|hours?|h\b|seconds?|s\b|raids?|quests?|spots?|stops?|items?|times?|more|left|of|per|x\b|×|degrees?|levels?|rounds?|kills?|pcs)/i
+const UNIT = /^\s*(?:thousand|million|hundred|₽|%|roubles?|rubles?|metres?|meters?|m\b|km\b|minutes?|min\b|hours?|h\b|seconds?|s\b|raids?|quests?|spots?|stops?|items?|times?|more|left|of|per|x\b|×|degrees?|levels?|rounds?|kills?|pcs)/i
 /** Words before a number that make it an amount. */
 const AMOUNT_BEFORE = /(?:about|level|lvl|is|for|pays|costs?|than|at|to|from|of|and|only|over|under|nearly|almost|around|penetration|damage|class)\s*$/i
 

@@ -52,11 +52,10 @@ export async function withWalk(reply: Reply): Promise<Reply> {
   if (legs.some((l) => !l.walked)) notes.push('Some legs have no way over the map drawing and are drawn as straight lines.')
   // Several stops: how far each leg is, next to the stop it leads to.
   const legLines = stops.length > 2 ? card.points.slice(1).map((p, i) => `${p.label}: ${sayDistance(legs[i]?.metres ?? 0)}`) : []
-  const onFoot = `${sayDistance(metres)} on foot${dir ? `, start heading ${dir}` : ''}`
   const stopLabels = new Set(card.points.slice(1).map((p) => p.label))
   return {
     ...reply,
-    text: reply.walk ? `${reply.text.replace(/.$/, '')}: ${onFoot}.` : `${reply.text} Walking: ${sayDistance(metres)}.`,
+    text: reply.walk ? `${reply.text} It's ${sayDistance(metres)} on foot${dir ? `; head ${dir} to start` : ''}.` : `${reply.text} It's ${sayDistance(metres)} on foot.`,
     lines: [...legLines, ...(reply.lines ?? []).filter((l) => l !== STRAIGHT_NOTE && !stopLabels.has(l)), ...notes, 'Route goes around water, fences, rocks, minefields and buildings in the map drawing (ground level; doors and stairs are not in the data).'],
     map: { ...card, path },
     actions: [

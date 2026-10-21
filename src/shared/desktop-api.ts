@@ -101,7 +101,7 @@ export interface DesktopSettings {
   updateMode: UpdateMode
   /** "Where am I": read positions from the names of new in-game screenshots. */
   trackPosition: boolean
-  /** Daily progress backups kept in userDataackups. */
+  /** Daily progress backups kept in userData\backups. */
   backupKeep: number
   /** After an update, remove what older versions left behind (old installers, packs, crash reports). */
   cleanAfterUpdate: boolean
