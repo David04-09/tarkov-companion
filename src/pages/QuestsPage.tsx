@@ -1,4 +1,5 @@
 import { Fragment, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
   ArrowDown,
   ArrowUp,
@@ -455,10 +456,12 @@ function QuestList() {
   // Items are only needed for objective names/icons, so load them in the background.
   const itemsQuery = useItems()
 
-  const [search, setSearch] = useState('')
+  // "?q=Debut" (links from the assistant) opens the list searched for that quest, any status.
+  const [params] = useSearchParams()
+  const [search, setSearch] = useState(() => params.get('q') ?? '')
   const [trader, setTrader] = useState('all')
   const [map, setMap] = useState('all')
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('available')
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>(() => (params.get('q') ? 'all' : 'available'))
   const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: 'minPlayerLevel', dir: 'asc' })
 
   const onSort = (key: SortKey) =>
