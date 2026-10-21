@@ -8,7 +8,8 @@
  */
 import { useQuery } from '@tanstack/react-query'
 import { fetchJson, type GameMode } from './client'
-import { ONE_HOUR, ONE_MINUTE } from './queryClient'
+import { contentMs } from './queryClient'
+import { contentOrRetry } from './hooks'
 import { useProgressStore } from '../store/progress'
 
 interface RawBarterItem {
@@ -70,6 +71,7 @@ export function useBarters() {
   return useQuery({
     queryKey: ['barters', gameMode] as const,
     queryFn: ({ signal }) => fetchBarters(gameMode, signal),
-    refetchInterval: (query) => (query.state.status === 'error' ? ONE_MINUTE : ONE_HOUR),
+    staleTime: contentMs(),
+    refetchInterval: (query) => contentOrRetry(query.state.status),
   })
 }

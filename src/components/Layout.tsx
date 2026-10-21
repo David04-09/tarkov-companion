@@ -120,6 +120,7 @@ function ScanDialogHost() {
 
 function areaName(pathname: string): string {
   if (pathname === '/settings') return 'the Settings page'
+  if (pathname === '/features') return 'the Features & patches page'
   const tab = NAV_ITEMS.find((i) => i.path === pathname)
   return tab ? `the ${tab.label} tab` : 'this page'
 }

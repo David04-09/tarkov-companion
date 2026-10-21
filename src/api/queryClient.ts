@@ -6,8 +6,14 @@ export const FIVE_MINUTES = 5 * ONE_MINUTE
 export const ONE_HOUR = 60 * ONE_MINUTE
 export const ONE_DAY = 24 * ONE_HOUR
 
-/** Settings → Prices & data: how long game data counts as fresh. */
+/** Settings → Prices & data: how long prices (the items document) count as fresh. */
 export const refreshMs = () => prefs().dataRefreshMinutes * ONE_MINUTE
+/**
+ * Settings → Prices & data: how often to look for new quests and other game content. New
+ * content only arrives with game patches, so a few checks a day are plenty; unchanged
+ * documents cost a 304 (fetchJson revalidates by ETag).
+ */
+export const contentMs = () => prefs().contentCheckHours * ONE_HOUR
 
 export const queryClient = new QueryClient({
   defaultOptions: {
@@ -28,7 +34,7 @@ export const queryClient = new QueryClient({
 
 // Settings changes apply to queries from then on.
 usePrefs.subscribe((p, prev) => {
-  if (p.dataRefreshMinutes === prev.dataRefreshMinutes && p.refreshOnFocus === prev.refreshOnFocus) return
+  if (p.dataRefreshMinutes === prev.dataRefreshMinutes && p.contentCheckHours === prev.contentCheckHours && p.refreshOnFocus === prev.refreshOnFocus) return
   const current = queryClient.getDefaultOptions()
   queryClient.setDefaultOptions({ ...current, queries: { ...current.queries, staleTime: refreshMs(), refetchOnWindowFocus: p.refreshOnFocus } })
 })

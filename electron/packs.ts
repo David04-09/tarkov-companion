@@ -42,6 +42,14 @@ export function installedPackDir(name: PackName): string | null {
   return fs.existsSync(path.join(dir, READY)) ? dir : null
 }
 
+/** Folder names of the packs this version uses (older ones are leftovers). */
+export function currentPackDirNames(): Set<string> {
+  return new Set(PACK_NAMES.flatMap((n) => {
+    const info = manifest?.packs[n]
+    return info ? [path.basename(packDir(n, info))] : []
+  }))
+}
+
 export function packsEnabled(): boolean {
   return Boolean(manifest && app.isPackaged)
 }

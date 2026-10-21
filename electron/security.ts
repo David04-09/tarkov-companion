@@ -61,6 +61,7 @@ const CHECKS: { [K in keyof DesktopSettings]?: (v: unknown) => boolean } = {
   updateMode: (v) => v === 'auto' || v === 'notify' || v === 'off',
   trackPosition: (v) => typeof v === 'boolean',
   backupKeep: (v) => typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= 60,
+  cleanAfterUpdate: (v) => typeof v === 'boolean',
 }
 
 /** Keeps only known, valid fields of a settings change from the page. */

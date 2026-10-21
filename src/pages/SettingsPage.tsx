@@ -29,6 +29,7 @@ import { useMapOverlayStore } from '../store/mapOverlay'
 import { useTimersStore, beep } from '../desktop/timers'
 import { isDesktop, updateDesktopSettings, useDesktopStore } from '../desktop/useDesktop'
 import { DesktopSettingsSection, ArchivesSettings } from '../desktop/DesktopSettings'
+import { CleanupPanel } from '../desktop/CleanupPanel'
 import { HealthAndBackups } from '../desktop/HealthAndBackups'
 import { SyncHistorySection } from '../desktop/SyncReview'
 import { AboutSection } from '../components/AboutSection'
@@ -257,18 +258,33 @@ function PricesSection() {
   const [source, setSource] = usePref('priceSource')
   const [fee, setFee] = usePref('fleaFeeDiscount')
   const [refresh, setRefresh] = usePref('dataRefreshMinutes')
+  const [content, setContent] = usePref('contentCheckHours')
   const [onFocus, setOnFocus] = usePref('refreshOnFocus')
   const queryClient = useQueryClient()
   const [note, setNote] = useState<string | null>(null)
   return (
-    <Section id="prices" title="Prices & game data" icon={Database} keywords="price flea trader sell buy value fee intelligence center refresh update data cache offline tarkov.dev">
+    <Section id="prices" title="Prices & game data" icon={Database} keywords="price flea trader sell buy value fee intelligence center refresh update data cache offline tarkov.dev new quests content patch check interval">
       <Row label="Value items by" hint="Used for item worth everywhere: scanner keep/sell, crafts, money makers, needs. Best = whichever pays more (selling) or costs less (buying).">
         <Segmented value={source} onChange={setSource} label="Value items by" options={[{ value: 'best', label: 'Best of both' }, { value: 'trader', label: 'Traders' }, { value: 'flea', label: 'Flea market' }]} />
       </Row>
       <Row label="Lower flea fees (Intelligence Center 3)" hint="Automatic reads your Intelligence Center level from the Hideout tab.">
         <Segmented value={fee} onChange={setFee} label="Flea fee discount" options={[{ value: 'auto', label: 'Automatic' }, { value: 'on', label: 'Yes' }, { value: 'off', label: 'No' }]} />
       </Row>
-      <Row label="Refresh game data every" hint="Prices, quests and traders come from tarkov.dev. Shorter means fresher prices but more downloads.">
+      <Row label="Check for new quests and content every" hint="Quests, maps, traders, hideout, crafts and barters from tarkov.dev. New quests only come with game patches, so a few checks a day are enough; also checked at every start. Unchanged data is not downloaded again. Trader restock times and the Goons' map stay up to date while those screens are open.">
+        <Select
+          value={content}
+          onChange={setContent}
+          label="Content check interval"
+          options={[
+            { value: 1, label: '1 hour' },
+            { value: 3, label: '3 hours' },
+            { value: 6, label: '6 hours (recommended)' },
+            { value: 12, label: '12 hours' },
+            { value: 24, label: 'Once a day' },
+          ]}
+        />
+      </Row>
+      <Row label="Refresh prices every" hint="Flea and trader prices (the large item list). Shorter means fresher prices but more downloads; the Flea Market tab refreshes faster while it is open.">
         <Select
           value={refresh}
           onChange={setRefresh}
@@ -491,12 +507,13 @@ function DesktopAppSection() {
   const [startMin, setStartMin] = useDesktopSetting('startMinimized', false)
   const [updates, setUpdates] = useDesktopSetting('updateMode', 'auto' as UpdateMode)
   const [track, setTrack] = useDesktopSetting('trackPosition', true)
+  const [cleanAfter, setCleanAfter] = useDesktopSetting('cleanAfterUpdate', true)
   const [autoSwitch, setAutoSwitch] = usePref('autoSwitchGameMode')
   const [autoTick, setAutoTick] = usePref('autoTickFromLogs')
   const scavMinutes = useTimersStore((s) => s.scavCooldownMinutes)
   const setScavMinutes = useTimersStore((s) => s.setScavCooldownMinutes)
   return (
-    <Section id="desktop" title="Desktop app" icon={Monitor} desktopOnly keywords="windows start tray minimize close hotkey shortcut update logs game log watching folder pvp pve switch tick quests where am i position screenshot scav cooldown timer">
+    <Section id="desktop" title="Desktop app" icon={Monitor} desktopOnly keywords="windows start tray minimize close hotkey shortcut update clean cleanup installer leftover delete space disk logs game log watching folder pvp pve switch tick quests where am i position screenshot scav cooldown timer">
       <Row label="Close to tray" hint="The X button hides the window and keeps quest tracking running. Use the tray icon to reopen or quit.">
         <Switch checked={tray} onChange={setTray} label="Close to tray" />
       </Row>
@@ -508,6 +525,12 @@ function DesktopAppSection() {
       </Row>
       <Row label="Updates" hint="Automatic downloads new versions in the background and asks before restarting. 'Only tell me' shows a Download button instead. Off never checks by itself (About → Check for updates still works).">
         <Segmented value={updates} onChange={setUpdates} label="Updates" options={[{ value: 'auto', label: 'Automatic' }, { value: 'notify', label: 'Only tell me' }, { value: 'off', label: 'Off' }]} />
+      </Row>
+      <Row label="Clean up after updates" hint="A minute after a new version starts, removes what older versions left behind: downloaded update installers, old map and scanner packs, crash reports and compiled code. Older Tarkov Companion installers in your Downloads folder go to the Recycle Bin. Your progress, settings and backups are never touched.">
+        <Switch checked={cleanAfter} onChange={setCleanAfter} label="Clean up after updates" />
+      </Row>
+      <Row label="Clean up now" hint="Shows what would be removed first; nothing goes until you click Remove.">
+        <CleanupPanel />
       </Row>
       <Row label="Stash scanner hotkey" hint="Captures the screen the game is on and opens the scanner with it.">
         <HotkeyRecorder />

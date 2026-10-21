@@ -1,5 +1,5 @@
 import { lazy, type ComponentType } from 'react'
-import { BarChart3, BookOpen, Megaphone, Coins, Crosshair, Wrench, Hammer, House, KeyRound, LayoutDashboard, Map, Package, ScrollText, Store, type LucideIcon } from 'lucide-react'
+import { BarChart3, BookOpen, Brain, Megaphone, Coins, Crosshair, Wrench, Hammer, House, KeyRound, LayoutDashboard, Map, Package, ScrollText, Store, type LucideIcon } from 'lucide-react'
 
 export interface NavItem {
   path: string
@@ -36,6 +36,7 @@ export const NAV_ITEMS: NavItem[] = [
   { path: '/ammo', label: 'Ammo', icon: Crosshair, component: page(() => import('../pages/AmmoPage'), 'AmmoPage') },
   { path: '/weapons', label: 'Weapon builder', icon: Wrench, component: page(() => import('../pages/WeaponsPage'), 'WeaponsPage') },
   { path: '/stats', label: 'My stats', icon: BarChart3, component: page(() => import('../pages/StatsPage'), 'StatsPage') },
+  { path: '/neural', label: 'Neural network', icon: Brain, component: page(() => import('../pages/NeuralNetworkPage'), 'NeuralNetworkPage') },
 ]
 
 /** Tabs shown in the sidebar (Settings → General can hide any except the Dashboard). */

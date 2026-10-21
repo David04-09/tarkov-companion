@@ -1,5 +1,5 @@
 import { NavLink, useNavigate } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, Search, Settings, Shield } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Search, Settings, Sparkles, Shield } from 'lucide-react'
 import { useLookupStore } from '../store/lookup'
 import { visibleNav } from '../config/nav'
 import { usePrefs } from '../store/prefs'
@@ -130,6 +130,16 @@ export function Sidebar() {
         <div className={collapsed ? 'hidden' : 'block md:hidden'}>
           <WatcherStatus compact onClick={() => openSettings('desktop')} />
         </div>
+        <NavLink
+          to="/features"
+          title="Features & patches"
+          className={({ isActive }) =>
+            `flex w-full items-center gap-3 rounded px-2.5 py-2 text-sm transition-colors ${isActive ? 'bg-accent/15 text-accent' : 'text-ink-muted hover:bg-surface-3 hover:text-ink'}`
+          }
+        >
+          <Sparkles className="h-5 w-5 shrink-0" aria-hidden />
+          <span className={labelClass}>Features & patches</span>
+        </NavLink>
         <NavLink
           to="/settings"
           title="Settings"

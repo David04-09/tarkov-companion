@@ -23,7 +23,9 @@ import { captureScreenUnderCursor, listGameScreenshots, readAppResource, readGam
 protocol.registerSchemesAsPrivileged([{ scheme: 'tcres', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } }])
 import { checkForUpdates, getUpdateOutcome, getUpdateStatus, installUpdate, runInstallerManually, setUpdateMode, setupUpdater } from './updater'
 import { cleanSettingsPatch, isSafeDirectory, isSameFileUrl, isTrustedSender, isWebUrl, lockPermissions } from './security'
-import { PACK_NAMES, ensurePack } from './packs'
+import { PACK_NAMES, currentPackDirNames, ensurePack, packsEnabled } from './packs'
+import { cleanLeftovers, sizeOf } from './cleanup'
+import type { CleanupResult } from '../src/shared/desktop-api'
 import type { PackName } from '../src/shared/desktop-api'
 
 const DEV_URL = process.env.VITE_DEV_SERVER_URL
@@ -80,6 +82,7 @@ function bootstrap() {
   registerHotkey()
   setupUpdater(broadcast, settings.get().updateMode)
   applyWatcherSettings()
+  scheduleCleanupAfterUpdate()
   app.setLoginItemSettings({ openAtLogin: settings.get().startWithWindows, args: ['--minimized'] })
 
   watcher.on('event', (e: GameEvent) => {
@@ -243,6 +246,48 @@ function createWindow(show: boolean) {
   })
   lockNavigation(win)
   load(win, '/')
+}
+
+let lastCleanup: CleanupResult | null = null
+
+/** Leftovers of older versions (old installers, packs, crash reports, compiled-code cache). */
+async function cleanUp(dry: boolean): Promise<CleanupResult> {
+  const update = getUpdateStatus().state
+  // An update that is downloading or waiting to be installed keeps its installer.
+  const updateWaiting = update === 'downloading' || update === 'ready' || update === 'installing' || update === 'available'
+  const userData = app.getPath('userData')
+  const codeCache = path.join(userData, 'Code Cache')
+  const codeBytes = sizeOf(codeCache)
+  const result = await cleanLeftovers({
+    currentVersion: app.getVersion(),
+    updaterCacheDir: !app.isPackaged || updateWaiting || !process.env.LOCALAPPDATA ? null : path.join(process.env.LOCALAPPDATA, 'tarkov-companion-updater'),
+    packs: packsEnabled() ? { root: path.join(userData, 'packs'), keep: currentPackDirNames() } : null,
+    crashReportsDir: path.join(userData, 'Crashpad', 'reports'),
+    downloadsDir: app.isPackaged ? app.getPath('downloads') : null,
+    runningExe: process.env.PORTABLE_EXECUTABLE_FILE ?? null,
+    trash: (f) => shell.trashItem(f),
+    dry,
+  })
+  if (codeBytes > 0) {
+    if (!dry) await session.defaultSession.clearCodeCaches({})
+    result.items.push({ label: 'Compiled code from older versions (rebuilt when needed)', bytes: codeBytes })
+    result.bytes += codeBytes
+  }
+  return result
+}
+
+/** Once per new version, a minute after start (the update has finished by then). */
+function scheduleCleanupAfterUpdate() {
+  const s = settings.get()
+  if (!s.cleanAfterUpdate || !app.isPackaged || s.lastCleanedVersion === app.getVersion()) return
+  setTimeout(() => {
+    void cleanUp(false)
+      .then((r) => {
+        lastCleanup = r
+        settings.update({ lastCleanedVersion: app.getVersion() })
+      })
+      .catch(() => undefined)
+  }, 60_000)
 }
 
 function showWindow() {
@@ -413,6 +458,8 @@ function registerIpc() {
   })
   handle('backup:list', () => listBackups(app.getPath('userData')))
   handle('backup:read', (_e, name: unknown) => readBackup(app.getPath('userData'), String(name)))
+  handle('cleanup:run', (_e, dry: unknown) => cleanUp(dry !== false))
+  handle('cleanup:last', () => lastCleanup)
   handle('backup:openFolder', async () => {
     const dir = backupDir(app.getPath('userData'))
     fs.mkdirSync(dir, { recursive: true })

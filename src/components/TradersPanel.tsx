@@ -18,7 +18,7 @@ function countdown(ms: number): string {
 
 /** Traders with avatar, editable loyalty level and restock countdown (from the API's resetTime). */
 export function TradersPanel() {
-  const gameData = useGameData()
+  const gameData = useGameData({ followRestocks: true })
   const queryClient = useQueryClient()
   const gameMode = useProgressStore((s) => s.gameMode)
   const inventory = useModeInventory()

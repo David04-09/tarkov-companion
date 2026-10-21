@@ -101,6 +101,16 @@ export interface DesktopSettings {
   trackPosition: boolean
   /** Daily progress backups kept in userDataackups. */
   backupKeep: number
+  /** After an update, remove what older versions left behind (old installers, packs, crash reports). */
+  cleanAfterUpdate: boolean
+}
+
+/** What "Clean up" removed (or, for a dry run, would remove). */
+export interface CleanupResult {
+  items: { label: string; bytes: number }[]
+  bytes: number
+  dry: boolean
+  at: number
 }
 
 export type UpdateMode = 'auto' | 'notify' | 'off'
@@ -221,6 +231,10 @@ export interface DesktopApi {
   listBackups: () => Promise<BackupInfo[]>
   readBackup: (name: string) => Promise<string>
   openBackupsFolder: () => Promise<void>
+  /** Removes leftovers of older app versions; dry = only report what would go. */
+  cleanUp: (dry: boolean) => Promise<CleanupResult>
+  /** The automatic clean-up after the last update, if one ran since the app started. */
+  lastCleanup: () => Promise<CleanupResult | null>
   /** A new in-game screenshot was taken: the position from its file name. */
   onPosition: (cb: (p: PlayerPosition) => void) => () => void
   getRecentEvents: () => Promise<GameEvent[]>

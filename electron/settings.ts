@@ -12,6 +12,8 @@ export interface WindowBounds {
 }
 
 export interface StoredSettings extends DesktopSettings {
+  /** App version the automatic clean-up last ran for (runs once per new version). */
+  lastCleanedVersion: string | null
   /** The one-time "still running in the tray" balloon was shown. */
   trayNoticeShown: boolean
   window: WindowBounds
@@ -32,6 +34,8 @@ export const DEFAULT_SETTINGS: StoredSettings = {
   updateMode: 'auto',
   trackPosition: true,
   backupKeep: 7,
+  cleanAfterUpdate: true,
+  lastCleanedVersion: null,
   trayNoticeShown: false,
   window: { width: 1360, height: 860 },
 }
@@ -65,7 +69,7 @@ export class SettingsStore {
 
   /** The renderer-facing subset (no window bounds). */
   getPublic(): DesktopSettings {
-    const { window: _w, trayNoticeShown: _t, ...rest } = this.data
+    const { window: _w, trayNoticeShown: _t, lastCleanedVersion: _c, ...rest } = this.data
     return rest
   }
 

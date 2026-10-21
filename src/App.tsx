@@ -8,6 +8,7 @@ import { DesktopBridge, isDesktop } from './desktop/useDesktop'
 import { lazy } from 'react'
 
 const AlignPage = lazy(() => import('./pages/AlignPage').then((m) => ({ default: m.AlignPage })))
+const FeaturesPage = lazy(() => import('./pages/FeaturesPage').then((m) => ({ default: m.FeaturesPage })))
 const SettingsPage = lazy(() => import('./pages/SettingsPage').then((m) => ({ default: m.SettingsPage })))
 
 export default function App() {
@@ -23,6 +24,7 @@ export default function App() {
               const Page = item.component
               return <Route key={item.path} path={item.path} element={<Page />} />
             })}
+            <Route path="/features" element={<FeaturesPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             {/* Hidden developer tool: only served by the dev server, never linked from the sidebar. */}
             {import.meta.env.DEV && <Route path="/dev/align" element={<AlignPage />} />}

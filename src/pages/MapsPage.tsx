@@ -1,6 +1,7 @@
 import { useEffect, useMemo } from 'react'
 import { Image as ImageIcon, Info, Layers, MapPin, X } from 'lucide-react'
 import { useGameData } from '../api/hooks'
+import { ONE_HOUR } from '../api/queryClient'
 import { SegmentButton } from '../components/SegmentButton'
 import { useNeeds } from '../hooks/useNeeds'
 import { MapCredits } from '../maps/MapCredits'
@@ -36,7 +37,8 @@ const CANVAS_THRESHOLD = 200
 
 export function MapsPage() {
   const options = useMapOptions()
-  const gameData = useGameData()
+  // The Goons' last reported map rides along in this data: keep it hourly while the map is open.
+  const gameData = useGameData({ refetchMs: ONE_HOUR })
   const { needs, items: itemsQuery } = useNeeds()
   const profile = useProfile()
   const gameMode = useProgressStore((s) => s.gameMode)
