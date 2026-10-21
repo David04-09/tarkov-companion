@@ -12,7 +12,10 @@ export interface ChangelogEntry {
 }
 
 /** Committed, waiting for the next update. */
-export const UNRELEASED: string[] = []
+export const UNRELEASED: string[] = [
+  "Assistant: understands plain English. When its rules do not understand a question, or only guessed, a small offline language model (17 MB, a millisecond per question, loaded only when needed) works out which question you meant: \"yo what's a LEDX going for\" → the price, \"I need to get out of Woods\" → the extracts, \"who runs around on Interchange\" → the bosses, \"is the bitcoin junk\" → keep or sell. The answer shows how it took you (\"I took that as: …\"). Nonsense still gets \"I don't know\". \"Thanks\" gets \"Anytime, sir\".",
+  "Assistant: teaching nicknames works by voice. A nickname is recognised however the speech model spells it and in plural: teach \"leddy means LEDX\" once, and \"lady\", \"laddie\", \"leti\" and \"leddies\" all mean the LEDX. More ways to teach: \"leddy is short for LEDX\", \"by leddy I mean LEDX\", \"remember that leddy means LEDX\". You can teach several nicknames for one item.",
+]
 
 export const RELEASES: ChangelogEntry[] = [
   {

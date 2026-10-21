@@ -78,6 +78,9 @@ jobs:
       - name: Speech recognition for the assistant (Moonshine)
         run: npm run asr:assets
 
+      - name: Plain-English helper for the assistant (paraphrase-MiniLM)
+        run: npm run nlu:assets
+
       - name: Unit tests and lint
         run: |
           npm test

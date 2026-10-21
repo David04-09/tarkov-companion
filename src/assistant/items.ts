@@ -81,6 +81,12 @@ export function parseCount(question: string[]): { count: number; at: number } {
 }
 
 /** The question with nicknames spelled out ("gpu" -> "graphics card"). */
+/** The item a one-word nickname stands for ("bitcoin" → Physical Bitcoin), if it is one. */
+export function nicknameItem(word: string, items: ItemsById): Item | null {
+  const full = NICKNAMES[word]
+  return full ? (findItem(full.split(' '), items)?.item ?? null) : null
+}
+
 export function expandNicknames(question: string[]): string[] {
   return question.flatMap((w) => (NICKNAMES[w] ? NICKNAMES[w].split(' ') : [w]))
 }

@@ -10,7 +10,7 @@ import { labelKey, nearestPlace, placeEntries, type Place } from './places'
 import { compact, findNames, sayDistance, words, type NameEntry } from './text'
 import { closestTo, orderStops, parseSide, pmcSpawns, spawnOnSide } from './route/routePlan'
 import { raidAnswer, type LiveInfo } from './raidAnswers'
-import { collectAnswer, expandNicknames, findItem, infoAnswer, itemQuestionKind, needAnswer, parseCount, priceAnswer, whereAnswer, type ItemContext } from './items'
+import { collectAnswer, expandNicknames, findItem, infoAnswer, itemQuestionKind, needAnswer, nicknameItem, parseCount, priceAnswer, whereAnswer, type ItemContext } from './items'
 
 export interface MapPoint {
   id: string
@@ -44,6 +44,8 @@ export interface Reply {
   walk?: { fromName: string; toName: string }
   /** Where the player said they are, remembered for "how do I get to …" without a start. */
   youAt?: Place
+  /** A guess: the question named something but did not clearly ask about it (the plain-English helper may know better). */
+  weak?: boolean
   /** Shown but not read out loud (tips asking for more detail). */
   quiet?: boolean
   /** An Item Collection change waiting for "yes" (the page keeps it until the next message). */
@@ -89,6 +91,49 @@ interface Index {
 let cached: { data: GameData; items: ItemsById | undefined; tasks: Task[]; index: Index } | null = null
 
 /** Name lists, built once per data load (not per question). */
+export type Slot = 'item' | 'place' | 'map' | 'quest' | 'boss'
+
+/**
+ * The names in a question, each swapped for a plain word ("where does LEDX spawn on Customs" →
+ * "where does item spawn on map"), for matching the sentence's meaning (understand.ts).
+ */
+export function nameSlots(question: string, ctx: AssistantContext): { masked: string; slots: Partial<Record<Slot, string>>; names: number } {
+  const q = words(question)
+  const index = indexFor(ctx)
+  const bosses: NameEntry<string>[] = [...new Set(Object.values(ctx.data.mobNames ?? {}))].filter((n) => compact(n).length >= 4).map((n) => ({ key: compact(n), value: n }))
+  type Hit = { start: number; end: number; slot: Slot; name: string; len: number }
+  const hits: Hit[] = [
+    ...findNames(q, index.maps).map((h) => ({ ...h, slot: 'map' as const, name: h.value.name })),
+    ...findNames(q, index.places).map((h) => ({ ...h, slot: 'place' as const, name: h.value.name })),
+    ...findNames(q, index.quests).filter((h) => h.len >= 5).map((h) => ({ ...h, slot: 'quest' as const, name: h.value.name })),
+    ...findNames(q, bosses).map((h) => ({ ...h, slot: 'boss' as const, name: h.value })),
+    ...(index.items ? findNames(q, index.items, 6).filter((h) => h.len >= 3).map((h) => ({ ...h, slot: 'item' as const, name: h.value.name })) : []),
+    // Nicknames ("bitcoin" = Physical Bitcoin).
+    ...(ctx.items ? q.flatMap((w, i) => { const it = nicknameItem(w, ctx.items!); return it ? [{ start: i, end: i, slot: 'item' as const, name: it.name, len: w.length }] : [] }) : []),
+  ]
+  hits.sort((a, b) => b.end - b.start - (a.end - a.start) || b.len - a.len)
+  const used = new Set<number>()
+  const chosen: Hit[] = []
+  const slots: Partial<Record<Slot, string>> = {}
+  for (const h of hits) {
+    let free = true
+    for (let i = h.start; i <= h.end; i++) if (used.has(i)) free = false
+    if (!free || slots[h.slot]) continue
+    for (let i = h.start; i <= h.end; i++) used.add(i)
+    chosen.push(h)
+    slots[h.slot] = h.name
+  }
+  const out: string[] = []
+  for (let i = 0; i < q.length; ) {
+    const h = chosen.find((c) => c.start === i)
+    if (h) {
+      out.push(h.slot)
+      i = h.end + 1
+    } else out.push(q[i++])
+  }
+  return { masked: out.join(' '), slots, names: chosen.length + hits.filter((h) => !chosen.includes(h) && !chosen.some((c) => h.start <= c.end && h.end >= c.start)).length }
+}
+
 function indexFor(ctx: AssistantContext): Index {
   if (cached && cached.data === ctx.data && cached.items === ctx.items && cached.tasks === ctx.tasks) return cached.index
   const maps: NameEntry<GameMap>[] = []
@@ -174,6 +219,8 @@ export function answer(question: string, ctx: AssistantContext): Reply {
   const said = ` ${q.join(' ')} `
   if (!q.length) return HELP
   if (/^ (help|hi|hello|hey|what can you do)\b/.test(said)) return HELP
+  // Small talk gets a short answer, not "I don't know 'thanks'".
+  if (/^ (thanks|thank you|thank u|thx|ty|cheers|nice|great|cool|awesome|perfect|good job|well done|ok|okay)( very much| a lot| mate| sir| bro)? $/.test(said)) return { text: 'Anytime, sir.' }
 
   const index = indexFor(ctx)
   const mapHits = findNames(q, index.maps)
@@ -232,7 +279,12 @@ export function answer(question: string, ctx: AssistantContext): Reply {
     if (!ctx.items) return { text: 'Loading the item list…', needsItems: true }
     const { count, at } = parseCount(q)
     const hit = findItem(expandNicknames(q.filter((_, i) => i !== at && !mapWords.has(i))), ctx.items)
-    if (hit) return howMany ? needAnswer(hit, ctx) : collectAnswer(hit, using ? -count : count, ctx)
+    if (hit) {
+      const r = howMany ? needAnswer(hit, ctx) : collectAnswer(hit, using ? -count : count, ctx)
+      // "Am I lost" / "I got it": no number and a loose verb is a guess, not a clear "add 2 wires".
+      const loose = !howMany && at < 0 && !/(collected|picked up|looted|add|added|used|sold|handed in|turned in|removed|remove)/.test(said)
+      return loose ? { ...r, weak: true } : r
+    }
     if (!howMany) return { text: 'Which item? Say its name, like "collected 5 wires".', quiet: true }
   }
 
@@ -360,9 +412,9 @@ export function answer(question: string, ctx: AssistantContext): Reply {
   // 8. An item named on its own ("LEDX", "dorm 303 key").
   if (ctx.items) {
     const hit = findItem(expandNicknames(q.filter((_, i) => !mapWords.has(i))), ctx.items)
-    if (hit) return infoAnswer(hit, ctx)
+    if (hit) return { ...infoAnswer(hit, ctx), weak: true }
     const itemHit = index.items ? findNames(q, index.items, 6).filter((h) => h.len >= 3)[0] : undefined
-    if (itemHit) return infoAnswer({ item: itemHit.value, others: [] }, ctx)
+    if (itemHit) return { ...infoAnswer({ item: itemHit.value, others: [] }, ctx), weak: true }
   } else if (/\b(item|open|opens)\b/.test(said)) {
     return { text: 'Loading the item list…', needsItems: true }
   }
@@ -372,7 +424,7 @@ export function answer(question: string, ctx: AssistantContext): Reply {
     const map = place ? mapByLabelKey(ctx, place.mapKey, contextMap) : undefined
     if (place && map) return { text: `${place.name} is on ${map.name}. Say "I'm at ${place.name}" and I'll find the closest quest.`, map: { map, points: [{ id: 'place', position: place.position, label: place.name, kind: 'place' }], route: null }, mapId: map.id }
   }
-  if (namedMap) return { text: `What about ${namedMap.name}? Try "quests on ${namedMap.name}" or "extracts on ${namedMap.name}".`, mapId: namedMap.id }
+  if (namedMap) return { text: `What about ${namedMap.name}? Try "quests on ${namedMap.name}" or "extracts on ${namedMap.name}".`, mapId: namedMap.id, weak: true }
   return { text: 'Sorry, I did not get that.', lines: HELP.lines }
 }
 

@@ -22,7 +22,8 @@ import { useMapOverlayStore } from '../store/mapOverlay'
 import { useProfile, useProgressStore } from '../store/progress'
 import { useRaidBriefingStore } from '../store/raidBriefing'
 import { useUiStore } from '../store/ui'
-import { answer, type AssistantAction, type AssistantContext, type Reply } from './engine'
+import { answer, nameSlots, type AssistantAction, type AssistantContext, type Reply } from './engine'
+import { nluLoaded, understandQuestion } from './nlu'
 import { headingOnMap } from './heading'
 import { confirmWord } from './items'
 import { listenOnce, type ListenState } from './listen'
@@ -262,7 +263,8 @@ export function AssistantHost() {
       show(id, { text: style === 'short' ? "Understood, sir. I'll keep it short." : style === 'full' ? 'Very well, sir. I will read everything out.' : 'Back to normal answers, sir.' })
       return
     }
-    const note = parseRemember(text)
+    // "Remember that leddy means LEDX" teaches a word (below), it is not a note.
+    const note = parseTeach(text) ? null : parseRemember(text)
     if (note) {
       mem.remember(note)
       show(id, { text: `Noted, sir: ${note}` })
@@ -311,7 +313,7 @@ export function AssistantHost() {
       }
       mem.learn(phrase, name)
       lastUnknown.current = null
-      show(id, { text: `Got it: when you say "${phrase}" you mean ${name}.` })
+      show(id, { text: `Got it: "${phrase}" means ${name}. Anything that sounds like it counts too, and you can teach more names for it.` })
       return
     }
     // "No, I meant the Hand drill": learn what the last question's word meant and answer that.
@@ -360,11 +362,46 @@ export function AssistantHost() {
       lastUnknown.current = word
       return word ? { ...r, text: `Sorry, I don't know "${word}". If it is a nickname, say "${word} means" and the full name.`, lines: undefined } : r
     }
+    // Not understood by the rules: the small paraphrase model finds which known question it means
+    // ("yo what's a LEDX going for" → "how much is LEDX worth"), asked instead; else offer teaching.
+    const notUnderstood = (r: Reply) => /^Sorry, I did not (get that|find that item)/.test(r.text)
+    // When the rules guessed (weak) or did not understand, the helper decides; when they were sure,
+    // only a near-certain match that covers every name in the question changes the answer, and only
+    // if the helper is loaded already (it is never loaded just to double-check).
+    const plainEnglish = (r: Reply, items: ItemsById | undefined) => {
+      const unsure = notUnderstood(r) || r.weak
+      if (!unsure && !nluLoaded()) return finish(r)
+      setMessages((m) => m.map((x) => (x.id === id ? { ...x, text: 'Thinking…' } : x)))
+      chat().set({ pending: id })
+      const need = notUnderstood(r) ? 0.62 : r.weak ? 0.7 : 0.88
+      const status = (msg: string) => setMessages((m) => m.map((x) => (x.id === id ? { ...x, text: msg } : x)))
+      // Item names must be known to be swapped for "item" ("is a GPU expensive"): the item list first.
+      const withItems = items ? Promise.resolve(items) : queryClient.fetchQuery({ queryKey: itemKeys.mode(gameMode), queryFn: ({ signal }) => fetchItems(gameMode, signal) }).then((x) => x.items)
+      let all: ItemsById | undefined
+      let names = 0
+      void withItems
+        .then((loaded) => {
+          all = loaded
+          const slotted = nameSlots(question, context(data, loaded))
+          names = slotted.names
+          return understandQuestion(slotted.masked, slotted.slots, question, status, need)
+        })
+        .then((hit) => {
+          // A sure answer is only replaced when the helper's question uses every name that was said.
+          const covers = hit && (unsure || hit.slots === names)
+          const again = hit && covers ? answer(hit.ask, context(data, all)) : null
+          if (hit && again && !again.needsItems && !notUnderstood(again) && words(hit.ask).join(' ') !== words(question).join(' ')) finish({ ...again, lines: [`I took that as: "${hit.ask}"`, ...(again.lines ?? [])] })
+          else finish(notUnderstood(r) ? teachHint(r) : r)
+        })
+        .catch(() => finish(notUnderstood(r) ? teachHint(r) : r))
+        .finally(() => clearPending(id))
+    }
     const reply = answer(question, context(data, cachedItems))
     if (!reply.needsItems) {
       // Not understood, but it matches something the player told me: say that instead.
       const fromNote = reply.text.startsWith('Sorry, I did not get that') ? findNote(mem.notes, question) : null
-      finish(fromNote ? noteReply(fromNote) : teachHint(reply))
+      if (fromNote) finish(noteReply(fromNote))
+      else plainEnglish(reply, cachedItems)
       return
     }
     // A question about an item: load the item list once (shared with the other tabs), then answer.
@@ -374,7 +411,7 @@ export function AssistantHost() {
       .fetchQuery({ queryKey: itemKeys.mode(gameMode), queryFn: ({ signal }) => fetchItems(gameMode, signal) })
       .then((r) => {
         const again = answer(question, context(data, r.items))
-        finish(teachHint(again.needsItems ? { text: 'Sorry, I did not find that item.' } : again))
+        plainEnglish(again.needsItems ? { text: 'Sorry, I did not find that item.' } : again, r.items)
       })
       .catch(() => show(id, { text: 'The item list could not be loaded. Check the internet connection and ask again.' }))
       .finally(() => clearPending(id))
@@ -427,9 +464,11 @@ export function AssistantHost() {
   const heard = (text: string, alt?: string): string => {
     const items = queryClient.getQueryData<{ items: ItemsById }>(itemKeys.mode(gameMode))?.items
     const list = soundNamesFor(items)
+    // Teaching a nickname: keep the nickname as it was heard (it is not a game name yet).
+    if (parseTeach(text)) return text
     const main = snapToNames(text, list).text
     // Memory commands ("remember that …") are kept as Moonshine heard them: Vosk only knows game words.
-    if (!alt || alt === main || /^(remember|note to self|forget|no i meant|i meant|when i say|keep it short|more detail|what do you know)/.test(words(main).join(' '))) return main
+    if (!alt || alt === main || /^(remember|note to self|forget|no i meant|i meant|when i say|keep it short|more detail|what do you know)/.test(words(main).join(' ')) || parseTeach(main)) return main
     if (understood(main)) return main
     const second = snapToNames(alt, list).text
     return understood(second) ? second : main

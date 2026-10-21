@@ -17,6 +17,7 @@ Data and imagery (downloaded or bundled):
 - Vosk small English speech model (vosk-model-small-en-us-0.15, alphacephei.com): Apache-2.0. The
   recogniser (Vosk / Kaldi compiled to WebAssembly) ships as the vosk-browser worker, Apache-2.0.
 - Kitten TTS micro 0.8 (KittenML, huggingface.co/KittenML): Apache-2.0. The natural voice, a content pack.
+- paraphrase-MiniLM-L3-v2 (sentence-transformers, ONNX by Xenova): Apache-2.0. The plain-English helper; a content pack.
 - Moonshine tiny speech recognition (Useful Sensors, huggingface.co/UsefulSensors/moonshine-tiny; ONNX by
   onnx-community): MIT. Turns spoken questions into text; a content pack.
 - Map place names (tarkov.dev src/data/maps.json labels): MIT.

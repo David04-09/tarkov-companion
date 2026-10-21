@@ -110,3 +110,21 @@ describe('raid results', () => {
     expect(recordResult(h, 'labs', 'died', null)).toBe(h)
   })
 })
+
+describe('taught words, however they are heard', () => {
+  it('teaches in many ways of saying it', () => {
+    for (const s of ['leddy means ledx', 'leddy is short for ledx', 'leddy stands for the ledx', 'when i say leddy i mean ledx', 'by leddy i mean ledx', 'learn that leddy means ledx', 'remember that leddy means ledx', 'from now on leddy means ledx'])
+      expect(parseTeach(s), s).toEqual({ phrase: 'leddy', means: 'ledx' })
+    expect(parseTeach('what does leddy mean')).toBeNull()
+    expect(parseTeach('that means ledx')).toEqual({ phrase: 'that', means: 'ledx' })
+  })
+
+  it('knows the word spelled the way the speech model hears it', () => {
+    const list = learnWord([], 'leddy', 'ledx', 1)
+    for (const heard of ['price of leddy', 'price of a lady', 'price of laddie', 'price of leti', 'price of the leddies', 'price of ladies'])
+      expect(applyWords(heard, list).text, heard).toMatch(/ledx$/)
+    // Everyday words never count as the nickname.
+    expect(applyWords('what is the price of a lot', learnWord([], 'lot', 'lotus', 1)).used).toEqual(['lot'])
+    expect(applyWords('where is the loot', list).used).toEqual([])
+  })
+})

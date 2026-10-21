@@ -129,3 +129,23 @@ export function snapToNames(text: string, names: SoundName[]): { text: string; f
   out.push(...w.slice(i))
   return { text: out.join(' '), fixed }
 }
+
+/** True for everyday and command words, which are never treated as a nickname. */
+export const isEverydayWord = (w: string) => COMMON.has(w)
+
+/** "leddies" → "leddy", "boxes" → "box", "wires" → "wire". */
+export function singular(w: string): string {
+  if (w.length > 4 && w.endsWith('ies')) return `${w.slice(0, -3)}y`
+  if (w.length > 4 && /(x|ch|sh|ss)es$/.test(w)) return w.slice(0, -2)
+  if (w.length > 3 && w.endsWith('s') && !w.endsWith('ss')) return w.slice(0, -1)
+  return w
+}
+
+/**
+ * A looser sound key for nicknames the player taught: plural endings dropped and voiced/unvoiced
+ * pairs merged (d/t, b/p, g/k), so "leddy", "lady", "laddie", "leti" and "leddies" all match.
+ */
+export function looseKey(phrase: string): string {
+  const key = soundKey(words(phrase).map(singular).join(' '))
+  return key.replace(/d/g, 't').replace(/b/g, 'p').replace(/g/g, 'k').replace(/j/g, 'k').replace(/(.)\1+/g, '$1').replace(/a$/, '')
+}

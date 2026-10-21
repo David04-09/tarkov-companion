@@ -7,6 +7,7 @@
  * - Style: answers cut off often (or "keep it short") → only the first sentence is read out.
  * Pure functions; the store and AssistantHost call them.
  */
+import { isEverydayWord, looseKey, singular } from './phonetic'
 import { words } from './text'
 
 export interface MemoryNote {
@@ -129,10 +130,18 @@ export function parseMeant(question: string): string | null {
 
 /** "When I say drill I mean hand drill" / "drill means hand drill" → { phrase, means }. */
 export function parseTeach(question: string): { phrase: string; means: string } | null {
-  const said = words(question).join(' ')
-  const m = /^(?:when i say|if i say) (.+?) i mean (?:the |a |an )?(.+)$/.exec(said) ?? /^(.+?) means (?:the |a |an )?(.+)$/.exec(said)
+  // "Learn that …", "remember that …", "teach yourself …", "note: …" in front change nothing.
+  const said = words(question)
+    .join(' ')
+    .replace(/^(?:please )?(?:learn that|learn|remember that|remember|teach yourself that|teach yourself|note that|from now on|okay|ok|so) /, '')
+  const m =
+    /^(?:when i say|if i say|by|whenever i say) (.+?) i (?:mean|meant) (?:the |a |an )?(.+)$/.exec(said) ??
+    /^(.+?) (?:means|meaning|is short for|stands for|is the same as|is the same thing as|equals|is another word for|is my word for|is what i call) (?:the |a |an )?(.+)$/.exec(said)
   if (!m || m[1] === m[2] || m[1].split(' ').length > 4) return null
-  return { phrase: m[1].replace(/^(?:the|a|an) /, ''), means: m[2] }
+  const phrase = m[1].replace(/^(?:the|a|an|my) /, '')
+  // "what means …" / "does that mean": questions, not teaching.
+  if (/^(what|which|who|how|does|do|is|it|that|this)$/.test(phrase.split(' ')[0]) && !/^(it|that|this)$/.test(phrase)) return null
+  return { phrase, means: m[2] }
 }
 
 export function learnWord(list: LearnedWord[], phrase: string, means: string, at: number): LearnedWord[] {
@@ -142,18 +151,44 @@ export function learnWord(list: LearnedWord[], phrase: string, means: string, at
   return [...list.filter((w) => w.phrase !== p), { phrase: p, means: to, at, uses: 0 }].slice(-MAX_WORDS)
 }
 
-/** Puts learned meanings in place of the player's words (longest phrases first, whole words only). */
+/**
+ * Puts learned meanings in place of the player's words (longest phrases first). A taught word is
+ * recognised however the speech model spells it: exactly, as a plural ("leddies"), or by sound
+ * ("lady", "laddie", "leti" for "leddy"); everyday words never count as a nickname.
+ */
 export function applyWords(question: string, list: LearnedWord[]): { text: string; used: string[] } {
-  let said = ` ${words(question).join(' ')} `
+  const w = words(question)
   const used: string[] = []
-  for (const w of [...list].sort((a, b) => b.phrase.length - a.phrase.length)) {
-    const at = said.indexOf(` ${w.phrase} `)
+  const taken = new Set<number>()
+  const replace = new Map<number, { end: number; means: string }>()
+  for (const learned of [...list].sort((a, b) => b.phrase.length - a.phrase.length)) {
+    const p = learned.phrase.split(' ')
+    const pKey = looseKey(learned.phrase)
+    const pSingular = p.map(singular).join(' ')
     // Already says the full name ("hand drill" contains "drill"): leave it.
-    if (at < 0 || said.includes(` ${w.means} `)) continue
-    said = said.replace(` ${w.phrase} `, ` ${w.means} `)
-    used.push(w.phrase)
+    if (` ${w.join(' ')} `.includes(` ${learned.means} `)) continue
+    for (let i = 0; i + p.length <= w.length; i++) {
+      const run = w.slice(i, i + p.length)
+      if (run.some((_, k) => taken.has(i + k))) continue
+      const same = run.join(' ') === learned.phrase || run.map(singular).join(' ') === pSingular
+      const sounds = !same && pKey.length >= 3 && run.join('').length >= 3 && !run.some(isEverydayWord) && looseKey(run.join(' ')) === pKey
+      if (!same && !sounds) continue
+      for (let k = 0; k < p.length; k++) taken.add(i + k)
+      replace.set(i, { end: i + p.length, means: learned.means })
+      if (!used.includes(learned.phrase)) used.push(learned.phrase)
+      break
+    }
   }
-  return { text: used.length ? said.trim() : question, used }
+  if (!used.length) return { text: question, used }
+  const out: string[] = []
+  for (let i = 0; i < w.length; ) {
+    const r = replace.get(i)
+    if (r) {
+      out.push(r.means)
+      i = r.end
+    } else out.push(w[i++])
+  }
+  return { text: out.join(' '), used }
 }
 
 // ---- Habits ------------------------------------------------------------------------------

@@ -202,7 +202,7 @@ export interface BackfillResult {
 }
 
 /** Content packs downloaded on first use (scripts/build-packs.mjs). */
-export type PackName = 'lighthouse' | 'scan' | 'voice' | 'tts' | 'asr'
+export type PackName = 'lighthouse' | 'scan' | 'voice' | 'tts' | 'asr' | 'nlu'
 export interface PackProgress {
   name: PackName
   label: string
