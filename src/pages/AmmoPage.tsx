@@ -16,6 +16,7 @@ import {
 } from '../lib/ammo'
 import { acquireCost } from '../lib/economy'
 import { formatRoubles } from '../lib/format'
+import { useLinkParam } from '../lib/linkParam'
 import { useProgressStore } from '../store/progress'
 
 const selectClass =
@@ -57,6 +58,10 @@ export function AmmoPage() {
 
   const [caliber, setCaliber] = useState('all')
   const [search, setSearch] = useState('')
+  useLinkParam('q', (q) => {
+    setCaliber('all')
+    setSearch(q)
+  })
   const [hideTracers, setHideTracers] = useState(false)
   const [fleaOnly, setFleaOnly] = useState(false)
   const [armorClass, setArmorClass] = useState(4)

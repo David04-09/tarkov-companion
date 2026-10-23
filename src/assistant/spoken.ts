@@ -40,6 +40,57 @@ const TARKOV_WORDS: [RegExp, string][] = [
   [/\bbitcoins?\b/g, 'bitcoin'],
 ]
 
+/** How letters are heard when spelled out ("see pee you" = CPU, "gee pee you" = GPU). */
+const LETTER_SOUNDS: Record<string, string> = {
+  ay: 'a', eh: 'a', be: 'b', bee: 'b', see: 'c', sea: 'c', cee: 'c', si: 'c', dee: 'd', de: 'd', ee: 'e', ef: 'f', eff: 'f',
+  gee: 'g', jee: 'g', ji: 'g', aitch: 'h', eich: 'h', eye: 'i', aye: 'i', jay: 'j', kay: 'k', el: 'l', ell: 'l', em: 'm', en: 'n',
+  oh: 'o', pee: 'p', pea: 'p', pe: 'p', queue: 'q', cue: 'q', are: 'r', ar: 'r', es: 's', ess: 's', tee: 't', tea: 't',
+  you: 'u', yu: 'u', vee: 'v', ve: 'v', ex: 'x', ecks: 'x', why: 'y', wye: 'y', zed: 'z', zee: 'z',
+}
+/** Letter sounds that are also everyday words: a run made only of these is a sentence, not an acronym ("why are you"). */
+const WORD_LIKE = new Set(['a', 'i', 'you', 'are', 'see', 'sea', 'why', 'oh', 'be', 'eye', 'tea', 'queue', 'cue', 'aye', 'ex', 'el', 'em', 'en', 'es', 'ar', 'de', 'si', 'pe', 've'])
+
+/** The letters a heard word stands for: a single letter, a letter's sound, or a short letter chunk with no vowel ("gp"). */
+function lettersOf(word: string): string | null {
+  if (/^[a-z]$/.test(word)) return word
+  if (LETTER_SOUNDS[word]) return LETTER_SOUNDS[word]
+  if (/^[b-df-hj-np-tv-z]{2,3}$/.test(word)) return word
+  return null
+}
+
+/**
+ * Spelled-out abbreviations back to the abbreviation, for the abbreviations the game uses
+ * (`acronyms`: short names such as "gpu", "cpu", "ledx", lower case): "g p u", "gee pee you",
+ * "gp you" → "gpu"; "see pee you" → "cpu". Only runs that make a known abbreviation change.
+ */
+export function acronymize(text: string, acronyms: Set<string>): string {
+  const w = text.split(' ').filter(Boolean)
+  const out: string[] = []
+  for (let i = 0; i < w.length; ) {
+    let done = false
+    for (let len = Math.min(8, w.length - i); len >= 2 && !done; len--) {
+      const run = w.slice(i, i + len)
+      // "double you" = W.
+      const parts: string[] = []
+      for (let k = 0; k < run.length; k++) {
+        if (run[k] === 'double' && (run[k + 1] === 'you' || run[k + 1] === 'u')) {
+          parts.push('w')
+          k++
+        } else parts.push(lettersOf(run[k]) ?? '#')
+      }
+      const joined = parts.join('')
+      if (joined.includes('#') || joined.length < 2 || !acronyms.has(joined)) continue
+      if (run.every((x) => WORD_LIKE.has(x))) continue
+      if (joined.length === 2 && !run.every((x) => x.length === 1)) continue
+      out.push(joined)
+      i += len
+      done = true
+    }
+    if (!done) out.push(w[i++])
+  }
+  return out.join(' ')
+}
+
 /** Free-form text from the speech model (capitals, punctuation, "5", "314") to question text. */
 export function writtenToText(heard: string): string {
   const plain = ` ${heard.toLowerCase().replace(/[^a-z0-9' -]+/g, ' ').replace(/\s+/g, ' ')} `

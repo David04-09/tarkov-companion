@@ -5,6 +5,7 @@ import { useGameData, useItems } from '../api/hooks'
 import type { Item } from '../api/types'
 import { ErrorPanel, LoadingPanel } from '../components/DataState'
 import { formatRoubles } from '../lib/format'
+import { useLinkParam } from '../lib/linkParam'
 import { isFactionEligible } from '../lib/taskStatus'
 import { useInventoryStore, useModeInventory } from '../store/inventory'
 import { useProfile, useProgressStore } from '../store/progress'
@@ -31,6 +32,15 @@ export function KeysPage() {
   const [owned, setOwned] = useState<'all' | 'owned' | 'missing'>('all')
   const [neededOnly, setNeededOnly] = useState(false)
   const [openId, setOpenId] = useState<string | null>(null)
+  // Voice commands: "?q=" searches, "?key=<id>" opens that key (filters cleared so its row is there).
+  useLinkParam('q', setSearch)
+  useLinkParam('key', (id) => {
+    setSearch('')
+    setMap('all')
+    setOwned('all')
+    setNeededOnly(false)
+    setOpenId(id)
+  })
 
   const rows = useMemo<KeyRow[]>(() => {
     if (!gameData.data || !items.data) return []

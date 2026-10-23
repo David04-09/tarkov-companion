@@ -26,21 +26,23 @@ import { answer, nameSlots, type AssistantAction, type AssistantContext, type Re
 import { nluLoaded, understandQuestion, warmNlu } from './nlu'
 import { followUp, type Slotted } from './followUp'
 import { headingOnMap } from './heading'
-import { confirmWord, keyWorthText } from './items'
+import { confirmWord, expandNicknames, findItem, keyWorthText } from './items'
+import { commandText, commandWords, NEEDS_TRANSCRIBING, parseCommand, type CommandContext, type CommandTarget } from './commands'
+import { NAV_ITEMS } from '../config/nav'
+import { useFleaStore } from '../store/flea'
 import { fetchKeyWiki } from '../api/wikiKey'
 import { wikiTitle } from '../api/wikiGuide'
 import { keyVerdict } from '../lib/keyVerdict'
 import { listenOnce, type ListenState } from './listen'
 import { ALL_PLACES, type Place } from './places'
-import { cutCount, onSpeakingChange, speak, stopSpeaking } from './speech'
-import { addressed, naturalSpeech } from './humanize'
+import { addressed } from './humanize'
 import type { PopupData } from '../shared/desktop-api'
 
 /**
  * In a hands-free conversation: does it sound like something asked of the assistant? A question
  * word, a request, a game-word question ("price", "extract"), or its name. Chatter has none.
  */
-const ASKED = /\b(what|whats|where|wheres|how|hows|which|who|whos|when|why|is|are|am|can|could|should|would|will|do|does|did|tell|show|give|find|take|guide|route|path|draw|price|cost|costs|worth|value|much|many|extract|extracts|exit|close|hide|open|add|added|collected|used|sold|remove|mark|remember|forget|call|help|need|needs|best|closest|nearest|list|read|say|repeat|again|keep|sell|loot|boss|bosses|spawn|key|keys|quest|quests|ammo|unlock|unlocks|restock|scav|time|left|stats|progress|means|meant|mean)\b/
+const ASKED = /\b(what|whats|where|wheres|how|hows|which|who|whos|when|why|is|are|am|can|could|should|would|will|do|does|did|tell|show|give|find|take|guide|route|path|draw|price|cost|costs|worth|value|much|many|extract|extracts|exit|close|hide|open|add|added|collected|used|sold|remove|mark|remember|forget|call|help|need|needs|best|closest|nearest|list|read|say|repeat|again|keep|sell|loot|boss|bosses|goons|goon|spawn|key|keys|quest|quests|ammo|unlock|unlocks|restock|scav|time|left|stats|progress|means|meant|mean)\b/
 function looksAsked(said: string, name: string): boolean {
   return ASKED.test(said) || said.split(' ').includes(name)
 }
@@ -49,11 +51,11 @@ function looksAsked(said: string, name: string): boolean {
 const CLOSE_POPUP = /^(?:ok |okay |thanks )?(?:close|close it|close that|close this|close the window|close the pop up|close the popup|hide|hide it|hide that|hide this|hide the window|get rid of (?:it|that)|dismiss|dismiss that|clear (?:it|that|the screen)|go away|thats enough|got it close it)$/
 const SHOW_POPUP_AGAIN = /^(?:show (?:that|it) again|show me again|open (?:that|it) again|bring (?:that|it) back|pop (?:that|it) up again)$/
 import { GOOD_ANSWER, kindWords, parseAddress, TELL_MORE, TOO_LONG } from './memory'
-import { applyWords, askKind, asksAboutOwn, findNote, firstSentence, FORGET_ALL, FORGET_LAST, greetingText, isLearnedChatter, NOT_FOR_YOU, parseMeant, parseRemember, parseStyle, parseTeach, subjectOf, wantsShort, WAS_FOR_YOU, WHAT_YOU_KNOW } from './memory'
+import { applyWords, askKind, asksAboutOwn, findNote, FORGET_ALL, FORGET_LAST, greetingText, isLearnedChatter, NOT_FOR_YOU, parseMeant, parseRemember, parseStyle, parseTeach, subjectOf, WAS_FOR_YOU, WHAT_YOU_KNOW } from './memory'
 import { greetingFacts, habitsFromLogs, knowReply, noteReply, RECOMMEND, recommendReply, resolveName } from './memoryAnswers'
 import { compact, words } from './text'
 import { buildSoundNames, snapToNames, type SoundName } from './phonetic'
-import { voiceVocabulary } from './spoken'
+import { acronymize, voiceVocabulary } from './spoken'
 import { startWakeListening, type WakeListener } from './wake'
 import { withWalk } from './withWalk'
 
@@ -127,6 +129,32 @@ export function AssistantHost() {
   }
 
   const tasks = useMemo(() => (gameData.data?.tasks ?? []).filter((t) => isFactionEligible(t, profile.faction)), [gameData.data, profile.faction])
+
+  // Voice commands ("Maps", "show quest Debut", "search GPU on the flea"): what can be opened.
+  const keyItems = useRef<{ items: ItemsById; keys: ItemsById } | null>(null)
+  const commandContext = (data: GameData): CommandContext => ({
+    tabs: [...NAV_ITEMS.map((n) => ({ path: n.path, label: n.label })), { path: '/settings', label: 'Settings' }, { path: '/features', label: 'Features & patches' }],
+    maps: data.maps,
+    quests: tasks,
+    findItem: (said, keysOnly) => {
+      const items = queryClient.getQueryData<{ items: ItemsById }>(itemKeys.mode(gameMode))?.items
+      if (!items) return null
+      if (keysOnly && keyItems.current?.items !== items) keyItems.current = { items, keys: Object.fromEntries(Object.entries(items).filter(([, it]) => it.types.includes('keys'))) }
+      const hit = findItem(expandNicknames(said), keysOnly ? keyItems.current!.keys : items)
+      return hit ? { id: hit.item.id, name: hit.item.name } : null
+    },
+  })
+  const runCommand = (cmd: CommandTarget) => {
+    if (cmd.to === 'back') return navigate(-1)
+    if (cmd.mapKey) useUiStore.getState().setLastMapKey(cmd.mapKey)
+    if (cmd.flea !== undefined) useFleaStore.getState().setFilters({ search: cmd.flea })
+    // t= makes the same request twice still apply on a page that is already open.
+    navigate(cmd.params ? `${cmd.to}?${new URLSearchParams({ ...cmd.params, t: String(Date.now()) })}` : cmd.to)
+  }
+  const commandRef = useRef({ context: commandContext, run: runCommand })
+  useEffect(() => {
+    commandRef.current = { context: commandContext, run: runCommand }
+  })
   const statuses = useMemo(() => computeTaskStatuses(tasks, profile), [tasks, profile])
   const faction = profile.faction
 
@@ -233,21 +261,13 @@ export function AssistantHost() {
       // Desktop: answers with details also go in the pop-up over the game (closed by "close that").
       const details = (reply.lines ?? []).filter((l) => !l.startsWith('I took that as'))
       if (window.desktop && useAssistantStore.getState().popup && !reply.quiet && (details.length > 0 || reply.map || reply.text.length > 90)) {
-        const data = { title: currentQuestion.current, text: reply.text, lines: details.slice(0, 8), hint: 'Say "close that" to hide this.' }
+        const { popupSeconds } = useAssistantStore.getState()
+        const data = { title: currentQuestion.current, text: reply.text, lines: details.slice(0, 8), hint: popupSeconds ? `Closes in ${popupSeconds} s, or say "close".` : 'Say "close" to hide this.', autoCloseSeconds: popupSeconds }
         lastPopup.current = data
         void window.desktop.showPopup(data)
       }
-      if (voice.speak && !reply.quiet) {
-        const cutBefore = cutCount()
-        // Short or full as learned for this topic, then said the way a person would say it.
-        const kind = currentKind.current
-        let said = wantsShort(style, kind) ? firstSentence(reply.text) : reply.text
-        if (style.byKind?.[kind] === 'full' && reply.lines?.length) said = `${said} ${reply.lines.slice(0, 2).join('. ')}.`
-        said = naturalSpeech(said, { opener: true })
-        void speak(said, voice).then(() => useAssistantMemory.getState().spoke(cutCount() > cutBefore))
-      }
     },
-    [voice],
+    [],
   )
 
   /** Answers with a line on the map get a walking route over the terrain first (built only now, in a few ms). */
@@ -322,6 +342,13 @@ export function AssistantHost() {
     const plain = words(text).join(' ')
     currentQuestion.current = text
     // The pop-up over the game: "close that" hides it, "show that again" brings it back.
+    // "Maps", "open the flea market", "show quest Debut": go there.
+    const command = gameData.data ? parseCommand(text, commandContext(gameData.data)) : null
+    if (command) {
+      runCommand(command)
+      show(id, { text: commandText(command), quiet: true })
+      return
+    }
     if (CLOSE_POPUP.test(plain)) {
       void window.desktop?.hidePopup()
       show(id, { text: 'Closed.', quiet: true })
@@ -619,9 +646,23 @@ export function AssistantHost() {
     const r = answer(text, context(data, items))
     return !/^(Sorry, I did not|Which item\?|I could not find|I did not find)/.test(r.text)
   }
-  const heard = (text: string, alt?: string): string => {
+  /** The game's abbreviations (item short names in capitals: GPU, CPU, LEDX, SSD …), lower case. */
+  const acronymCache = useRef<{ items: ItemsById | undefined; set: Set<string> } | null>(null)
+  const acronymsFor = (items: ItemsById | undefined): Set<string> => {
+    const cached = acronymCache.current
+    if (cached && cached.items === items) return cached.set
+    const set = new Set(['gpu', 'cpu', 'ledx', 'fir', 'pmc', 'btr', 'sas'])
+    for (const it of Object.values(items ?? {})) if (/^[A-Z]{2,6}$/.test(it.shortName)) set.add(it.shortName.toLowerCase())
+    acronymCache.current = { items, set }
+    return set
+  }
+  const heard = (said: string, saidAlt?: string): string => {
     const items = queryClient.getQueryData<{ items: ItemsById }>(itemKeys.mode(gameMode))?.items
     const list = soundNamesFor(items)
+    // Spelled-out abbreviations ("gee pee you", "see pee you") back to the game's short names.
+    const acronyms = acronymsFor(items)
+    const text = acronymize(said, acronyms)
+    const alt = saidAlt && acronymize(saidAlt, acronyms)
     // Teaching a nickname: keep the nickname as it was heard (it is not a game name yet).
     if (parseTeach(text)) return text
     const main = snapToNames(text, list).text
@@ -645,17 +686,12 @@ export function AssistantHost() {
   })
   // Wake word ("Hey Ranger"): while it is on, the mic button and hotkey start a conversation instead.
   const wakeRef = useRef<WakeListener | null>(null)
-  const voiceRef = useRef(voice)
-  useEffect(() => {
-    voiceRef.current = voice
-  })
   const startListening = useCallback(async () => {
     if (wakeRef.current) {
       wakeRef.current.wake()
       return
     }
     if (stopListening.current || !names.length) return
-    stopSpeaking()
     let cancelled = false
     stopListening.current = () => {
       cancelled = true
@@ -697,56 +733,65 @@ export function AssistantHost() {
   }, [startListening])
 
   const wakeOn = voice.wakeWord
+  const commandsOn = voice.commands
   const wakeName = voice.wakeName
   useEffect(() => {
     if (!wakeOn || !names.length) return
     let cancelled = false
     let listener: WakeListener | null = null
-    let offSpeaking = () => {}
     const called = wakeName[0].toUpperCase() + wakeName.slice(1)
     const waitingText = `Say "Hey ${called}" to talk to the assistant.`
-    const say = (text: string) => {
-      const v = voiceRef.current
-      if (v.speak) void speak(text, v)
-    }
     void (async () => {
       if (!queryClient.getQueryData(itemKeys.mode(gameMode))) setListen({ state: 'loading', detail: 'Loading item names (first time)…' })
       const items = await loadItems()
       if (cancelled) return
+      const data = gameData.data
       listener = startWakeListening(wakeName, vocabularyFor(items), {
+        // Without the name: "Maps", "flea market", "show quest Debut" … said on their own.
+        commands:
+          commandsOn && data
+            ? {
+                words: commandWords(commandRef.current.context(data)),
+                isCommand: (t) => parseCommand(t, commandRef.current.context(data)) !== null,
+                needsTranscribing: (t) => NEEDS_TRANSCRIBING.test(t),
+                run: (text, alt) => {
+                  const said = heardRef.current(text, alt)
+                  const ctx = commandRef.current.context(data)
+                  const cmd = parseCommand(said, ctx) ?? parseCommand(alt, ctx)
+                  if (!cmd) return
+                  commandRef.current.run(cmd)
+                  const at = Date.now()
+                  setMessages((m) => [...m, { id: nextId.current++, from: 'you', text: said, at }, { id: nextId.current++, from: 'assistant', text: commandText(cmd), at }])
+                },
+              }
+            : undefined,
         onState: (state, detail) => setListen({ state: state === 'waiting' ? 'idle' : state, detail: state === 'waiting' ? waitingText : detail }),
         onWake: () => {
-          stopSpeaking()
           warmNlu()
           chat().set({ talking: true })
           setListen({ state: 'listening', detail: `Listening. Say "thanks, that's all" when you are done.` })
           const greeting = greetingRef.current()
           if (greeting) setMessages((m) => [...m, { id: nextId.current++, from: 'assistant', text: greeting, at: Date.now() }])
-          say(addressed(greeting ?? 'Yes sir?', useAssistantMemory.getState().style.address ?? 'sir'))
         },
         onQuestion: (text, alt) => askRef.current(heardRef.current(text, alt), { conversation: true }),
-        onEnd: (idle) => {
+        onEnd: () => {
           chat().set({ talking: false })
           setListen({ state: 'idle', detail: waitingText })
-          if (!idle) say('Anytime.')
         },
         onPartial: (text) => setListen({ state: 'listening', detail: text }),
         onError: (message) => setListen({ state: 'idle', detail: message }),
       })
       wakeRef.current = listener
-      // Do not listen to its own voice.
-      offSpeaking = onSpeakingChange((on) => listener?.pause(on))
     })()
     return () => {
       cancelled = true
-      offSpeaking()
       listener?.stop()
       wakeRef.current = null
       chat().set({ talking: false })
       setListen({ state: 'idle' })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- vocabularyFor/loadItems read refs and the query cache; names covers their inputs
-  }, [wakeOn, wakeName, names, queryClient, gameMode])
+  }, [wakeOn, wakeName, commandsOn, names, queryClient, gameMode])
 
   // Opening the assistant's tab: the day's greeting, once.
   const { pathname } = useLocation()
@@ -755,8 +800,6 @@ export function AssistantHost() {
     const greeting = greetingRef.current()
     if (!greeting) return
     setMessages((m) => [...m, { id: nextId.current++, from: 'assistant', text: greeting, at: Date.now() }])
-    const v = voiceRef.current
-    if (v.speak) void speak(greeting, v)
   }, [pathname, gameData.data])
 
   // Habits: every raid in the old game logs, read once (later raids are counted live).

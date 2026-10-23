@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { addressed, naturalSpeech, possessive, talkName } from './humanize'
+import { addressed, possessive, talkName } from './humanize'
 import { GOOD_ANSWER, parseAddress, TELL_MORE, TOO_LONG, wantsShort } from './memory'
-import { forSpeech } from './speakable'
 
 describe('talking like a person', () => {
   it('uses the short name people say', () => {
@@ -10,14 +9,6 @@ describe('talking like a person', () => {
     expect(talkName({ name: 'Factory emergency exit key', shortName: 'Factory' })).toBe('the factory key')
     expect(talkName({ name: 'Gas analyzer', shortName: 'GasAn' })).toBe('Gas analyzer')
     expect(possessive('Therapist')).toBe("Therapist's")
-  })
-
-  it('says prices and phrases the way a person would', () => {
-    expect(naturalSpeech('The LEDX is going for about 570,778 ₽ on the flea right now.')).toBe('The LEDX is going for about 571 thousand roubles on the flea right now.')
-    expect(naturalSpeech('It is still locked. There is one PMC extract on Woods.')).toBe("It's still locked. There's one PMC extract on Woods.")
-    expect(naturalSpeech('Dorm room 314 key goes for 1,940,296 ₽ (24 h average).')).toBe('Dorm room 314 key goes for about 1.9 million roubles.')
-    // Spoken numbers that are amounts are not read digit by digit afterwards.
-    expect(forSpeech(naturalSpeech('about 570,778 ₽'))).toBe('about 571 thousand roubles')
   })
 
   it('calls the player what they asked to be called', () => {

@@ -318,6 +318,8 @@ function placePopup(w: BrowserWindow, height: number) {
   w.setBounds({ x: area.x + POPUP_MARGIN, y: area.y + POPUP_MARGIN, width: POPUP_WIDTH, height: h })
 }
 
+/** Hides the pop-up by itself after the player's chosen time (main-process timers are not slowed while the game has focus). */
+let popupTimer: NodeJS.Timeout | undefined
 async function showPopup(data: PopupData) {
   const { w, ready } = ensurePopup()
   await ready
@@ -325,6 +327,14 @@ async function showPopup(data: PopupData) {
   w.webContents.send('popup:data', data)
   placePopup(w, w.getBounds().height)
   w.showInactive()
+  clearTimeout(popupTimer)
+  const secs = data.autoCloseSeconds ?? 0
+  if (secs > 0) popupTimer = setTimeout(() => hidePopup(), secs * 1000)
+}
+
+function hidePopup() {
+  clearTimeout(popupTimer)
+  if (popup && !popup.isDestroyed()) popup.hide()
 }
 
 let lastCleanup: CleanupResult | null = null
@@ -469,9 +479,7 @@ function registerIpc() {
     const d = cleanPopupData(data)
     return d ? showPopup(d) : undefined
   })
-  handle('popup:hide', () => {
-    if (popup && !popup.isDestroyed()) popup.hide()
-  })
+  handle('popup:hide', () => hidePopup())
   handle('popup:height', (e, px: unknown) => {
     // Only the pop-up itself says how tall it is.
     if (!popup || popup.isDestroyed() || e.sender !== popup.webContents || typeof px !== 'number' || !Number.isFinite(px)) return

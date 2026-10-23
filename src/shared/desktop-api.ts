@@ -219,6 +219,8 @@ export interface PopupData {
   lines: string[]
   /** How to close it, as shown at the bottom ("Say \"close that\" to hide this"). */
   hint: string
+  /** Hide it by itself after this many seconds (0 = only when told to). */
+  autoCloseSeconds?: number
 }
 
 export interface DesktopApi {

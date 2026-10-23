@@ -311,17 +311,9 @@ function ammoAnswer(ctx: AssistantContext, h: RaidHelpers): Reply | null {
 
 function bossAnswer(ctx: AssistantContext, h: RaidHelpers): Reply {
   const s = h.said
-  // "Where are the Goons?": the latest report.
-  if (/\b(goons|goon|knight|birdeye|big pipe)\b/.test(s)) {
-    const r = ctx.data.goonReport
-    const map = r ? ctx.data.maps.find((m) => m.id === r.mapId) : undefined
-    const on = ctx.data.maps.filter((m) => buildSpawnModel(ctx.data, m.id).bosses.some((b) => b.group === 'goons' && b.spawnChance > 0)).map((m) => m.name)
-    return {
-      text: map && r ? `The Goons were last reported on ${map.name}, ${ago(Date.now() - r.at)}.` : 'There is no recent Goons report in the data.',
-      lines: [`Maps they can spawn on: ${[...new Set(on)].join(', ') || 'none in the data'}.`, 'Reports come from players via tarkov.dev.'],
-      mapId: map?.id,
-    }
-  }
+  // "Goons": on the map you are on (or named, or last talked about) their chance and spawn spots;
+  // otherwise where they were last reported and every map's chance.
+  if (/\b(goons|goon|knight|birdeye|big pipe)\b/.test(s)) return goonsAnswer(ctx, h)
   // A boss named in the question is looked for on every map; "bosses on Customs" only there.
   const allMaps = ctx.data.maps.filter((m) => !/night/.test(m.normalizedName))
   const namesBoss = (name: string) => compact(s).includes(compact(name)) || words(name).some((w) => w.length >= 4 && h.q.includes(w))
@@ -360,6 +352,51 @@ function bossAnswer(ctx: AssistantContext, h: RaidHelpers): Reply {
     text: `On ${map.name} you might run into ${sorted.map((r) => `${r.name} (${Math.round(r.chance * 100)}%)`).join(', ')}.`,
     lines: sorted.map((r) => `${r.name}: ${r.where.join(', ') || 'spawn spots without names'}`),
     mapId: map.id,
+  }
+}
+
+/** The Goons on one map: their spawn chance (the highest of the three) and spots. */
+function goonsOn(ctx: AssistantContext, map: GameMap): { chance: number; where: string[]; points: Position[] } | null {
+  const goons = buildSpawnModel(ctx.data, map.id).bosses.filter((b) => b.group === 'goons' && b.spawnChance > 0)
+  if (!goons.length) return null
+  const locations = goons.flatMap((b) => b.spawns.flatMap((sp) => sp.locations))
+  const where = [...new Set(locations.map((l) => l.name))].filter((n) => n && !/^[0-9a-f-]{20,}$/i.test(n) && !(/\d/.test(n) && !/\s/.test(n)))
+  // The three spawn together, so their spots repeat: one point per spot.
+  const seen = new Set<string>()
+  const points = locations.flatMap((l) => l.positions).filter((p) => {
+    const k = `${Math.round(p.x)},${Math.round(p.z)}`
+    return !seen.has(k) && seen.add(k)
+  })
+  return { chance: Math.max(...goons.map((b) => b.spawnChance)), where, points }
+}
+
+function goonsAnswer(ctx: AssistantContext, h: RaidHelpers): Reply {
+  const r = ctx.data.goonReport
+  const reported = r ? ctx.data.maps.find((m) => m.id === r.mapId) : undefined
+  const reportLine = reported && r ? `Last reported on ${reported.name}, ${ago(Date.now() - r.at)} (player reports via tarkov.dev).` : 'No recent Goons report in the data.'
+  const all = ctx.data.maps
+    .filter((m) => !/night/.test(m.normalizedName))
+    .map((m) => ({ map: m, on: goonsOn(ctx, m) }))
+    .filter((x): x is { map: GameMap; on: NonNullable<ReturnType<typeof goonsOn>> } => x.on !== null)
+    .sort((a, b) => b.on.chance - a.on.chance)
+  const chances = all.map((x) => `${x.map.name} ${Math.round(x.on.chance * 100)}%`).join(', ')
+  const map = h.map
+  if (map) {
+    const here = goonsOn(ctx, map)
+    if (!here) return { text: `The Goons don't spawn on ${map.name}.`, lines: [`They can spawn on: ${chances || 'no map in the data'}.`, reportLine], mapId: map.id }
+    const pct = Math.round(here.chance * 100)
+    const reportedHere = reported?.id === map.id
+    return {
+      text: `The Goons have about a ${pct}% chance on ${map.name}${reportedHere ? ', and they were reported there most recently' : ''}.`,
+      lines: [`Spawn spots: ${here.where.join(', ') || 'spots without names'}`, reportLine, `Other maps: ${all.filter((x) => x.map.id !== map.id).map((x) => `${x.map.name} ${Math.round(x.on.chance * 100)}%`).join(', ') || 'none'}`],
+      map: here.points.length ? { map, points: here.points.slice(0, 30).map((p, i) => ({ id: `g${i}`, position: p, label: 'Goons', kind: 'quest' as MapPoint['kind'] })), route: null } : undefined,
+      mapId: map.id,
+    }
+  }
+  return {
+    text: reported && r ? `The Goons were last reported on ${reported.name}, ${ago(Date.now() - r.at)}.` : 'There is no recent Goons report in the data.',
+    lines: [`Spawn chance: ${chances || 'no map in the data'}.`, 'Say "Goons on Woods" for their spawn spots on a map.'],
+    mapId: reported?.id,
   }
 }
 

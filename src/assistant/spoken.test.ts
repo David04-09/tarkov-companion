@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { spokenToText, voiceVocabulary, writtenToText } from './spoken'
+import { acronymize, spokenToText, voiceVocabulary, writtenToText } from './spoken'
 
 describe('spokenToText', () => {
   it('turns spoken numbers and spelled letters into text', () => {
@@ -24,6 +24,23 @@ describe('voiceVocabulary', () => {
     for (const w of ['big', 'red', 'zb', 'golden', 'swag', 'route', 'closest', 'thirteen', 'z']) expect(v).toContain(w)
     expect(v.filter((w) => w === 'big')).toHaveLength(1)
     expect(v).not.toContain('1013')
+  })
+})
+
+describe('acronymize', () => {
+  const known = new Set(['gpu', 'cpu', 'ledx', 'ssd', 'psu', 'ofz', 'ur'])
+  it('joins spelled-out abbreviations the game uses', () => {
+    expect(acronymize('how much is a see pee you', known)).toBe('how much is a cpu')
+    expect(acronymize('price of the gee pee you', known)).toBe('price of the gpu')
+    expect(acronymize('where is a gp you', known)).toBe('where is a gpu')
+    expect(acronymize('s s d price', known)).toBe('ssd price')
+    expect(acronymize('o f z', known)).toBe('ofz')
+  })
+  it('leaves sentences alone', () => {
+    expect(acronymize('why are you here', known)).toBe('why are you here')
+    expect(acronymize('see you later', known)).toBe('see you later')
+    expect(acronymize('you are right', known)).toBe('you are right')
+    expect(acronymize('is it a gpu', known)).toBe('is it a gpu')
   })
 })
 

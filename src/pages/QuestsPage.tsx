@@ -29,6 +29,7 @@ import {
 import { useProfile, useProgressStore } from '../store/progress'
 import { SegmentButton } from '../components/SegmentButton'
 import { QuestTreeView } from '../quests/QuestTree'
+import { useLinkParam } from '../lib/linkParam'
 
 type StatusFilter = 'all' | TaskStatus
 type SortKey = 'name' | 'trader' | 'map' | 'minPlayerLevel'
@@ -429,6 +430,8 @@ export function QuestsPage() {
       // remembering the view is only a convenience
     }
   }
+  // A quest asked for by name ("show quest Debut") is shown in the list.
+  useLinkParam('q', () => setViewState('list'))
   return (
     <div>
       <div className="mb-3 flex justify-end">
@@ -462,6 +465,13 @@ function QuestList() {
   const [trader, setTrader] = useState('all')
   const [map, setMap] = useState('all')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(() => (params.get('q') ? 'all' : 'available'))
+  // Also while the tab is open ("show quest Debut" by voice).
+  useLinkParam('q', (q) => {
+    setSearch(q)
+    setStatusFilter('all')
+    setTrader('all')
+    setMap('all')
+  })
   const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: 'minPlayerLevel', dir: 'asc' })
 
   const onSort = (key: SortKey) =>

@@ -146,7 +146,7 @@ export function isSameFileUrl(url: string, filePath: string): boolean {
 }
 
 /** The pop-up's content comes from the page: plain strings only, short, never markup that runs. */
-export function cleanPopupData(v: unknown): { title: string; text: string; lines: string[]; hint: string } | null {
+export function cleanPopupData(v: unknown): { title: string; text: string; lines: string[]; hint: string; autoCloseSeconds: number } | null {
   if (typeof v !== 'object' || v === null) return null
   const o = v as Record<string, unknown>
   // Control characters dropped (line breaks kept).
@@ -154,5 +154,6 @@ export function cleanPopupData(v: unknown): { title: string; text: string; lines
   const text = str(o.text, 600)
   if (!text) return null
   const lines = Array.isArray(o.lines) ? o.lines.map((l) => str(l, 220)).filter(Boolean).slice(0, 12) : []
-  return { title: str(o.title, 140), text, lines, hint: str(o.hint, 120) }
+  const secs = typeof o.autoCloseSeconds === 'number' && Number.isFinite(o.autoCloseSeconds) ? Math.min(600, Math.max(0, Math.round(o.autoCloseSeconds))) : 0
+  return { title: str(o.title, 140), text, lines, hint: str(o.hint, 120), autoCloseSeconds: secs }
 }

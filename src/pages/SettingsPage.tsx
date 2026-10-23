@@ -463,10 +463,9 @@ function MapsSection() {
   const setAutoUntick = useMapOverlayStore((s) => s.setAutoUntickCompleted)
   const [openOnRaid, setOpenOnRaid] = useDesktopSetting('openMapOnRaid', true)
   const briefing = useAssistantStore((s) => s.briefing)
-  const briefingVoice = useAssistantStore((s) => s.briefingVoice)
   const setAssistant = useAssistantStore((s) => s.set)
   return (
-    <Section id="maps" title="Maps" icon={MapIcon} keywords="map marker size icon bring box untick completed quests raid open briefing voice">
+    <Section id="maps" title="Maps" icon={MapIcon} keywords="map marker size icon bring box untick completed quests raid open briefing">
       <Row label="Marker size" hint="Quest, extract, boss and position markers.">
         <Slider value={markerScale} min={60} max={200} step={10} onChange={setMarkerScale} label="Marker size" />
       </Row>
@@ -484,11 +483,6 @@ function MapsSection() {
       {isDesktop() && (
         <Row label="Raid briefing" hint="When the game loads a map: a card with your quests there (ticked on the Maps tab, else started in the game) and the keys and items they need. Started quests are put on the map.">
           <Switch checked={briefing} onChange={(on) => setAssistant({ briefing: on })} label="Raid briefing" />
-        </Row>
-      )}
-      {isDesktop() && briefing && (
-        <Row label="Read the briefing out loud" hint="Uses the assistant's voice (Neural network tab).">
-          <Switch checked={briefingVoice} onChange={(on) => setAssistant({ briefingVoice: on })} label="Read the briefing out loud" />
         </Row>
       )}
     </Section>
@@ -601,7 +595,7 @@ function DesktopAppSection() {
       <Row label="Stash scanner hotkey" hint="Captures the screen the game is on and opens the scanner with it.">
         <HotkeyRecorder />
       </Row>
-      <Row label="Talk to the assistant hotkey" hint="Press it in game and speak a question; the assistant answers out loud. The app stays in the background and the game keeps focus. Recognised on this PC, nothing is sent anywhere. Off until you set one.">
+      <Row label="Talk to the assistant hotkey" hint="Press it in game and speak a question; the answer shows in the app and in the pop-up over the game. The app stays in the background and the game keeps focus. Recognised on this PC, nothing is sent anywhere. Off until you set one.">
         <HotkeyRecorder setting="assistantHotkey" />
       </Row>
       <Row label="Switch PvP / PvE with the game" hint="Follows the mode you play in, read from the game log.">

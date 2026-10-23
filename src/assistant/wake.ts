@@ -2,9 +2,10 @@
  * Wake word for the assistant: "Hey Ranger" (or just "Ranger"), it answers, and then every
  * question is heard without saying the name again, until "thanks, that's all".
  *
- * Light while waiting: the recogniser may only pick the name (plus "[unk]" for everything else),
- * which costs little CPU; nothing is recorded or sent anywhere. While the assistant talks, the
- * microphone is ignored so it does not hear itself. All waiting is measured in microphone audio
+ * Light while waiting: the recogniser may only pick the name, the voice-command words (tab and
+ * map names, "show", "open" …) and "[unk]" for everything else, which costs little CPU; nothing is
+ * sent anywhere. A whole sentence of command words ("flea market") runs at once; a command whose
+ * name it cannot know ("show quest Debut") is heard again by the better model first. All waiting is measured in microphone audio
  * time, not with timers: a background window gets its timers slowed down, the audio keeps flowing.
  */
 import { holdModel, loadModel, questionText, type ListenState } from './listen'
@@ -18,6 +19,8 @@ const SAMPLE_RATE = 16_000
 const END_AFTER_QUIET_S = 1.3
 /** Longest single question. */
 const MAX_QUESTION_S = 25
+/** A voice command is short; longer talk while waiting is not kept. */
+const MAX_COMMAND_S = 8
 /** Back to waiting for the name after this long without speech in a conversation. */
 const CONVERSATION_IDLE_S = 45
 
@@ -35,6 +38,15 @@ export interface WakeHandlers {
   onEnd: (idle: boolean) => void
   onPartial: (text: string) => void
   onError: (message: string) => void
+  /** Voice commands without the name: the extra words to listen for, and what to do with a sentence. */
+  commands?: {
+    words: string[]
+    /** True when the small recogniser's text is a complete command on its own. */
+    isCommand: (text: string) => boolean
+    /** Starts with a command verb but names something only the better model can hear. */
+    needsTranscribing: (text: string) => boolean
+    run: (text: string, alt: string) => void
+  }
 }
 
 export interface WakeListener {
@@ -97,6 +109,9 @@ export function startWakeListening(name: WakeName, vocabulary: string[], h: Wake
       let quietSince = -1
       let lastSpeech = 0
       let recognizer: VoskRecognizer | null = null
+      // Waiting: a sentence is being heard (since `waitStart`), its audio kept for a command.
+      let waitHeard = false
+      let waitStart = 0
       // The question's audio (from just before speech was noticed) for Moonshine.
       const recording = new Recording()
 
@@ -125,10 +140,18 @@ export function startWakeListening(name: WakeName, vocabulary: string[], h: Wake
 
       const makeRecognizer = () => {
         recognizer?.remove()
-        const grammar = mode === 'waiting' ? [`hey ${name}`, name, '[unk]'] : [...vocabulary, '[unk]']
+        const grammar = mode === 'waiting' ? [`hey ${name}`, name, ...(h.commands?.words ?? []), '[unk]'] : [...vocabulary, '[unk]']
         recognizer = model.recognizer(SAMPLE_RATE, grammar, {
           onPartial: (p) => {
-            if (mode !== 'conversation' || !p.trim() || p === lastPartial) return
+            // Waiting: keep the sentence's audio from the first sound, in case it is a command.
+            if (mode === 'waiting') {
+              if (p.trim() && !waitHeard) {
+                waitHeard = true
+                waitStart = now
+              }
+              return
+            }
+            if (!p.trim() || p === lastPartial) return
             // Any speech counts, also words Vosk does not know ("[unk]"): Moonshine reads them.
             lastPartial = p
             partial = clean(p)
@@ -140,9 +163,21 @@ export function startWakeListening(name: WakeName, vocabulary: string[], h: Wake
           onResult: (text) => {
             const t = clean(text)
             if (mode === 'waiting') {
+              const samples = waitHeard ? recording.take() : null
+              waitHeard = false
               if (t && heardName(t, name)) {
                 switchMode?.('conversation')
                 h.onWake()
+                return
+              }
+              const cmd = h.commands
+              if (!cmd || !t) return
+              const unknown = text.includes('[unk]')
+              if (!unknown && cmd.isCommand(t)) return cmd.run(spokenToText(t), spokenToText(t))
+              if (samples && cmd.needsTranscribing(t)) {
+                void questionText(samples, t, () => undefined).then(({ text: heardText, alt }) => {
+                  if (!stopped && mode === 'waiting') cmd.run(heardText, alt)
+                })
               }
               return
             }
@@ -162,6 +197,7 @@ export function startWakeListening(name: WakeName, vocabulary: string[], h: Wake
       switchMode = (m) => {
         mode = m
         recording.clear()
+        waitHeard = false
         if (m === 'conversation') void prepareTranscriber().catch(() => undefined)
         said = []
         partial = ''
@@ -178,7 +214,16 @@ export function startWakeListening(name: WakeName, vocabulary: string[], h: Wake
         const samples = e.inputBuffer.getChannelData(0)
         now += samples.length / e.inputBuffer.sampleRate
         recognizer.accept(samples, e.inputBuffer.sampleRate)
-        if (mode !== 'conversation') return
+        if (mode !== 'conversation') {
+          if (!h.commands) return
+          recording.push(samples, waitHeard)
+          // A long stretch of talk is not a command: let it go.
+          if (waitHeard && now - waitStart > MAX_COMMAND_S) {
+            waitHeard = false
+            recording.clear()
+          }
+          return
+        }
         recording.push(samples, questionStart >= 0)
         // Quiet for a moment after speaking: the question is done.
         if (questionStart >= 0 && quietSince >= 0 && now - quietSince >= END_AFTER_QUIET_S) finishQuestion()

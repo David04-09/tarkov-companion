@@ -6,6 +6,7 @@ import { useNeeds } from '../hooks/useNeeds'
 import { formatNumber } from '../lib/format'
 import { remainingFor, type ItemNeed } from '../lib/needs'
 import { useInventoryStore } from '../store/inventory'
+import { useLinkParam } from '../lib/linkParam'
 import { useProgressStore } from '../store/progress'
 
 const selectClass =
@@ -39,6 +40,7 @@ export function ItemCollectionPage() {
   const setCollected = useInventoryStore((s) => s.setCollected)
 
   const [search, setSearch] = useState('')
+  useLinkParam('q', setSearch)
   const [firOnly, setFirOnly] = useState(false)
   const [trader, setTrader] = useState('all')
   const [station, setStation] = useState('all')

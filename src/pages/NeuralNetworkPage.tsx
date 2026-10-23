@@ -1,20 +1,19 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Brain, CheckCircle2, Circle, Loader2, Map as MapIcon, Mic, MicOff, Send, Square, Volume2, VolumeX, X } from 'lucide-react'
+import { Brain, CheckCircle2, Circle, Loader2, Map as MapIcon, Mic, MicOff, Send, X } from 'lucide-react'
 import { useGameData } from '../api/hooks'
 import { AssistantMap } from '../assistant/AssistantMap'
 import { MemoryPanel } from '../assistant/MemoryPanel'
 import { WAKE_NAMES } from '../assistant/wake'
-import { listVoices, pickVoice, speak, speechAvailable, stopSpeaking, voiceGender } from '../assistant/speech'
-import { useAssistantStore } from '../store/assistant'
+import { POPUP_SECONDS_MAX, useAssistantStore } from '../store/assistant'
 import { useAssistantChat } from '../store/assistantChat'
 
 const ROADMAP: { done: boolean; title: string; detail: string }[] = [
   { done: true, title: 'The tab', detail: 'A place for the assistant in the app.' },
-  { done: true, title: 'Answer questions and guide on the map', detail: 'Places, extracts, walking routes around water, fences, rocks and minefields, closest quests, items and keys, your progress. Spoken out loud.' },
+  { done: true, title: 'Answer questions and guide on the map', detail: 'Places, extracts, walking routes around water, fences, rocks and minefields, closest quests, items and keys, your progress. Shown on screen and in the pop-up over the game.' },
   { done: true, title: 'Talk to it', detail: 'Mic button, or a hotkey in game (Settings → Desktop app). Recognised on this PC; nothing is sent anywhere.' },
   { done: true, title: 'Do things for you (first steps)', detail: 'Mark quests done, show a quest or a route on the Maps tab. Each one only when you click its button.' },
-  { done: true, title: 'Learn from you', detail: 'Remembers what you tell it, learns your words and your maps from the game log, keeps answers short if you keep cutting it off, and greets you with real numbers. All on this PC.' },
+  { done: true, title: 'Learn from you', detail: 'Remembers what you tell it, learns your words and your maps from the game log, keeps answers short if you ask it to, and greets you with real numbers. All on this PC.' },
   { done: false, title: 'More things to do', detail: 'Pick parts for a gun build, plan a whole raid.' },
 ]
 
@@ -22,77 +21,41 @@ const EXAMPLES = ["I'm at Dorms, what's the closest quest?", 'Where is Crackhous
 
 function VoicePanel() {
   const s = useAssistantStore()
-  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>(() => listVoices())
-  useEffect(() => {
-    if (!speechAvailable()) return
-    const update = () => setVoices(listVoices())
-    window.speechSynthesis.addEventListener('voiceschanged', update)
-    return () => window.speechSynthesis.removeEventListener('voiceschanged', update)
-  }, [])
-  const ofGender = voices.filter((v) => voiceGender(v) === s.gender)
-  const current = pickVoice(voices, s.gender, s.voiceUri)
-  const noMatch = voices.length > 0 && ofGender.length === 0
-  const segment = (on: boolean) => `px-3 py-1 ${on ? 'bg-accent/20 text-accent' : 'text-ink-muted hover:bg-surface-3'}`
+  const called = s.wakeName[0].toUpperCase() + s.wakeName.slice(1)
   return (
     <div className="space-y-3 text-sm">
-      <label className="flex items-center gap-2">
-        <input type="checkbox" checked={s.speak} onChange={(e) => s.set({ speak: e.target.checked })} className="h-4 w-4" />
-        Read answers out loud
-        <span className="text-xs text-ink-dim">(Windows voices: no download, almost no CPU)</span>
-      </label>
-      {window.desktop && (
-        <label className="flex items-center gap-2">
-          <input type="checkbox" checked={s.popup} onChange={(e) => s.set({ popup: e.target.checked })} className="h-4 w-4" />
-          Show answers in a pop-up over the game
-          <span className="text-xs text-ink-dim">(see-through, top left of the screen your mouse is on; clicks go through to the game; say "close that" to hide it)</span>
-        </label>
-      )}
+      <p className="text-xs text-ink-dim">The assistant listens and shows; it never talks. Everything you say is recognised on this PC and nothing leaves it.</p>
       <div className="flex flex-wrap items-center gap-2">
         <label className="flex items-center gap-2">
           <input type="checkbox" checked={s.wakeWord} onChange={(e) => s.set({ wakeWord: e.target.checked })} className="h-4 w-4" />
-          Wake word
+          Always listen
         </label>
         <select value={s.wakeName} onChange={(e) => s.set({ wakeName: e.target.value as typeof s.wakeName })} aria-label="Wake word name" className="rounded border border-line bg-surface px-2 py-1 text-xs">
           {WAKE_NAMES.map((n) => (
             <option key={n} value={n}>Hey {n[0].toUpperCase() + n.slice(1)}</option>
           ))}
         </select>
-        <span className="text-xs text-ink-dim">On any tab while the app is open: say the name, it answers "Yes sir?", ask away, and say "thanks, that's all" to finish. The mic stays open while it waits; only the name is listened for and nothing leaves this PC.</span>
+        <span className="text-xs text-ink-dim">While the app runs: say "Hey {called}", ask away, and say "thanks, that's all" to finish.</span>
       </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="w-16 text-ink-muted">Voice</span>
-        <div className="inline-flex overflow-hidden rounded border border-line" role="group" aria-label="Voice">
-          {(['female', 'male'] as const).map((g) => (
-            <button key={g} type="button" onClick={() => s.set({ gender: g, voiceUri: null })} className={`${segment(s.gender === g)} capitalize`}>
-              {g}
-            </button>
-          ))}
-        </div>
-        {ofGender.length > 1 && (
-          <select value={current?.voiceURI ?? ''} onChange={(e) => s.set({ voiceUri: e.target.value || null })} aria-label="Which voice" className="min-w-0 max-w-full rounded border border-line bg-surface px-2 py-1 text-xs">
-            {ofGender.map((v) => (
-              <option key={v.voiceURI} value={v.voiceURI}>{v.name}</option>
-            ))}
-          </select>
-        )}
-      </div>
-      {noMatch && <p className="text-xs text-ink-dim">No {s.gender} voice is installed; using {current?.name ?? 'the default voice'}. Windows: Settings → Time & language → Speech adds more.</p>}
-      {!speechAvailable() && <p className="text-xs text-ink-dim">Windows voices are not available on this system.</p>}
       <label className="flex items-center gap-2">
-        <span className="w-16 text-ink-muted">Volume</span>
-        <input type="range" min={0} max={1} step={0.05} value={s.volume} onChange={(e) => s.set({ volume: Number(e.target.value) })} className="w-48 accent-[var(--color-accent)]" aria-label="Volume" />
-        <span className="w-10 tabular-nums text-xs text-ink-dim">{Math.round(s.volume * 100)}%</span>
+        <input type="checkbox" checked={s.commands} disabled={!s.wakeWord} onChange={(e) => s.set({ commands: e.target.checked })} className="h-4 w-4" />
+        Voice commands without the name
+        <span className="text-xs text-ink-dim">Say just "Maps", "Flea market", "Quests", "Customs", "show quest Debut", "show key Dorm 314", "search GPU on the flea" … on their own.</span>
       </label>
-      <label className="flex items-center gap-2">
-        <span className="w-16 text-ink-muted">Speed</span>
-        <input type="range" min={0.5} max={2} step={0.1} value={s.rate} onChange={(e) => s.set({ rate: Number(e.target.value) })} className="w-48 accent-[var(--color-accent)]" aria-label="Speaking speed" />
-        <span className="w-10 tabular-nums text-xs text-ink-dim">{s.rate.toFixed(1)}×</span>
-      </label>
-      <div className="flex flex-wrap items-center gap-2">
-        <button type="button" className="btn" onClick={() => speak('This is how I sound. Ask me anything about Tarkov.', s)}>
-          <Volume2 className="h-4 w-4" /> Test voice
-        </button>
-      </div>
+      {window.desktop && (
+        <label className="flex items-center gap-2">
+          <input type="checkbox" checked={s.popup} onChange={(e) => s.set({ popup: e.target.checked })} className="h-4 w-4" />
+          Show answers in a pop-up over the game
+          <span className="text-xs text-ink-dim">(see-through, top left of the screen your mouse is on; clicks go through to the game; say "close" to hide it)</span>
+        </label>
+      )}
+      {window.desktop && s.popup && (
+        <label className="flex items-center gap-2">
+          <span className="text-ink-muted">Close the pop-up after</span>
+          <input type="range" min={0} max={POPUP_SECONDS_MAX} step={5} value={s.popupSeconds} onChange={(e) => s.set({ popupSeconds: Number(e.target.value) })} className="w-48 accent-[var(--color-accent)]" aria-label="Close the pop-up after" />
+          <span className="w-28 tabular-nums text-xs text-ink-dim">{s.popupSeconds ? `${s.popupSeconds} seconds` : 'only when told'}</span>
+        </label>
+      )}
     </div>
   )
 }
@@ -106,7 +69,6 @@ function VoicePanel() {
  */
 export function NeuralNetworkPage() {
   const gameData = useGameData()
-  const voice = useAssistantStore()
   const { messages, card, pending, listen, done, ask, run, toggleListening, set } = useAssistantChat()
   const [draft, setDraft] = useState('')
   const listRef = useRef<HTMLDivElement>(null)
@@ -122,7 +84,7 @@ export function NeuralNetworkPage() {
     <div className="mx-auto flex max-w-3xl flex-col gap-4">
       <div>
         <h1 className="flex items-center gap-2 text-2xl font-semibold"><Brain className="h-6 w-6 text-accent" /> Neural network</h1>
-        <p className="text-sm text-ink-muted">Your Tarkov assistant. Ask where things are and what to do next; it answers from the app's own data, shows it on a small map and can say it out loud. It works offline and uses almost no resources, so it can run while you play.</p>
+        <p className="text-sm text-ink-muted">Your Tarkov assistant. Ask where things are and what to do next; it answers from the app's own data, shows it on a small map and, on desktop, in a pop-up over the game. Say a tab or map name to go there. It works offline and uses almost no resources, so it can run while you play.</p>
       </div>
 
       <section className="flex flex-col rounded-lg border border-line bg-surface-2">
@@ -201,10 +163,6 @@ export function NeuralNetworkPage() {
             {listen.state === 'loading' ? <Loader2 className="h-4 w-4 animate-spin" /> : listen.state === 'listening' ? <MicOff className="h-4 w-4 animate-pulse" /> : <Mic className="h-4 w-4" />}
           </button>
           <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={listen.state === 'listening' ? 'Listening… ask your question' : gameData.isPending ? 'Loading game data…' : 'Ask the assistant…'} aria-label="Message" className="min-w-0 flex-1 rounded border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-accent" />
-          <button type="button" className="btn" onClick={() => voice.set({ speak: !voice.speak })} title={voice.speak ? 'Mute the voice' : 'Read answers out loud'} aria-label={voice.speak ? 'Mute' : 'Unmute'}>
-            {voice.speak ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
-          </button>
-          <button type="button" className="btn" onClick={stopSpeaking} title="Stop talking" aria-label="Stop talking"><Square className="h-4 w-4" /></button>
           <button type="submit" className="btn" disabled={!draft.trim()} aria-label="Send"><Send className="h-4 w-4" /></button>
         </form>
       </section>
@@ -221,7 +179,7 @@ export function NeuralNetworkPage() {
       )}
 
       <section className="rounded-lg border border-line bg-surface-2 p-4">
-        <h2 className="mb-3 text-sm font-semibold">Voice</h2>
+        <h2 className="mb-3 text-sm font-semibold">Listening and pop-up</h2>
         <VoicePanel />
       </section>
 

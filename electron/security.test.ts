@@ -103,7 +103,11 @@ describe('cleanPopupData', () => {
       text: 'About 325k.',
       lines: ['Flea: 325,473', 'x'.repeat(220)],
       hint: 'Say "close that"',
+      autoCloseSeconds: 0,
     })
+    expect(cleanPopupData({ text: 'x', autoCloseSeconds: 15 })?.autoCloseSeconds).toBe(15)
+    expect(cleanPopupData({ text: 'x', autoCloseSeconds: 1e9 })?.autoCloseSeconds).toBe(600)
+    expect(cleanPopupData({ text: 'x', autoCloseSeconds: '5' })?.autoCloseSeconds).toBe(0)
     expect(cleanPopupData({ text: '' })).toBeNull()
     expect(cleanPopupData('nope')).toBeNull()
   })

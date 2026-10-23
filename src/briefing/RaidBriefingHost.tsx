@@ -1,11 +1,10 @@
 import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { Map as MapIcon, Radio, Volume2, X } from 'lucide-react'
+import { Map as MapIcon, Radio, X } from 'lucide-react'
 import { gameDataKeys, itemKeys } from '../api/hooks'
 import { fetchItems } from '../api/queries'
 import type { GameData, ItemsById } from '../api/types'
-import { speak, stopSpeaking, stopSpeakingQuietly } from '../assistant/speech'
 import { computeTaskStatuses, isFactionEligible } from '../lib/taskStatus'
 import { findMapConfig, resolveBaseLayer } from '../maps/mapConfig'
 import { buildMapTasks } from '../maps/overlay/mapTasks'
@@ -23,15 +22,9 @@ const SOURCE_TEXT: Record<RaidBriefing['source'], string> = {
   none: 'No ticked or started quests here',
 }
 
-function sayBriefing(b: RaidBriefing) {
-  const v = useAssistantStore.getState()
-  stopSpeakingQuietly()
-  void speak(b.spoken, v)
-}
-
 /**
  * Desktop: when the game log says a map is loading, brief the raid. A card with the quests for this
- * map and what they need, read out loud, and the quests started in the game shown on the Maps tab.
+ * map and what they need, and the quests started in the game shown on the Maps tab.
  * Read-only like the rest of the log features: it reacts to log lines the app already reads.
  */
 export function RaidBriefingHost() {
@@ -99,7 +92,6 @@ export function RaidBriefingHost() {
       useRaidBriefingStore.getState().show(briefing, request.at)
       // Started quests go on the Maps tab, so the map opened for this raid shows them.
       if (briefing.source === 'started') overlay.setTasksChecked(briefing.quests.map((q) => q.id), true)
-      if (useAssistantStore.getState().briefingVoice) sayBriefing(briefing)
     })()
     return () => {
       cancelled = true
@@ -117,8 +109,7 @@ export function RaidBriefingHost() {
       <div className="mb-1 flex items-center gap-2">
         <Radio className="h-4 w-4 text-accent" />
         <span className="flex-1 font-medium">Raid briefing: {current.mapName}</span>
-        <button type="button" onClick={() => sayBriefing(current)} aria-label="Read it again" title="Read it again" className="text-ink-dim hover:text-ink"><Volume2 className="h-4 w-4" /></button>
-        <button type="button" onClick={() => { stopSpeaking(); useRaidBriefingStore.getState().close() }} aria-label="Close" title="Close" className="text-ink-dim hover:text-ink"><X className="h-4 w-4" /></button>
+        <button type="button" onClick={() => useRaidBriefingStore.getState().close()} aria-label="Close" title="Close" className="text-ink-dim hover:text-ink"><X className="h-4 w-4" /></button>
       </div>
       <p className="text-[11px] text-ink-dim">{SOURCE_TEXT[current.source]}{current.source === 'none' && current.availableCount > 0 ? ` (${current.availableCount} available quest${current.availableCount === 1 ? ' has' : 's have'} objectives on this map)` : ''}</p>
       {current.quests.length > 0 && (
