@@ -12,14 +12,20 @@ export interface ChangelogEntry {
 }
 
 /** Committed, waiting for the next update. */
-export const UNRELEASED: string[] = [
-  "Search bar: it now sits in the corner as a small magnifying glass. Click it to type; click back into the game and it shrinks again (an open map stays up).",
-  "Search bar: ticking \"On map\" next to a quest opens that quest's map right there, zoomed to it.",
-  "Search bar maps have a quest list on the right (fold it away with the little arrow): tick quests to show them, or click one to zoom to it.",
-  "Search bar keys: \"Show the lock on <map>\" opens the map zoomed to the key's lock (red), with the spots where the key lies around (green).",
-]
+export const UNRELEASED: string[] = []
 
 export const RELEASES: ChangelogEntry[] = [
+  {
+    version: '2.9.0',
+    date: '2026-10-24',
+    title: 'Search bar: a small magnifying glass, quest list beside the map, key locks on the map',
+    changes: [
+      "Search bar: it now sits in the corner as a small magnifying glass. Click it to type; click back into the game and it shrinks again (an open map stays up).",
+      "Search bar: ticking \"On map\" next to a quest opens that quest's map right there, zoomed to it.",
+      "Search bar maps have a quest list on the right (fold it away with the little arrow): tick quests to show them, or click one to zoom to it.",
+      "Search bar keys: \"Show the lock on <map>\" opens the map zoomed to the key's lock (red), with the spots where the key lies around (green).",
+    ],
+  },
   {
     version: '2.8.0',
     date: '2026-10-24',
