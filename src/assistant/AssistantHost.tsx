@@ -5,7 +5,7 @@ import { itemKeys, useGameData, useHideout } from '../api/hooks'
 import { fetchItems } from '../api/queries'
 import type { GameData, GameMap, ItemsById } from '../api/types'
 import { computeNeeds, type ItemNeed } from '../lib/needs'
-import { computeTaskStatuses, isFactionEligible } from '../lib/taskStatus'
+import { computeTaskStatus, computeTaskStatuses, isFactionEligible } from '../lib/taskStatus'
 import { findMapConfig, resolveBaseLayer } from '../maps/mapConfig'
 import { buildMapTasks, type MapTask } from '../maps/overlay/mapTasks'
 import { useAssistantStore } from '../store/assistant'
@@ -27,6 +27,7 @@ import { nluLoaded, understandQuestion, warmNlu } from './nlu'
 import { followUp, type Slotted } from './followUp'
 import { headingOnMap } from './heading'
 import { confirmWord, expandNicknames, findItem, keyWorthText } from './items'
+import { parseChange, planAvailable, type Change, type ChangeContext } from './changes'
 import { commandText, commandWords, NEEDS_TRANSCRIBING, parseCommand, type CommandContext, type CommandTarget } from './commands'
 import { NAV_ITEMS } from '../config/nav'
 import { useFleaStore } from '../store/flea'
@@ -46,6 +47,9 @@ const ASKED = /\b(what|whats|where|wheres|how|hows|which|who|whos|when|why|is|ar
 function looksAsked(said: string, name: string): boolean {
   return ASKED.test(said) || said.split(' ').includes(name)
 }
+
+/** A route asked to be drawn on the Maps tab, not only shown in the chat. */
+const DRAW_ON_MAP = /\b(draw|on the map|on my map|to the map|show it on|put it on|mark it)\b/
 
 /** Phrases that close the pop-up over the game, and that show it again. */
 const CLOSE_POPUP = /^(?:ok |okay |thanks )?(?:close|close it|close that|close this|close the window|close the pop up|close the popup|hide|hide it|hide that|hide this|hide the window|get rid of (?:it|that)|dismiss|dismiss that|clear (?:it|that|the screen)|go away|thats enough|got it close it)$/
@@ -111,8 +115,30 @@ export function AssistantHost() {
   const navigate = useNavigate()
 
   /** Runs an offered action (only ever from a click on its button). */
+  // Undo for changes made by voice or text ("mark Debut done" → Undo button, or "undo that").
+  const undos = useRef(new Map<string, () => void>())
+  const lastUndo = useRef<string | null>(null)
+  const undoAction = (undo: () => void): AssistantAction => {
+    const undoId = `${Date.now()}-${undos.current.size}`
+    undos.current.set(undoId, undo)
+    lastUndo.current = undoId
+    return { kind: 'undo', undoId, label: 'Undo' }
+  }
+  const runUndo = (undoId: string | null): boolean => {
+    const undo = undoId ? undos.current.get(undoId) : undefined
+    if (!undo || !undoId) return false
+    undos.current.delete(undoId)
+    if (lastUndo.current === undoId) lastUndo.current = null
+    undo()
+    return true
+  }
+
   const run = (key: string, a: AssistantAction) => {
     chat().set({ done: [...chat().done, key] })
+    if (a.kind === 'undo') {
+      runUndo(a.undoId)
+      return
+    }
     if (a.kind === 'setCollected') {
       useInventoryStore.getState().setCollected(useProgressStore.getState().gameMode, a.itemId, a.count)
       pendingConfirm.current = null
@@ -151,9 +177,105 @@ export function AssistantHost() {
     // t= makes the same request twice still apply on a page that is already open.
     navigate(cmd.params ? `${cmd.to}?${new URLSearchParams({ ...cmd.params, t: String(Date.now()) })}` : cmd.to)
   }
-  const commandRef = useRef({ context: commandContext, run: runCommand })
+  // Changes by voice or text: quests, level, faction, mode, hideout and trader levels.
+  const changeContext = (data: GameData): ChangeContext => {
+    const p = useProgressStore.getState()
+    const inv = useInventoryStore.getState().byMode[p.gameMode]
+    return {
+      quests: tasks,
+      stations: (hideout.data ?? []).map((s) => ({ id: s.id, name: s.name, maxLevel: s.levels.length })),
+      traders: data.traders.map((t) => ({ id: t.id, name: t.name, maxLevel: t.maxLevel })),
+      stationLevel: (id) => inv?.stationLevels[id] ?? 0,
+    }
+  }
+  const applyChange = (change: Change): Reply => {
+    const progress = useProgressStore.getState()
+    const mode = progress.gameMode
+    const prof = progress.profiles[mode]
+    const inventory = useInventoryStore.getState()
+    switch (change.kind) {
+      case 'undo':
+        return { text: runUndo(lastUndo.current) ? 'Undone.' : 'There is nothing to undo.' }
+      case 'questDone': {
+        const t = change.task
+        const was = prof.completedTaskIds.has(t.id)
+        if (was === change.done) return { text: change.done ? `${t.name} is already marked done.` : `${t.name} isn't marked done.` }
+        progress.setTaskCompleted(t.id, change.done)
+        return { text: change.done ? `Marked ${t.name} done.` : `Unticked ${t.name}.`, actions: [undoAction(() => useProgressStore.getState().setTaskCompletedFor(mode, t.id, was))] }
+      }
+      case 'questAvailable': {
+        const t = change.task
+        const status = computeTaskStatus(t, prof)
+        if (status === 'completed') return { text: `${t.name} is marked done. Say "untick ${t.name}" to open it again.` }
+        if (status === 'available') return { text: `${t.name} is already available.` }
+        const plan = planAvailable(t, tasks, prof.completedTaskIds, prof.playerLevel)
+        const before = prof.playerLevel
+        progress.addCompletedFor(mode, plan.complete.map((x) => x.id))
+        if (plan.level !== null) progress.setPlayerLevel(plan.level)
+        const lines = [
+          ...(plan.complete.length ? [`Marked done first (${plan.complete.length}): ${plan.complete.map((x) => x.name).join(', ')}`] : []),
+          ...(plan.level !== null ? [`Your level is now ${plan.level} (it needs ${plan.level}; you had ${before}).`] : []),
+        ]
+        return {
+          text: `${t.name} is available now.`,
+          lines,
+          actions: [
+            undoAction(() => {
+              const p = useProgressStore.getState()
+              for (const x of plan.complete) p.setTaskCompletedFor(mode, x.id, false)
+              if (plan.level !== null) p.setPlayerLevel(before)
+            }),
+          ],
+        }
+      }
+      case 'zoomQuest': {
+        const t = change.task
+        const map = t.map ?? t.objectives.flatMap((o) => o.maps)[0]
+        if (!map) return { text: `${t.name} has no spot on a map in the data.` }
+        const overlay = useMapOverlayStore.getState()
+        overlay.setTasksChecked([t.id], true)
+        useUiStore.getState().setLastMapKey(map.normalizedName)
+        overlay.requestFocus(t.id)
+        navigate('/maps')
+        return { text: `Showing ${t.name} on ${map.name}.`, quiet: true }
+      }
+      case 'playerLevel': {
+        const was = prof.playerLevel
+        if (was === change.level) return { text: `You're already level ${was}.` }
+        progress.setPlayerLevel(change.level)
+        return { text: `Your level is now ${change.level}.`, actions: [undoAction(() => useProgressStore.getState().setPlayerLevel(was))] }
+      }
+      case 'faction': {
+        const was = prof.faction
+        if (was === change.faction) return { text: `You're already ${was}.` }
+        progress.setFaction(change.faction)
+        return { text: `Faction set to ${change.faction}.`, actions: [undoAction(() => useProgressStore.getState().setFaction(was))] }
+      }
+      case 'gameMode': {
+        const label = change.mode === 'pve' ? 'PvE' : 'PvP'
+        if (mode === change.mode) return { text: `You're already on ${label}.` }
+        progress.setGameMode(change.mode)
+        return { text: `Switched to ${label}.`, actions: [undoAction(() => useProgressStore.getState().setGameMode(mode))] }
+      }
+      case 'station': {
+        const was = inventory.byMode[mode]?.stationLevels[change.id] ?? 0
+        inventory.setStationLevel(mode, change.id, change.level)
+        return {
+          text: `${change.name} is level ${change.level} now.`,
+          lines: change.level === change.maxLevel ? [`That's its highest level (${change.maxLevel}).`] : undefined,
+          actions: [undoAction(() => useInventoryStore.getState().setStationLevel(mode, change.id, was))],
+        }
+      }
+      case 'trader': {
+        const was = inventory.byMode[mode]?.traderLevels[change.id] ?? 1
+        inventory.setTraderLevel(mode, change.id, change.level)
+        return { text: `${change.name} is loyalty level ${change.level} now.`, actions: [undoAction(() => useInventoryStore.getState().setTraderLevel(mode, change.id, was))] }
+      }
+    }
+  }
+  const commandRef = useRef({ context: commandContext, run: runCommand, changes: changeContext, apply: applyChange })
   useEffect(() => {
-    commandRef.current = { context: commandContext, run: runCommand }
+    commandRef.current = { context: commandContext, run: runCommand, changes: changeContext, apply: applyChange }
   })
   const statuses = useMemo(() => computeTaskStatuses(tasks, profile), [tasks, profile])
   const faction = profile.faction
@@ -251,7 +373,14 @@ export function AssistantHost() {
     (id: number, given: Reply) => {
       // How the player wants to be called ("sir", their name, nothing).
       const style = useAssistantMemory.getState().style
-      const reply = { ...given, text: addressed(given.text, style.address ?? 'sir') }
+      let reply = { ...given, text: addressed(given.text, style.address ?? 'sir') }
+      // "Collected 2 GPUs": done at once, with Undo (a guess still asks first).
+      if (reply.confirm && !reply.weak) {
+        const c = reply.confirm
+        const mode = useProgressStore.getState().gameMode
+        useInventoryStore.getState().setCollected(mode, c.itemId, c.to)
+        reply = { ...reply, text: c.doneText, lines: (reply.lines ?? []).filter((l) => !l.startsWith('Say "yes"')), confirm: undefined, actions: [undoAction(() => useInventoryStore.getState().setCollected(mode, c.itemId, c.from))] }
+      }
       setMessages((m) => m.map((x) => (x.id === id ? { ...x, text: reply.text, reply } : x)))
       if (reply.mapId) lastMapId.current = reply.mapId
       if (reply.youAt) lastPlace.current = reply.youAt
@@ -277,7 +406,12 @@ export function AssistantHost() {
       setMessages((m) => m.map((x) => (x.id === id ? { ...x, text: 'Working out the route…' } : x)))
       chat().set({ pending: id })
       void withWalk(reply)
-        .then((r) => present(id, r))
+        .then((r) => {
+          present(id, r)
+          // "Draw the route on the map": put it on the Maps tab straight away.
+          const route = r.actions?.find((a) => a.kind === 'routeOnMap')
+          if (route && DRAW_ON_MAP.test(words(currentQuestion.current).join(' '))) runRef.current(`${id}:${r.actions!.indexOf(route)}`, route)
+        })
         .finally(() => clearPending(id))
     },
     [present],
@@ -347,6 +481,12 @@ export function AssistantHost() {
     if (command) {
       runCommand(command)
       show(id, { text: commandText(command), quiet: true })
+      return
+    }
+    // "Mark Debut done", "Debut should be available", "workbench level 2", "undo that": done at once, with Undo.
+    const change = gameData.data ? parseChange(text, changeContext(gameData.data)) : null
+    if (change) {
+      show(id, applyChange(change))
       return
     }
     if (CLOSE_POPUP.test(plain)) {
@@ -758,9 +898,16 @@ export function AssistantHost() {
                   const said = heardRef.current(text, alt)
                   const ctx = commandRef.current.context(data)
                   const cmd = parseCommand(said, ctx) ?? parseCommand(alt, ctx)
-                  if (!cmd) return
-                  commandRef.current.run(cmd)
                   const at = Date.now()
+                  if (!cmd) {
+                    // "Zoom to Debut" also works without the name (it only moves the map).
+                    const change = parseChange(said, commandRef.current.changes(data))
+                    if (change?.kind !== 'zoomQuest') return
+                    const r = commandRef.current.apply(change)
+                    setMessages((m) => [...m, { id: nextId.current++, from: 'you', text: said, at }, { id: nextId.current++, from: 'assistant', text: r.text, at }])
+                    return
+                  }
+                  commandRef.current.run(cmd)
                   setMessages((m) => [...m, { id: nextId.current++, from: 'you', text: said, at }, { id: nextId.current++, from: 'assistant', text: commandText(cmd), at }])
                 },
               }

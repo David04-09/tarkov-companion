@@ -12,7 +12,13 @@ export interface ChangelogEntry {
 }
 
 /** Committed, waiting for the next update. */
-export const UNRELEASED: string[] = []
+export const UNRELEASED: string[] = [
+  "Assistant: does things when you ask, with an Undo button (or say \"undo that\"). \"Mark Debut done\", \"untick Checking\", \"I'm level 30\", \"I'm BEAR\", \"switch to PvE\", \"workbench level 2\", \"I upgraded the lavatory\", \"Prapor is level 3\", \"collected 2 GPUs\" are done at once instead of asking first.",
+  "Assistant: fixes a quest the app shows as locked. \"Set Shootout Picnic to available\" (or \"… should be unlocked\") marks every quest it needs first as done, all the way back, and raises your level if the quest needs a higher one; it lists what it changed, and Undo puts it all back.",
+  "Assistant: \"zoom in on Debut\" (or \"show Debut on the map\") opens its map on the Maps tab, ticks it and zooms to its objectives; this one also works without \"Hey Ranger\". \"Draw the route from Crossroads to Dorms on the map\" puts the walking route straight on the Maps tab.",
+  "Flea Market search works like the game: type any words of a name in any order (\"314 dorm\", \"ps 5.45\") and a list of every matching item drops down; click one (or use the arrow keys and Enter) to show just that item with its price chart, and \"Show all matches\" to go back. By voice: \"search the flea for ps 5.45\" fills in the words and lists every match.",
+  "Keys: the key card's \"Open in Keys\" button opens that key's details straight away.",
+]
 
 export const RELEASES: ChangelogEntry[] = [
   {

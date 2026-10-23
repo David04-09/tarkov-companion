@@ -337,7 +337,7 @@ export function cardAnswer(m: ItemMatch, ctx: ItemContext): Reply {
       lines,
       map: { map: first.map, points, route: null },
       mapId: first.map.id,
-      links: [{ label: 'Open in Keys', to: '/keys' }],
+      links: [{ label: 'Open in Keys', to: `/keys?key=${it.id}` }],
       keyCheck: it.wikiLink ? { wikiLink: it.wikiLink, questNames: keyFor.map((t) => t.name) } : undefined,
     }
   }

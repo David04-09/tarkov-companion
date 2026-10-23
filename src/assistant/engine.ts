@@ -63,6 +63,8 @@ export type AssistantAction =
   | { kind: 'openMap'; mapKey: string; label: string }
   | { kind: 'setCollected'; itemId: string; count: number; label: string }
   | { kind: 'routeOnMap'; mapKey: string; path: Position[]; fromLabel: string; toLabel: string; label: string }
+  /** Puts back what a change by voice or text did (see changes.ts). */
+  | { kind: 'undo'; undoId: string; label: string }
 
 export interface AssistantContext extends Pick<ItemContext, 'collected' | 'needFor'> {
   data: GameData

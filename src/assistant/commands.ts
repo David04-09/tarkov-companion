@@ -79,7 +79,8 @@ function mapFor(phrase: string, ctx: CommandContext): CommandContext['maps'][num
 }
 
 export function parseCommand(text: string, ctx: CommandContext): CommandTarget | null {
-  let s = ` ${words(text).join(' ')} `.trim()
+  // Calibres keep their point ("5.45"): words() would split them.
+  let s = ` ${words(text.replace(/(\d)\.(\d)/g, '$1dot$2')).join(' ')} `.trim()
   s = s.replace(TAIL, '').replace(LEAD, '')
   if (!s) return null
   if (/^(go back|back|previous page|go back a page)$/.test(s)) return { to: 'back', label: 'the last page' }
@@ -114,11 +115,14 @@ export function parseCommand(text: string, ctx: CommandContext): CommandTarget |
   }
 
   // "search GPU on the flea", "flea market LEDX", "LEDX on the flea".
-  const flea = /^(?:(.+) (?:on|in) (?:the )?(?:flea|flea market|market))$|^(?:flea market|flea) (.+)$/.exec(phrase)
+  // "search the flea for armor": any words, when a search was clearly asked for.
+  const flea = /^(?:(.+) (?:on|in) (?:the )?(?:flea|flea market|market))$|^(?:flea market|flea) (for )?(.+)$/.exec(phrase)
   if (flea) {
-    const said = strip(words(flea[1] ?? flea[2]))
-    const item = said.length ? ctx.findItem(said, false) : null
-    if (item) return { to: '/flea', label: `${item.name} on the Flea Market`, flea: item.name }
+    // The words as said: the Flea Market lists every item whose name has them, as in the game.
+    const said = strip(words(flea[1] ?? flea[3]))
+    const asked = /^(search|search for|look up|find|check)$/.test(verb) || Boolean(flea[2])
+    const typed = said.join(' ').replace(/(\d)dot(\d)/g, '$1.$2')
+    if (said.length && (asked || ctx.findItem(said, false))) return { to: '/flea', label: `"${typed}" on the Flea Market`, flea: typed }
   }
 
   // "GPU in my collection", "show the LEDX in item collection".
@@ -130,7 +134,7 @@ export function parseCommand(text: string, ctx: CommandContext): CommandTarget |
 
   // "show ammo M995", "show 5.45 ammo".
   if (verb && (w[0] === 'ammo' || w[w.length - 1] === 'ammo') && w.length > 1) {
-    const q = (w[0] === 'ammo' ? w.slice(1) : w.slice(0, -1)).join(' ')
+    const q = (w[0] === 'ammo' ? w.slice(1) : w.slice(0, -1)).join(' ').replace(/(\d)dot(\d)/g, '$1.$2')
     return { to: '/ammo', label: `${q} in Ammo`, params: { q } }
   }
   return null
@@ -141,7 +145,7 @@ export const commandText = (cmd: CommandTarget) => (cmd.to === 'back' ? 'Going b
 
 /** Words the always-on recogniser listens for besides the wake word: verbs, tab and map names. */
 export function commandWords(ctx: Pick<CommandContext, 'tabs' | 'maps'>): string[] {
-  const set = new Set(['open', 'go', 'to', 'show', 'me', 'take', 'switch', 'bring', 'up', 'pull', 'search', 'for', 'look', 'find', 'check', 'the', 'quest', 'task', 'key', 'keycard', 'on', 'in', 'my', 'back', 'tab', 'page', 'map', 'of', 'please'])
+  const set = new Set(['open', 'go', 'to', 'show', 'me', 'take', 'switch', 'bring', 'up', 'pull', 'search', 'for', 'look', 'find', 'check', 'the', 'quest', 'task', 'key', 'keycard', 'on', 'in', 'my', 'back', 'tab', 'page', 'map', 'of', 'please', 'zoom', 'focus'])
   for (const t of ctx.tabs) for (const n of [t.label, ...(TAB_ALIASES[t.path] ?? [])]) for (const x of words(n)) set.add(x)
   for (const m of ctx.maps) for (const x of words(m.name)) set.add(x)
   for (const list of Object.values(MAP_NICKNAMES)) for (const n of list) for (const x of words(n)) set.add(x)
@@ -149,4 +153,4 @@ export function commandWords(ctx: Pick<CommandContext, 'tabs' | 'maps'>): string
 }
 
 /** Verbs that start a command whose name the recogniser cannot know ("show quest …"): heard again by the better model. */
-export const NEEDS_TRANSCRIBING = /^(show|open|search|find|look|take|go|check|bring|pull)\b/
+export const NEEDS_TRANSCRIBING = /^(show|open|search|find|look|take|go|check|bring|pull|zoom|focus)\b/

@@ -7,6 +7,7 @@ import { ErrorPanel, LoadingPanel } from '../components/DataState'
 import { TradersPanel } from '../components/TradersPanel'
 import { useNeeds } from '../hooks/useNeeds'
 import { FEE_NOTE, fleaFee } from '../lib/economy'
+import { matchesSearch, rankMatch, searchWords } from '../lib/fleaSearch'
 import { formatNumber, formatRoubles, formatTimeAgo } from '../lib/format'
 import { remainingFor, type ItemNeed } from '../lib/needs'
 import { useFleaStore, type FleaSortKey } from '../store/flea'
@@ -210,6 +211,10 @@ export function FleaMarketPage() {
   const setFilters = useFleaStore((s) => s.setFilters)
   const resetFilters = useFleaStore((s) => s.resetFilters)
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  // Like the game: typing lists every item whose name has all the words; picking one shows just it.
+  const [picked, setPicked] = useState<{ id: string; name: string } | null>(null)
+  const [suggestOpen, setSuggestOpen] = useState(false)
+  const [activeSuggestion, setActiveSuggestion] = useState(0)
   const [, setChangeVersion] = useState(0)
   const changesRef = useRef(new Map<string, Changes>())
   const bumpTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -241,7 +246,8 @@ export function FleaMarketPage() {
 
   const filtered = useMemo(() => {
     const filters = listFilters
-    const needle = filters.search.trim().toLowerCase()
+    const words = searchWords(filters.search)
+    const only = picked && picked.name === filters.search ? picked.id : null
     const min = Number(filters.minPrice) || 0
     const max = Number(filters.maxPrice) || Infinity
     const minSlot = Number(filters.minPerSlot) || 0
@@ -250,7 +256,7 @@ export function FleaMarketPage() {
       if (filters.type !== 'all' && !r.item.types.includes(filters.type)) return false
       if (filters.fleaBan === 'banned' && !r.banned) return false
       if (filters.fleaBan === 'allowed' && r.banned) return false
-      if (needle && !(searchText.get(r.item.id) ?? '').includes(needle)) return false
+      if (only ? r.item.id !== only : words.length > 0 && !matchesSearch(searchText.get(r.item.id) ?? '', words)) return false
       const price = r.flea ?? r.traderSell
       if (price < min || price > max) return false
       if (minSlot > 0 && (r.perSlot ?? 0) < minSlot) return false
@@ -288,7 +294,24 @@ export function FleaMarketPage() {
     return list
     // changeVersion (via setChangeVersion) re-runs this when histories arrive
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, listFilters, needs, searchText, changesRef.current.size])
+  }, [rows, listFilters, needs, searchText, picked, changesRef.current.size])
+
+  const suggestions = useMemo(() => {
+    const words = searchWords(listFilters.search)
+    if (words.join('').length < 2) return []
+    return rows
+      .filter((r) => matchesSearch(searchText.get(r.item.id) ?? '', words))
+      .sort((a, b) => rankMatch(a.item.name, a.item.shortName, words) - rankMatch(b.item.name, b.item.shortName, words) || a.item.name.length - b.item.name.length || collator.compare(a.item.name, b.item.name))
+      .slice(0, 12)
+  }, [rows, searchText, listFilters.search])
+  const pick = (r: Row) => {
+    setFilters({ search: r.item.name })
+    setPicked({ id: r.item.id, name: r.item.name })
+    setExpandedId(r.item.id)
+    setSuggestOpen(false)
+    scrollRef.current?.scrollTo({ top: 0 })
+  }
+  const showingPicked = picked !== null && picked.name === filters.search
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const virtualizer = useVirtualizer({
@@ -331,10 +354,51 @@ export function FleaMarketPage() {
       <TradersPanel />
 
       <div className="flex flex-wrap items-center gap-2">
-        <label className="relative">
+        <div className="relative">
           <Search className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-dim" />
-          <input type="search" value={filters.search} onChange={(e) => setFilters({ search: e.target.value })} placeholder="Search name or short name…" aria-label="Search items" className={`${selectClass} w-60 pl-8`} />
-        </label>
+          <input
+            type="search"
+            value={filters.search}
+            onChange={(e) => {
+              setFilters({ search: e.target.value })
+              setPicked(null)
+              setSuggestOpen(true)
+              setActiveSuggestion(0)
+            }}
+            onFocus={() => setSuggestOpen(true)}
+            onBlur={() => setSuggestOpen(false)}
+            onKeyDown={(e) => {
+              if (!suggestOpen || !suggestions.length) return
+              if (e.key === 'ArrowDown') setActiveSuggestion((i) => Math.min(suggestions.length - 1, i + 1))
+              else if (e.key === 'ArrowUp') setActiveSuggestion((i) => Math.max(0, i - 1))
+              else if (e.key === 'Enter') pick(suggestions[Math.min(activeSuggestion, suggestions.length - 1)])
+              else if (e.key === 'Escape') setSuggestOpen(false)
+              else return
+              e.preventDefault()
+            }}
+            placeholder="Search: any words of the name…"
+            aria-label="Search items"
+            aria-autocomplete="list"
+            className={`${selectClass} w-72 pl-8`}
+          />
+          {suggestOpen && !showingPicked && suggestions.length > 0 && (
+            <ul role="listbox" aria-label="Matching items" className="absolute left-0 top-full z-40 mt-1 max-h-96 w-96 max-w-[90vw] overflow-y-auto rounded border border-line bg-surface-2 py-1 shadow-xl">
+              {suggestions.map((r, i) => (
+                <li key={r.item.id} role="option" aria-selected={i === activeSuggestion}>
+                  {/* onMouseDown: picked before the input's blur closes the list. */}
+                  <button type="button" onMouseDown={(e) => { e.preventDefault(); pick(r) }} onMouseEnter={() => setActiveSuggestion(i)} className={`flex w-full items-center gap-2 px-2 py-1 text-left text-sm ${i === activeSuggestion ? 'bg-surface-3' : ''}`}>
+                    {r.item.iconLink ? <img src={r.item.iconLink} alt="" className="h-7 w-7 shrink-0 object-contain" loading="lazy" /> : <span className="h-7 w-7 shrink-0" />}
+                    <span className="min-w-0 flex-1 truncate">{r.item.name}</span>
+                    <span className="shrink-0 text-xs tabular-nums text-ink-dim">{r.flea != null ? formatRoubles(r.flea) : r.banned ? 'banned' : '—'}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+        {showingPicked && (
+          <button type="button" onClick={() => setPicked(null)} className="btn !py-1 !text-xs" title="Show every item matching the words again">Show all matches</button>
+        )}
         <select value={filters.type} onChange={(e) => setFilters({ type: e.target.value })} aria-label="Category" className={selectClass}>
           <option value="all">All categories</option>
           {types.map(([t, n]) => (
