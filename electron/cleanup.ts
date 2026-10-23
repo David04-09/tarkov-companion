@@ -37,7 +37,7 @@ export function oldInstallerNames(names: string[], current: string): string[] {
 
 /** Pack folders that are not the current version of their pack (plus half-finished unpacks). */
 export function stalePackDirs(names: string[], keep: Set<string>): string[] {
-  return names.filter((n) => !keep.has(n) && /^(?:lighthouse|scan)-[0-9a-f]{16}(?:\.tmp)?$/.test(n))
+  return names.filter((n) => !keep.has(n) && /^(?:lighthouse|scan|voice|tts|asr|nlu)-[0-9a-f]{16}(?:\.tmp)?$/.test(n))
 }
 
 /** Size of a file or folder in bytes (0 when missing). */

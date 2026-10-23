@@ -11,7 +11,7 @@ import { compact, findNames, sayDistance, words, type NameEntry } from './text'
 import { closestTo, orderStops, parseSide, pmcSpawns, spawnOnSide } from './route/routePlan'
 import { raidAnswer, type LiveInfo } from './raidAnswers'
 import { possessive } from './humanize'
-import { collectAnswer, expandNicknames, findItem, infoAnswer, itemQuestionKind, needAnswer, nicknameItem, parseCount, priceAnswer, whereAnswer, type ItemContext } from './items'
+import { cardAnswer, collectAnswer, expandNicknames, NOT_NAME, findItem, infoAnswer, itemQuestionKind, needAnswer, nicknameItem, parseCount, priceAnswer, whereAnswer, type ItemContext } from './items'
 
 export interface MapPoint {
   id: string
@@ -53,6 +53,8 @@ export interface Reply {
   confirm?: { itemId: string; from: number; to: number; doneText: string }
   /** Things the assistant offers to do; each is a button and runs only when clicked. */
   actions?: AssistantAction[]
+  /** A key: the page looks up on the wiki whether its room is worth it and adds that before answering. */
+  keyCheck?: { wikiLink: string; questNames: string[] }
 }
 
 export type AssistantAction =
@@ -93,6 +95,15 @@ let cached: { data: GameData; items: ItemsById | undefined; tasks: Task[]; index
 /** Name lists, built once per data load (not per question). */
 export type Slot = 'item' | 'place' | 'map' | 'quest' | 'boss'
 
+/** Little words between names that never name an item themselves. */
+const LINK_WORDS = new Set(['and', 'or', 'but', 'so', 'now', 'then', 'ok', 'okay', 'yes', 'no', 'he', 'she', 'they', 'we', 'you', 'him', 'her', 'us', 'was', 'were', 'be', 'if', 'with', 'by', 'same', 'thing', 'what', 'about', 'again', 'too', 'also'])
+
+/** Every word said is part of the item's name (or "the", "a"). */
+function onlyItemName(q: string[], it: { name: string; shortName: string }): boolean {
+  const name = words(`${it.name} ${it.shortName}`)
+  return q.every((w) => ['the', 'a', 'an', 'my'].includes(w) || name.some((n) => n === w || (w.length >= 3 && n.startsWith(w)) || (n.length >= 3 && w.startsWith(n))))
+}
+
 /**
  * The names in a question, each swapped for a plain word ("where does LEDX spawn on Customs" →
  * "where does item spawn on map"), for matching the sentence's meaning (understand.ts).
@@ -122,6 +133,18 @@ export function nameSlots(question: string, ctx: AssistantContext): { masked: st
     for (let i = h.start; i <= h.end; i++) used.add(i)
     chosen.push(h)
     slots[h.slot] = h.name
+  }
+  // Items said in part ("west 306 key", "dorms marked"): the words left over name one item.
+  if (!slots.item && ctx.items) {
+    const free = q.map((_, i) => i).filter((i) => !used.has(i) && !NOT_NAME.has(q[i]) && !LINK_WORDS.has(q[i]))
+    const hit = free.length && free.length <= 5 ? findItem(free.map((i) => q[i]), ctx.items) : null
+    const start = free[0]
+    const end = free[free.length - 1]
+    if (hit && free.some((i) => q[i].length >= 3 || /\d/.test(q[i])) && ![...Array(end - start + 1).keys()].some((k) => used.has(start + k))) {
+      for (let i = start; i <= end; i++) used.add(i)
+      chosen.push({ start, end, slot: 'item', name: hit.item.name, len: end - start + 1 })
+      slots.item = hit.item.name
+    }
   }
   const out: string[] = []
   for (let i = 0; i < q.length; ) {
@@ -304,7 +327,7 @@ export function answer(question: string, ctx: AssistantContext): Reply {
       const hit = findItem(expandNicknames(q.filter((_, i) => !mapWords.has(i))), ctx.items, undefined, (it) => (neededIds.has(it.id) ? 1 : 0))
       if (hit) {
         const kind = itemQuestionKind(said)
-        return kind === 'where' ? whereAnswer(hit, ctx) : kind === 'price' ? priceAnswer(hit, ctx) : infoAnswer(hit, ctx)
+        return kind === 'where' ? whereAnswer(hit, ctx) : kind === 'price' ? priceAnswer(hit, ctx) : kind === 'card' ? cardAnswer(hit, ctx) : infoAnswer(hit, ctx)
       }
     }
   }
@@ -398,9 +421,11 @@ export function answer(question: string, ctx: AssistantContext): Reply {
   // 8. An item named on its own ("LEDX", "dorm 303 key").
   if (ctx.items) {
     const hit = findItem(expandNicknames(q.filter((_, i) => !mapWords.has(i))), ctx.items)
-    if (hit) return { ...infoAnswer(hit, ctx), weak: true }
-    const itemHit = index.items ? findNames(q, index.items, 6).filter((h) => h.len >= 3)[0] : undefined
-    if (itemHit) return { ...infoAnswer({ item: itemHit.value, others: [] }, ctx), weak: true }
+    // Only the name was said ("LEDX", "the moonshine"): the short card; with other words around it, a guess.
+    if (hit) return { ...cardAnswer(hit, ctx), weak: !onlyItemName(q, hit.item) }
+    // Not a map said on its own ("and on Woods" is not the Woods map item).
+    const itemHit = index.items ? findNames(q, index.items, 6).filter((h) => h.len >= 3 && ![...mapWords].some((i) => i >= h.start && i <= h.end))[0] : undefined
+    if (itemHit) return { ...cardAnswer({ item: itemHit.value, others: [] }, ctx), weak: !onlyItemName(q, itemHit.value) }
   } else if (/\b(item|open|opens)\b/.test(said)) {
     return { text: 'Loading the item list…', needsItems: true }
   }
@@ -408,7 +433,7 @@ export function answer(question: string, ctx: AssistantContext): Reply {
   if (places.length) {
     const { place } = pickPlace(places, contextMap)
     const map = place ? mapByLabelKey(ctx, place.mapKey, contextMap) : undefined
-    if (place && map) return { text: `${place.name} is on ${map.name}. Say "I'm at ${place.name}" and I'll find the closest quest.`, map: { map, points: [{ id: 'place', position: place.position, label: place.name, kind: 'place' }], route: null }, mapId: map.id }
+    if (place && map) return { text: `${place.name} is on ${map.name}. Say "I'm at ${place.name}" and I'll find the closest quest.`, map: { map, points: [{ id: 'place', position: place.position, label: place.name, kind: 'place' }], route: null }, mapId: map.id, weak: true }
   }
   if (namedMap) return { text: `What about ${namedMap.name}? Try "quests on ${namedMap.name}" or "extracts on ${namedMap.name}".`, mapId: namedMap.id, weak: true }
   return { text: 'Sorry, I did not get that.', lines: HELP.lines }

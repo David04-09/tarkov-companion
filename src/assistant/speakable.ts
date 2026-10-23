@@ -2,7 +2,7 @@
  * Text as it should be said: room and key numbers digit by digit ("Dorm room 314" → "three one
  * four", the way players say them), codes letter by letter ("ZB-014" → "Z B zero one four").
  * Amounts stay numbers ("about 250 metres", "322,319 roubles", "13 quests"). Both voices read
- * long numbers as "three hundred and fourteen", which the natural voice mangles in key names.
+ * long numbers as "three hundred and fourteen", which speech voices mangle in key names.
  */
 const DIGITS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine']
 const digitByDigit = (n: string) => n.split('').map((d) => DIGITS[Number(d)]).join(' ')

@@ -23,7 +23,7 @@ const MAX_LISTEN_MS = 25_000
 /** Time to start talking after the mic opens. */
 const WAIT_FOR_SPEECH_MS = 8_000
 /** Silence after speech that ends the question. */
-const END_AFTER_QUIET_MS = 1_800
+const END_AFTER_QUIET_MS = 1_300
 const UNLOAD_AFTER_MS = 3 * 60_000
 const SAMPLE_RATE = 16_000
 

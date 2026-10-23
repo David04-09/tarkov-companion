@@ -7,6 +7,7 @@ describe('talking like a person', () => {
   it('uses the short name people say', () => {
     expect(talkName({ name: 'LEDX Skin Transilluminator', shortName: 'LEDX' })).toBe('the LEDX')
     expect(talkName({ name: 'Bottle of Fierce Hatchling moonshine', shortName: 'Moonshine' })).toBe('the moonshine')
+    expect(talkName({ name: 'Factory emergency exit key', shortName: 'Factory' })).toBe('the factory key')
     expect(talkName({ name: 'Gas analyzer', shortName: 'GasAn' })).toBe('Gas analyzer')
     expect(possessive('Therapist')).toBe("Therapist's")
   })

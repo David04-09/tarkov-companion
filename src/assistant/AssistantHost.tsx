@@ -23,14 +23,27 @@ import { useProfile, useProgressStore } from '../store/progress'
 import { useRaidBriefingStore } from '../store/raidBriefing'
 import { useUiStore } from '../store/ui'
 import { answer, nameSlots, type AssistantAction, type AssistantContext, type Reply } from './engine'
-import { nluLoaded, understandQuestion } from './nlu'
+import { nluLoaded, understandQuestion, warmNlu } from './nlu'
+import { followUp, type Slotted } from './followUp'
 import { headingOnMap } from './heading'
-import { confirmWord } from './items'
+import { confirmWord, keyWorthText } from './items'
+import { fetchKeyWiki } from '../api/wikiKey'
+import { wikiTitle } from '../api/wikiGuide'
+import { keyVerdict } from '../lib/keyVerdict'
 import { listenOnce, type ListenState } from './listen'
 import { ALL_PLACES, type Place } from './places'
 import { cutCount, onSpeakingChange, speak, stopSpeaking } from './speech'
 import { addressed, naturalSpeech } from './humanize'
 import type { PopupData } from '../shared/desktop-api'
+
+/**
+ * In a hands-free conversation: does it sound like something asked of the assistant? A question
+ * word, a request, a game-word question ("price", "extract"), or its name. Chatter has none.
+ */
+const ASKED = /\b(what|whats|where|wheres|how|hows|which|who|whos|when|why|is|are|am|can|could|should|would|will|do|does|did|tell|show|give|find|take|guide|route|path|draw|price|cost|costs|worth|value|much|many|extract|extracts|exit|close|hide|open|add|added|collected|used|sold|remove|mark|remember|forget|call|help|need|needs|best|closest|nearest|list|read|say|repeat|again|keep|sell|loot|boss|bosses|spawn|key|keys|quest|quests|ammo|unlock|unlocks|restock|scav|time|left|stats|progress|means|meant|mean)\b/
+function looksAsked(said: string, name: string): boolean {
+  return ASKED.test(said) || said.split(' ').includes(name)
+}
 
 /** Phrases that close the pop-up over the game, and that show it again. */
 const CLOSE_POPUP = /^(?:ok |okay |thanks )?(?:close|close it|close that|close this|close the window|close the pop up|close the popup|hide|hide it|hide that|hide this|hide the window|get rid of (?:it|that)|dismiss|dismiss that|clear (?:it|that|the screen)|go away|thats enough|got it close it)$/
@@ -86,6 +99,8 @@ export function AssistantHost() {
   /** In a conversation: the last line answered (for "not you") and the last one ignored (for "that was for you"). */
   const lastAnswered = useRef<string | null>(null)
   const lastIgnored = useRef<string | null>(null)
+  /** The names of the last question (masked + values), for follow-ups ("how much is it", "and on Woods"). */
+  const lastSlotted = useRef<Slotted | null>(null)
   /** The last question as asked, for "no, I meant …". */
   const lastQuestion = useRef<string | null>(null)
   /** The word of the last question it did not understand, for "that means …". */
@@ -229,7 +244,7 @@ export function AssistantHost() {
         let said = wantsShort(style, kind) ? firstSentence(reply.text) : reply.text
         if (style.byKind?.[kind] === 'full' && reply.lines?.length) said = `${said} ${reply.lines.slice(0, 2).join('. ')}.`
         said = naturalSpeech(said, { opener: true })
-        void speak(said, { ...voice, onStatus: (m) => m && chat().listen.state === 'idle' && setListen({ state: 'idle', detail: m }) }).then(() => useAssistantMemory.getState().spoke(cutCount() > cutBefore))
+        void speak(said, voice).then(() => useAssistantMemory.getState().spoke(cutCount() > cutBefore))
       }
     },
     [voice],
@@ -252,9 +267,15 @@ export function AssistantHost() {
    * `conversation`: heard after the wake word, where the player may be talking to someone else.
    * Then only what is clearly for the assistant is answered; the rest is shown greyed out, not said.
    */
-  const ask = (input: string, opts: { conversation?: boolean } = {}) => {
+  const ask = (input: string, opts: { conversation?: boolean; itemsTried?: boolean } = {}) => {
     const text = input.trim()
     if (!text) return
+    // The item names first (only the very first time; kept offline afterwards): follow-ups ("how much
+    // is it") and a bare item name ("LEDX") need them to know what was meant.
+    if (!opts.itemsTried && gameData.data && !queryClient.getQueryData(itemKeys.mode(gameMode))) {
+      void loadItems().finally(() => askRef.current(input, { ...opts, itemsTried: true }))
+      return
+    }
     const conversation = !!opts.conversation
     const you = nextId.current++
     const id = nextId.current++
@@ -436,7 +457,25 @@ export function AssistantHost() {
       mem.usedWords(learned.used)
       question = learned.text
     }
-    const finish = (r: Reply) => {
+    const finish = (r: Reply): void => {
+      // A key: whether its room is worth it comes from the wiki (cached for a week); wait at most 2.5 s.
+      if (r.keyCheck) {
+        const check = r.keyCheck
+        const base: Reply = { ...r, keyCheck: undefined }
+        const title = wikiTitle(check.wikiLink)
+        if (!title) return finish(base)
+        chat().set({ pending: id })
+        const wiki = queryClient.fetchQuery({ queryKey: ['keyWiki', title, 2] as const, queryFn: ({ signal }) => fetchKeyWiki(title, signal), staleTime: 7 * 24 * 3_600_000 })
+        const late = new Promise<null>((resolve) => window.setTimeout(() => resolve(null), 2_500))
+        void Promise.race([wiki, late])
+          .then((w) => {
+            const worth = w ? keyWorthText(keyVerdict({ behind: w.behind, questNames: check.questNames })) : null
+            finish(worth ? { ...base, text: `${base.text} ${worth}` } : base)
+          })
+          .catch(() => finish(base))
+          .finally(() => clearPending(id))
+        return
+      }
       if (conversation) lastAnswered.current = text
       lastReply.current = { reply: r, kind: currentKind.current }
       show(id, prefix ? { ...r, text: prefix + r.text } : r)
@@ -447,6 +486,17 @@ export function AssistantHost() {
       setMessages((m) => m.map((x) => (x.id === id ? { ...x, text: 'The game data is still loading. Ask again in a moment.' } : x)))
       return
     }
+    // In a hands-free conversation, only clear questions and requests are answered; talk to
+    // friends ("push left", "nice one") is left alone without even trying.
+    // Follow-ups: "how much is it worth" after the LEDX, "and on Woods?" after Customs' extracts.
+    const cachedNow = queryClient.getQueryData<{ items: ItemsById }>(itemKeys.mode(gameMode))?.items
+    const slotted = nameSlots(question, context(data, cachedNow))
+    // An item's name on its own ("LEDX", "dorms marked key") is asking about it, also mid-conversation.
+    const onlyItem = !!slotted.slots.item && words(slotted.masked).every((w) => ['item', 'the', 'a', 'an'].includes(w))
+    if (conversation && !onlyItem && !looksAsked(said, useAssistantStore.getState().wakeName)) return ignore()
+    const again = followUp(question, slotted, lastSlotted.current)
+    if (again) question = again
+    lastSlotted.current = again ? nameSlots(again, context(data, cachedNow)) : Object.keys(slotted.slots).length ? slotted : lastSlotted.current
     if (WHAT_YOU_KNOW.test(said)) return show(id, knowReply(data, mem))
     if (RECOMMEND.test(said)) return finish(recommendReply(data, statuses, onMap(data), mem.habits))
     // "Where's MY 314 key?": the player's own note first.
@@ -476,7 +526,8 @@ export function AssistantHost() {
       if (!unsure && !nluLoaded()) return finish(r)
       setMessages((m) => m.map((x) => (x.id === id ? { ...x, text: 'Thinking…' } : x)))
       chat().set({ pending: id })
-      const need = notUnderstood(r) ? 0.62 : r.weak ? 0.7 : 0.88
+      // In a conversation the helper must be surer: a near match there is more likely chatter.
+      const need = notUnderstood(r) ? (conversation ? 0.72 : 0.62) : r.weak ? (conversation ? 0.78 : 0.7) : 0.88
       const status = (msg: string) => setMessages((m) => m.map((x) => (x.id === id ? { ...x, text: msg } : x)))
       // Item names must be known to be swapped for "item" ("is a GPU expensive"): the item list first.
       const withItems = items ? Promise.resolve(items) : queryClient.fetchQuery({ queryKey: itemKeys.mode(gameMode), queryFn: ({ signal }) => fetchItems(gameMode, signal) }).then((x) => x.items)
@@ -493,7 +544,9 @@ export function AssistantHost() {
           // A sure answer is only replaced when the helper's question uses every name that was said.
           const covers = hit && (unsure || hit.slots === names)
           const again = hit && covers ? answer(hit.ask, context(data, all)) : null
-          if (hit && again && !again.needsItems && !notUnderstood(again) && words(hit.ask).join(' ') !== words(question).join(' ')) finish({ ...again, lines: [`I took that as: "${hit.ask}"`, ...(again.lines ?? [])] })
+          // The same answer the rules gave: no "I took that as" note.
+          if (hit && again && again.text === r.text) finish(r)
+          else if (hit && again && !again.needsItems && !notUnderstood(again) && words(hit.ask).join(' ') !== words(question).join(' ')) finish({ ...again, lines: [`I took that as: "${hit.ask}"`, ...(again.lines ?? [])] })
           // In a conversation, what is not understood (or only guessed) was most likely said to someone else.
           else if (conversation && unsure) ignore()
           else finish(notUnderstood(r) ? teachHint(r) : r)
@@ -664,6 +717,7 @@ export function AssistantHost() {
         onState: (state, detail) => setListen({ state: state === 'waiting' ? 'idle' : state, detail: state === 'waiting' ? waitingText : detail }),
         onWake: () => {
           stopSpeaking()
+          warmNlu()
           chat().set({ talking: true })
           setListen({ state: 'listening', detail: `Listening. Say "thanks, that's all" when you are done.` })
           const greeting = greetingRef.current()

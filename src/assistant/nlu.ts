@@ -74,6 +74,12 @@ async function embed(texts: string[], onLoading?: (message: string) => void): Pr
   }
 }
 
+/** Loads the helper and its examples ahead of time (the wake word does this). */
+export function warmNlu(): void {
+  examples ??= embed(EXAMPLES.map((e) => e.text))
+  examples.catch(() => undefined)
+}
+
 /** True once the model is loaded (asking it then costs about a millisecond). */
 export const nluLoaded = () => !!worker
 

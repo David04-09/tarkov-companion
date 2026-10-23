@@ -103,7 +103,7 @@ export function parseKeyWiki(html: string, pageUrl: string): KeyWiki {
   return out
 }
 
-async function fetchKeyWiki(title: string, signal?: AbortSignal): Promise<KeyWiki> {
+export async function fetchKeyWiki(title: string, signal?: AbortSignal): Promise<KeyWiki> {
   const url = `${WIKI_API}?action=parse&page=${encodeURIComponent(title)}&prop=text&redirects=1&format=json&formatversion=2&origin=*`
   const res = await fetch(url, { signal })
   if (!res.ok) throw new Error(`Wiki responded ${res.status}`)

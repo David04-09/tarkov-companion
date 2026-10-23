@@ -72,8 +72,6 @@ jobs:
       - name: Speech model for the assistant's voice input (Vosk)
         run: npm run voice:assets
 
-      - name: Natural voice for the assistant (Kitten TTS)
-        run: npm run tts:assets
 
       - name: Speech recognition for the assistant (Moonshine)
         run: npm run asr:assets

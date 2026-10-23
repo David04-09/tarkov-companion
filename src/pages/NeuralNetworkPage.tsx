@@ -5,8 +5,7 @@ import { useGameData } from '../api/hooks'
 import { AssistantMap } from '../assistant/AssistantMap'
 import { MemoryPanel } from '../assistant/MemoryPanel'
 import { WAKE_NAMES } from '../assistant/wake'
-import { listVoices, pickNaturalVoice, pickVoice, speak, speechAvailable, stopSpeaking, voiceGender } from '../assistant/speech'
-import { NATURAL_VOICES } from '../assistant/naturalVoice'
+import { listVoices, pickVoice, speak, speechAvailable, stopSpeaking, voiceGender } from '../assistant/speech'
 import { useAssistantStore } from '../store/assistant'
 import { useAssistantChat } from '../store/assistantChat'
 
@@ -24,30 +23,28 @@ const EXAMPLES = ["I'm at Dorms, what's the closest quest?", 'Where is Crackhous
 function VoicePanel() {
   const s = useAssistantStore()
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>(() => listVoices())
-  const [status, setStatus] = useState<string | null>(null)
   useEffect(() => {
     if (!speechAvailable()) return
     const update = () => setVoices(listVoices())
     window.speechSynthesis.addEventListener('voiceschanged', update)
     return () => window.speechSynthesis.removeEventListener('voiceschanged', update)
   }, [])
-  const natural = s.engine === 'natural'
   const ofGender = voices.filter((v) => voiceGender(v) === s.gender)
   const current = pickVoice(voices, s.gender, s.voiceUri)
-  const noMatch = !natural && voices.length > 0 && ofGender.length === 0
-  const naturalList: readonly string[] = NATURAL_VOICES[s.gender]
+  const noMatch = voices.length > 0 && ofGender.length === 0
   const segment = (on: boolean) => `px-3 py-1 ${on ? 'bg-accent/20 text-accent' : 'text-ink-muted hover:bg-surface-3'}`
   return (
     <div className="space-y-3 text-sm">
       <label className="flex items-center gap-2">
         <input type="checkbox" checked={s.speak} onChange={(e) => s.set({ speak: e.target.checked })} className="h-4 w-4" />
         Read answers out loud
+        <span className="text-xs text-ink-dim">(Windows voices: no download, almost no CPU)</span>
       </label>
       {window.desktop && (
         <label className="flex items-center gap-2">
           <input type="checkbox" checked={s.popup} onChange={(e) => s.set({ popup: e.target.checked })} className="h-4 w-4" />
           Show answers in a pop-up over the game
-          <span className="text-xs text-ink-dim">(see-through, top right of the screen your mouse is on; clicks go through to the game; say "close that" to hide it)</span>
+          <span className="text-xs text-ink-dim">(see-through, top left of the screen your mouse is on; clicks go through to the game; say "close that" to hide it)</span>
         </label>
       )}
       <div className="flex flex-wrap items-center gap-2">
@@ -63,40 +60,24 @@ function VoicePanel() {
         <span className="text-xs text-ink-dim">On any tab while the app is open: say the name, it answers "Yes sir?", ask away, and say "thanks, that's all" to finish. The mic stays open while it waits; only the name is listened for and nothing leaves this PC.</span>
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <span className="w-16 text-ink-muted">Engine</span>
-        <div className="inline-flex overflow-hidden rounded border border-line" role="group" aria-label="Voice engine">
-          <button type="button" onClick={() => s.set({ engine: 'natural' })} className={segment(natural)}>Natural</button>
-          <button type="button" onClick={() => s.set({ engine: 'windows' })} className={segment(!natural)}>Windows</button>
-        </div>
-        <span className="text-xs text-ink-dim">{natural ? 'Neural voice on this PC (57 MB download the first time; ~1 s per sentence on one CPU core).' : 'The voices built into Windows: no download, almost no CPU, robotic.'}</span>
-      </div>
-      <div className="flex flex-wrap items-center gap-2">
         <span className="w-16 text-ink-muted">Voice</span>
         <div className="inline-flex overflow-hidden rounded border border-line" role="group" aria-label="Voice">
           {(['female', 'male'] as const).map((g) => (
-            <button key={g} type="button" onClick={() => s.set({ gender: g, voiceUri: null, naturalVoice: null })} className={`${segment(s.gender === g)} capitalize`}>
+            <button key={g} type="button" onClick={() => s.set({ gender: g, voiceUri: null })} className={`${segment(s.gender === g)} capitalize`}>
               {g}
             </button>
           ))}
         </div>
-        {natural ? (
-          <select value={pickNaturalVoice(s.gender, s.naturalVoice)} onChange={(e) => s.set({ naturalVoice: e.target.value })} aria-label="Which voice" className="rounded border border-line bg-surface px-2 py-1 text-xs">
-            {naturalList.map((v) => (
-              <option key={v} value={v}>{v}</option>
+        {ofGender.length > 1 && (
+          <select value={current?.voiceURI ?? ''} onChange={(e) => s.set({ voiceUri: e.target.value || null })} aria-label="Which voice" className="min-w-0 max-w-full rounded border border-line bg-surface px-2 py-1 text-xs">
+            {ofGender.map((v) => (
+              <option key={v.voiceURI} value={v.voiceURI}>{v.name}</option>
             ))}
           </select>
-        ) : (
-          ofGender.length > 1 && (
-            <select value={current?.voiceURI ?? ''} onChange={(e) => s.set({ voiceUri: e.target.value || null })} aria-label="Which voice" className="min-w-0 max-w-full rounded border border-line bg-surface px-2 py-1 text-xs">
-              {ofGender.map((v) => (
-                <option key={v.voiceURI} value={v.voiceURI}>{v.name}</option>
-              ))}
-            </select>
-          )
         )}
       </div>
       {noMatch && <p className="text-xs text-ink-dim">No {s.gender} voice is installed; using {current?.name ?? 'the default voice'}. Windows: Settings → Time & language → Speech adds more.</p>}
-      {!natural && !speechAvailable() && <p className="text-xs text-ink-dim">Windows voices are not available on this system.</p>}
+      {!speechAvailable() && <p className="text-xs text-ink-dim">Windows voices are not available on this system.</p>}
       <label className="flex items-center gap-2">
         <span className="w-16 text-ink-muted">Volume</span>
         <input type="range" min={0} max={1} step={0.05} value={s.volume} onChange={(e) => s.set({ volume: Number(e.target.value) })} className="w-48 accent-[var(--color-accent)]" aria-label="Volume" />
@@ -108,10 +89,9 @@ function VoicePanel() {
         <span className="w-10 tabular-nums text-xs text-ink-dim">{s.rate.toFixed(1)}×</span>
       </label>
       <div className="flex flex-wrap items-center gap-2">
-        <button type="button" className="btn" onClick={() => speak('This is how I sound. Ask me anything about Tarkov.', { ...s, onStatus: setStatus })}>
+        <button type="button" className="btn" onClick={() => speak('This is how I sound. Ask me anything about Tarkov.', s)}>
           <Volume2 className="h-4 w-4" /> Test voice
         </button>
-        {status && <span className="text-xs text-ink-dim">{status}</span>}
       </div>
     </div>
   )

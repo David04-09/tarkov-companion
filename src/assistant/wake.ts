@@ -15,7 +15,7 @@ import type { VoskRecognizer } from './voskClient'
 
 const SAMPLE_RATE = 16_000
 /** Silence after speech that ends a question. */
-const END_AFTER_QUIET_S = 1.8
+const END_AFTER_QUIET_S = 1.3
 /** Longest single question. */
 const MAX_QUESTION_S = 25
 /** Back to waiting for the name after this long without speech in a conversation. */

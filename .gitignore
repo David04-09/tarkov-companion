@@ -53,8 +53,6 @@ public/ocr/
 public/voice/
 public/vosk/
 
-# Natural voice for the assistant (generated: npm run tts:assets)
-public/tts/
 public/asr/
 public/nlu/
 public/asr-test/

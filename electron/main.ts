@@ -311,11 +311,11 @@ function ensurePopup(): { w: BrowserWindow; ready: Promise<void> } {
   return { w, ready: popupReady }
 }
 
-/** Top-right corner of the screen under the mouse. */
+/** Top-left corner of the screen under the mouse. */
 function placePopup(w: BrowserWindow, height: number) {
   const area = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea
   const h = Math.max(80, Math.min(Math.round(height), Math.round(area.height * 0.7)))
-  w.setBounds({ x: area.x + area.width - POPUP_WIDTH - POPUP_MARGIN, y: area.y + POPUP_MARGIN, width: POPUP_WIDTH, height: h })
+  w.setBounds({ x: area.x + POPUP_MARGIN, y: area.y + POPUP_MARGIN, width: POPUP_WIDTH, height: h })
 }
 
 async function showPopup(data: PopupData) {

@@ -23,7 +23,7 @@ describe('oldInstallerNames', () => {
 describe('stalePackDirs', () => {
   it('keeps current packs and unknown folders', () => {
     const keep = new Set(['scan-0123456789abcdef'])
-    expect(stalePackDirs(['scan-0123456789abcdef', 'scan-fedcba9876543210', 'lighthouse-aaaaaaaaaaaaaaaa.tmp', 'notes', 'scan-short'], keep)).toEqual(['scan-fedcba9876543210', 'lighthouse-aaaaaaaaaaaaaaaa.tmp'])
+    expect(stalePackDirs(['scan-0123456789abcdef', 'scan-fedcba9876543210', 'lighthouse-aaaaaaaaaaaaaaaa.tmp', 'notes', 'scan-short', 'tts-0123456789abcdef'], keep)).toEqual(['scan-fedcba9876543210', 'lighthouse-aaaaaaaaaaaaaaaa.tmp', 'tts-0123456789abcdef'])
   })
 })
 

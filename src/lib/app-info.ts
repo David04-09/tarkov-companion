@@ -25,7 +25,6 @@ export const CREDITS: Credit[] = [
   { name: 'Moonshine (Useful Sensors)', url: 'https://huggingface.co/UsefulSensors/moonshine-tiny', license: 'MIT', what: 'Offline speech recognition: turns your spoken questions to the assistant into text.' },
   { name: 'paraphrase-MiniLM-L3-v2 (sentence-transformers)', url: 'https://huggingface.co/sentence-transformers/paraphrase-MiniLM-L3-v2', license: 'Apache-2.0', what: 'Offline plain-English helper: matches a question the assistant did not understand to one it knows.' },
   { name: 'Vosk (vosk-browser)', url: 'https://alphacephei.com/vosk/', license: 'Apache-2.0', what: 'Offline wake word ("Hey Ranger") and hearing when you have finished a question, with the small English model.' },
-  { name: 'Kitten TTS (KittenML)', url: 'https://huggingface.co/KittenML', license: 'Apache-2.0', what: "The assistant's natural voice, made on this PC (onnxruntime-web, phonemizer)." },
   { name: 'Tesseract OCR (tesseract.js)', url: 'https://github.com/naptha/tesseract.js', license: 'Apache-2.0', what: 'Reads the item names printed in stash screenshots, offline, for the stash scanner.' },
   { name: 'Electron, React, Leaflet, TanStack, Zustand, Tailwind, Geoman, lucide', url: 'https://github.com/David04-09/tarkov-companion/blob/main/THIRD_PARTY_NOTICES.txt', license: 'MIT and similar (full texts in THIRD_PARTY_NOTICES.txt)', what: 'The open-source libraries the app is built with.' },
 ]

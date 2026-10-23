@@ -10,9 +10,11 @@ import type { TaskStatus } from '../lib/taskStatus'
 import type { MapPoint, Reply } from './engine'
 import { similarity } from '../maps/overlay/questListMatch'
 import { compact, words } from './text'
+import { labelKey, nearestPlace } from './places'
+import type { KeyVerdict } from '../lib/keyVerdict'
 
 /** Words that are about the question, not part of an item's name. */
-const NOT_NAME = new Set(
+export const NOT_NAME = new Set(
   `where wheres can could i im find get found spawn spawns spawning loot looted is are the a an of how much many what whats which who for used use need needed needs do does did it its this that cost costs price prices worth value sell sells selling sold buy buying bought to me my show tell about please on in at raid good any some there best place places locate location trader traders flea market item items
   collected collect picked pick up got grabbed grab add added have has just one more another x pcs piece pieces stash collection inventory into from remove removed take took away minus lost gave give handed hand still left total`.split(
     /\s+/,
@@ -308,15 +310,72 @@ export function infoAnswer(m: ItemMatch, ctx: ItemContext): Reply {
   }
 }
 
+/**
+ * Just an item's name ("dorms marked key", "LEDX"): a short card for the corner of the screen.
+ * Keys: where the lock is, the price and (looked up on the wiki by the page, `keyCheck`) whether the
+ * room is worth it. Other items: the price, where it lies around and which open quests need it.
+ */
+export function cardAnswer(m: ItemMatch, ctx: ItemContext): Reply {
+  const it = m.item
+  const name = capital(talkName(it))
+  const price = it.types.includes('noFlea') ? null : it.avg24hPrice
+  const sell = [...it.sellToTrader].sort((a, b) => b.priceRUB - a.priceRUB)[0]
+  const priceLine = price ? `Flea: about ${rub(price)}` : sell ? `No flea; ${traderName(ctx, sell.traderId)} pays ${rub(sell.priceRUB)}` : it.buyFromTrader[0] ? `Sold by ${traderName(ctx, it.buyFromTrader[0].traderId)} for ${rub(it.buyFromTrader[0].priceRUB)}` : null
+  const { hand, keyFor } = openQuestsNeeding(it, ctx)
+  const quests = [...hand, ...keyFor]
+  const questLine = quests.length ? `Needed for: ${quests.slice(0, 2).map((t) => t.name).join(', ')}${quests.length > 2 ? ` +${quests.length - 2}` : ''}` : null
+  // Night Factory repeats Factory's locks and spots.
+  const maps = ctx.data.maps.filter((map, _i, all) => !(map.normalizedName === 'night-factory' && all.some((o) => o.normalizedName === 'factory')))
+  const locks = maps.flatMap((map) => (ctx.data.mapDetails[map.id]?.locks ?? []).filter((l) => l.keyId === it.id).map((l) => ({ map, lock: l, near: nearestPlace(labelKey(map.normalizedName), l.position) })))
+  if (locks.length) {
+    const first = locks[0]
+    const where = `${first.map.name}${first.near ? `, near ${first.near.place.name}` : ''}`
+    const lines = [`Lock: ${locks.slice(0, 2).map((l) => `${l.map.name}${l.near ? `, near ${l.near.place.name}` : ''}`).join('; ')}`, ...(priceLine ? [priceLine] : []), ...(questLine ? [questLine] : []), ...alsoLine(m)]
+    const points: MapPoint[] = locks.filter((l) => l.map.id === first.map.id).map((l, i) => ({ id: `lock${i}`, position: l.lock.position, label: 'Lock', kind: 'place' as const }))
+    return {
+      text: `${name} opens a lock on ${where}.${price ? ` It goes for about ${rub(price)}.` : ''}`,
+      lines,
+      map: { map: first.map, points, route: null },
+      mapId: first.map.id,
+      links: [{ label: 'Open in Keys', to: '/keys' }],
+      keyCheck: it.wikiLink ? { wikiLink: it.wikiLink, questNames: keyFor.map((t) => t.name) } : undefined,
+    }
+  }
+  const perMap = maps
+    .map((map) => ({ map, spots: (ctx.data.mapDetails[map.id]?.lootLoose ?? []).filter((l) => l.itemIds.includes(it.id)).map((l) => l.position) }))
+    .filter((x) => x.spots.length)
+    .sort((a, b) => b.spots.length - a.spots.length)
+  const lootLine = perMap.length ? `Lying around on: ${perMap.slice(0, 3).map((x) => `${x.map.name} (${x.spots.length})`).join(', ')}` : null
+  const top = perMap[0]
+  const text = price ? `${name} goes for about ${rub(price)} on the flea.` : sell ? `${name} can't go on the flea; ${traderName(ctx, sell.traderId)} pays ${rub(sell.priceRUB)}.` : `${name}: I don't have a price for it.`
+  return {
+    text: quests.length ? `${text} ${quests.length === 1 ? 'One of your quests needs it.' : `${quests.length} of your quests need it.`}` : text,
+    lines: [...(priceLine ? [priceLine] : []), ...(lootLine ? [lootLine] : []), ...(questLine ? [questLine] : []), ...alsoLine(m)],
+    map: top ? { map: top.map, points: top.spots.slice(0, 80).map((p, i) => ({ id: `loot${i}`, position: p, label: it.shortName, kind: 'loot' as const })), route: null } : undefined,
+    mapId: top?.map.id,
+  }
+}
+
+/** The wiki's "Behind the lock" verdict as one short sentence ("Worth it: LEDX spawn, safe."). */
+export function keyWorthText(v: KeyVerdict): string | null {
+  const why = v.reasons.slice(0, 2).join(', ')
+  if (v.kind === 'quest') return v.lootWorth ? `You need it for a quest, and the room is worth it too${why ? ` (${why})` : ''}.` : 'You need it for a quest.'
+  if (v.kind === 'yes') return `Worth it${why ? `: ${why}` : ''}.`
+  if (v.kind === 'no') return `Not really worth it${why ? `: only ${why}` : ''}.`
+  return null
+}
+
 function alsoLine(m: ItemMatch): string[] {
   return m.others.length ? [`Did you mean another one? ${m.others.map((o) => o.name).join(', ')}`] : []
 }
 
 /** Which kind of item answer a question wants. */
-export function itemQuestionKind(said: string): 'where' | 'price' | 'info' {
+export function itemQuestionKind(said: string): 'where' | 'price' | 'info' | 'card' {
   // Asking what it is worth gets the price, even with "buy" or "find" in it ("price to buy a GPU").
   if (/\b(price|prices|cost|costs|worth|value|sell|sells|selling|how much)\b/.test(said) && !/\b(where|spawn|spawns|located|location)\b/.test(said)) return 'price'
   if (/\b(where|find|spawn|spawns|loot|located|location|get one|get it|buy)\b/.test(said)) return 'where'
+  // Just the name ("dorms marked key"): the short card.
+  if (!/\b(what|whats|for|need|needed|needs|used|use|why|which|do|does|how|tell|about|info)\b/.test(said)) return 'card'
   return 'info'
 }
 

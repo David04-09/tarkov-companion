@@ -4,8 +4,7 @@
  * for the standard Windows voices.
  */
 import { forSpeech } from './speakable'
-import type { VoiceEngine, VoiceGender } from '../store/assistant'
-import { NATURAL_VOICES, speakNatural, stopNatural } from './naturalVoice'
+import type { VoiceGender } from '../store/assistant'
 
 /** First names of common Windows, macOS and browser voices; speechSynthesis does not say which voices are male or female. */
 const FEMALE = /\b(zira|hazel|susan|aria|jenny|michelle|sonia|libby|catherine|natasha|heera|linda|eva|helen|samantha|karen|moira|tessa|fiona|victoria|ana|emma|ava|clara|elsa|hedda|katja|julie|hortense|paulina|irina|maria|sabina|zoe|female|woman)\b/i
@@ -39,20 +38,10 @@ export function pickVoice(voices: SpeechSynthesisVoice[], gender: VoiceGender, u
 }
 
 export interface SpeakOptions {
-  engine?: VoiceEngine
-  naturalVoice?: string | null
   gender: VoiceGender
   voiceUri: string | null
   volume: number
   rate: number
-  /** Status while the natural voice downloads or starts, and when it falls back to Windows. */
-  onStatus?: (message: string | null) => void
-}
-
-/** The natural voice to use: the one picked if it fits the gender, else the first of that gender. */
-export function pickNaturalVoice(gender: VoiceGender, picked: string | null | undefined): string {
-  const list: readonly string[] = NATURAL_VOICES[gender]
-  return picked && list.includes(picked) ? picked : list[0]
 }
 
 /** Listeners told when the assistant starts and stops talking (the wake word ignores the mic meanwhile). */
@@ -71,10 +60,7 @@ function speaking(on: boolean) {
   for (const cb of speakingListeners) cb(on)
 }
 
-/**
- * Says `text` with the chosen engine; if the natural voice cannot load, the Windows voice says it
- * instead. Resolves when it has finished talking.
- */
+/** Says `text` with a Windows voice. Resolves when it has finished talking. */
 export function speak(said: string, opts: SpeakOptions): Promise<void> {
   if (!said.trim()) return Promise.resolve()
   // Room and key numbers digit by digit, codes letter by letter (speakable.ts).
@@ -84,17 +70,7 @@ export function speak(said: string, opts: SpeakOptions): Promise<void> {
   const done = () => {
     if (token === speakingToken) speaking(false)
   }
-  let p: Promise<void>
-  if (opts.engine === 'natural') {
-    stopWindows()
-    p = speakNatural(text, { voice: pickNaturalVoice(opts.gender, opts.naturalVoice), volume: opts.volume, rate: opts.rate, onLoading: (m) => opts.onStatus?.(m) })
-      .then(() => opts.onStatus?.(null))
-      .catch((e: unknown) => {
-        opts.onStatus?.(`The natural voice could not start (${e instanceof Error ? e.message : String(e)}); using the Windows voice.`)
-        return speakWindows(text, opts)
-      })
-  } else p = speakWindows(text, opts)
-  return p.finally(done)
+  return speakWindows(text, opts).finally(done)
 }
 
 function stopWindows() {
@@ -129,7 +105,6 @@ export function stopSpeaking(): void {
 /** Stops talking for the app's own reasons (a new briefing), not counted as the player cutting it off. */
 export function stopSpeakingQuietly(): void {
   stopWindows()
-  stopNatural()
   speakingToken++
   speaking(false)
 }

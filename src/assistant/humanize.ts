@@ -11,7 +11,9 @@ export function talkName(it: { name: string; shortName: string }): string {
   const short = it.shortName.trim()
   // A short name people would say: a plain word or an all-caps word ("LEDX", "Moonshine"), not a code ("0.2BTC", "GasAn").
   const sayable = /^[A-Za-z][a-z]{2,}$/.test(short) || /^[A-Z]{3,6}$/.test(short)
-  if (w.length >= 3 && sayable && words(short).length === 1) return `the ${/^[A-Z]{3,6}$/.test(short) ? short : short.toLowerCase()}`
+  // Keys keep the word ("the factory key", not "the factory").
+  const kind = /\bkeycard$/i.test(it.name) ? ' keycard' : /\bkey$/i.test(it.name) ? ' key' : ''
+  if (w.length >= 3 && sayable && words(short).length === 1) return `the ${/^[A-Z]{3,6}$/.test(short) ? short : short.toLowerCase()}${kind}`
   return it.name
 }
 
