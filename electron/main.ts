@@ -256,7 +256,8 @@ function createWindow(show: boolean) {
 // The search bar over the game
 // ---------------------------------------------------------------------------
 
-const SEARCH_WIDTH = 380
+const SEARCH_WIDTH = 48
+const SEARCH_MAX_WIDTH = 640
 const SEARCH_MARGIN = 16
 
 /**
@@ -278,7 +279,7 @@ function applySearchBar() {
     x: area.x + SEARCH_MARGIN,
     y: area.y + SEARCH_MARGIN,
     width: SEARCH_WIDTH,
-    height: 56,
+    height: 48,
     show: false,
     frame: false,
     transparent: true,
@@ -315,13 +316,14 @@ function applySearchBar() {
   searchBar = w
 }
 
-/** The search bar grows with its results (never past 70% of the screen). */
-function sizeSearchBar(height: number) {
+/** The window follows the search bar: a small glass, the bar, or a map with its list (never past 70% of the screen). */
+function sizeSearchBar(width: number, height: number) {
   if (!searchBar || searchBar.isDestroyed()) return
   const area = screen.getDisplayMatching(searchBar.getBounds()).workArea
+  const w = Math.max(40, Math.min(Math.round(width), SEARCH_MAX_WIDTH, area.width))
   const h = Math.max(40, Math.min(Math.round(height), Math.round(area.height * 0.7)))
   const b = searchBar.getBounds()
-  if (b.height !== h) searchBar.setBounds({ x: b.x, y: b.y, width: SEARCH_WIDTH, height: h })
+  if (b.height !== h || b.width !== w) searchBar.setBounds({ x: b.x, y: b.y, width: w, height: h })
 }
 
 let lastCleanup: CleanupResult | null = null
@@ -461,10 +463,11 @@ function registerIpc() {
       if (!isTrustedSender(e.sender, isOwnUrl)) throw new Error('Refused')
       return fn(e, ...args)
     })
-  handle('searchbar:height', (e, px: unknown) => {
-    // Only the search bar itself says how tall it is.
-    if (!searchBar || searchBar.isDestroyed() || e.sender !== searchBar.webContents || typeof px !== 'number' || !Number.isFinite(px)) return
-    sizeSearchBar(px)
+  handle('searchbar:size', (e, width: unknown, height: unknown) => {
+    // Only the search bar itself says how big it is.
+    if (!searchBar || searchBar.isDestroyed() || e.sender !== searchBar.webContents) return
+    if (typeof width !== 'number' || typeof height !== 'number' || !Number.isFinite(width) || !Number.isFinite(height)) return
+    sizeSearchBar(width, height)
   })
   handle('searchbar:open', (e, to: unknown) => {
     // "Open in the app" from a search result: only the app's own tab pages.

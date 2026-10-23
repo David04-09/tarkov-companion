@@ -216,8 +216,8 @@ export interface DesktopApi {
   appVersion: string
   /** 'main' for the app window, 'searchbar' for the search bar over the game. */
   windowKind: 'main' | 'searchbar'
-  /** Search bar only: its height once drawn (the window follows it). */
-  setSearchBarHeight: (px: number) => Promise<void>
+  /** Search bar only: its size once drawn (the window follows it). */
+  setSearchBarSize: (width: number, height: number) => Promise<void>
   /** Search bar only: show the app window on this page. */
   openInApp: (to: string) => Promise<void>
   /** Makes sure a content pack is downloaded and installed (no-op in development). */

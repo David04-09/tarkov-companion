@@ -16,6 +16,7 @@ import { useMapOverlayStore } from '../store/mapOverlay'
 import { useProfile, useProgressStore } from '../store/progress'
 import { useUiStore } from '../store/ui'
 import { useTickedOnMap } from './tickedOnMap'
+import type { MapPin } from './SearchBarMap'
 
 // The map (Leaflet) loads only when a map is opened.
 const SearchBarMap = lazy(() => import('./SearchBarMap').then((m) => ({ default: m.SearchBarMap })))
@@ -23,7 +24,9 @@ const SearchBarMap = lazy(() => import('./SearchBarMap').then((m) => ({ default:
 /** Other names people use for maps. */
 const MAP_NICKNAMES: Record<string, string> = { 'the-lab': 'labs lab', 'streets-of-tarkov': 'streets', 'ground-zero': 'gz', 'ground-zero-21': 'gz', 'night-factory': 'night' }
 
-type Hit = { kind: 'item'; item: Item } | { kind: 'quest'; task: Task } | { kind: 'map'; map: MapOption }
+type Hit = { kind: 'item'; item: Item } | { kind: 'quest'; task: Task } | { kind: 'map'; map: MapOption; pins?: MapPin[]; title?: string; focus?: string }
+
+const SIDEBAR_KEY = 'tc-searchbar-sidebar'
 
 const MAX_ITEMS = 6
 const MAX_QUESTS = 5
@@ -61,14 +64,35 @@ function SearchBar() {
   const setOnMap = useMapOverlayStore((s) => s.setTaskChecked)
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(true)
+  // Just a magnifying glass until clicked; clicking elsewhere shrinks it back.
+  const [expanded, setExpanded] = useState(false)
+  // The quest list beside the map (remembered).
+  const [sidebar, setSidebarState] = useState(() => {
+    try {
+      return localStorage.getItem(SIDEBAR_KEY) !== '0'
+    } catch {
+      return true
+    }
+  })
+  const setSidebar = (on: boolean) => {
+    setSidebarState(on)
+    try {
+      localStorage.setItem(SIDEBAR_KEY, on ? '1' : '0')
+    } catch {
+      // only a convenience
+    }
+  }
   const [cursor, setCursor] = useState(0)
   const [picked, setPicked] = useState<Hit | null>(null)
   const box = useRef<HTMLDivElement>(null)
   const input = useRef<HTMLInputElement>(null)
 
-  // Clicking back into the game hides the result list (an open card or map stays); coming back shows it again.
+  // Clicking back into the game shrinks it to the magnifying glass (an open map stays up).
   useEffect(() => {
-    const blur = () => setOpen(false)
+    const blur = () => {
+      setOpen(false)
+      setExpanded(false)
+    }
     const focus = () => setOpen(true)
     window.addEventListener('blur', blur)
     window.addEventListener('focus', focus)
@@ -98,11 +122,18 @@ function SearchBar() {
     return [...ms.map((map) => ({ kind: 'map' as const, map })), ...its.map((item) => ({ kind: 'item' as const, item })), ...qs.map((task) => ({ kind: 'quest' as const, task }))]
   }, [query, itemList, itemText, tasks, mapOptions])
 
-  // The window follows the bar's height (results and details make it grow).
+  useEffect(() => {
+    if (expanded) input.current?.focus()
+  }, [expanded])
+
+  // The window follows the bar's size (the glass, the bar, results, cards, the map and its list).
   useLayoutEffect(() => {
     const el = box.current
     if (!el) return
-    const send = () => void window.desktop?.setSearchBarHeight(Math.ceil(el.getBoundingClientRect().height) + 8)
+    const send = () => {
+      const r = el.getBoundingClientRect()
+      void window.desktop?.setSearchBarSize(Math.ceil(r.width) + 8, Math.ceil(r.height) + 8)
+    }
     send()
     const ro = new ResizeObserver(send)
     ro.observe(el)
@@ -110,6 +141,29 @@ function SearchBar() {
   }, [])
 
   const pick = (h: Hit | undefined) => h && setPicked(h)
+  // Ticking "On map" also opens that quest's map here, zoomed to it.
+  const tickQuest = (task: Task, on: boolean) => {
+    setOnMap(task.id, on)
+    if (!on) return
+    const mapId = task.map?.id ?? task.objectives.flatMap((o) => o.maps)[0]?.id
+    const option = mapOptions.find((m) => m.id === mapId)
+    if (!option) return
+    setPicked({ kind: 'map', map: option, focus: task.id })
+  }
+  // A key: its lock(s), and where it lies around, per map.
+  const keyMaps = (it: Item): { option: MapOption; pins: MapPin[] }[] => {
+    const data = gameData.data
+    if (!data || !it.types.includes('keys')) return []
+    return mapOptions
+      .filter((m) => m.id && !/night/.test(m.key))
+      .map((option) => {
+        const details = data.mapDetails[option.id!]
+        const locks = (details?.locks ?? []).filter((l) => l.keyId === it.id).map((l) => ({ position: l.position, label: `Lock: ${it.shortName}`, kind: 'lock' as const }))
+        const spawns = (details?.lootLoose ?? []).filter((l) => l.itemIds.includes(it.id)).map((l) => ({ position: l.position, label: `${it.shortName} lies here`, kind: 'spawn' as const }))
+        return { option, pins: [...locks, ...spawns] }
+      })
+      .filter((x) => x.pins.some((p) => p.kind === 'lock'))
+  }
   const clear = () => {
     setQuery('')
     setPicked(null)
@@ -130,9 +184,17 @@ function SearchBar() {
   const showResults = open && query.trim().length > 0
   // A map is something to keep an eye on during the raid: it stays clearer than the rest.
   const mapShown = picked?.kind === 'map'
+  const width = mapShown ? (sidebar ? 'w-[588px]' : 'w-[372px]') : expanded ? 'w-[372px]' : 'w-10'
 
   return (
-    <div ref={box} className={`group m-1 w-[372px] text-[13px] text-white transition-opacity duration-150 hover:opacity-100 focus-within:opacity-100 ${mapShown ? 'opacity-80' : 'opacity-45'}`} style={{ fontFamily: 'system-ui, sans-serif' }}>
+    <div ref={box} className={`group m-1 ${width} text-[13px] text-white transition-opacity duration-150 hover:opacity-100 focus-within:opacity-100 ${mapShown ? 'opacity-80' : 'opacity-45'}`} style={{ fontFamily: 'system-ui, sans-serif' }}>
+      {!expanded && (
+        <button type="button" onClick={() => setExpanded(true)} title="Search maps, items, keys and quests" aria-label="Open the search" className="flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-black/75 text-white/80 shadow-2xl backdrop-blur-sm hover:text-white">
+          <Search className="h-5 w-5" />
+        </button>
+      )}
+      {expanded && (
+      <>
       <div className="flex items-center gap-2 rounded-lg border border-white/15 bg-black/75 px-3 py-2 shadow-2xl backdrop-blur-sm">
         <Search className="h-4 w-4 shrink-0 text-white/60" />
         <input
@@ -194,14 +256,19 @@ function SearchBar() {
                   </>
                 )}
               </button>
-              {h.kind === 'quest' && <OnMapBox checked={onMap.includes(h.task.id)} onChange={(on) => setOnMap(h.task.id, on)} />}
+              {h.kind === 'quest' && <OnMapBox checked={onMap.includes(h.task.id)} onChange={(on) => tickQuest(h.task, on)} />}
             </li>
           ))}
         </ul>
       )}
 
-      {picked?.kind === 'map' && <MapCard option={picked.map} onBack={() => setPicked(null)} onOpen={() => openInApp(picked)} />}
-      {picked?.kind === 'item' && (
+      </>
+      )}
+
+      {picked?.kind === 'map' && (
+        <MapCard key={picked.focus ?? picked.title ?? picked.map.key} option={picked.map} pins={picked.pins} focus={picked.focus} title={picked.title} sidebar={sidebar} onSidebar={setSidebar} onBack={() => setPicked(null)} onOpen={() => openInApp(picked)} />
+      )}
+      {expanded && picked?.kind === 'item' && (
         <ItemCard
           item={picked.item}
           traderName={traderName}
@@ -210,13 +277,14 @@ function SearchBar() {
             return need ? remainingFor(need, inventory.collected[picked.item.id] ?? 0) : 0
           })()}
           fir={(needs.get(picked.item.id)?.fir ?? 0) > 0}
-          lockMaps={(gameData.data?.maps ?? []).filter((m) => (gameData.data?.mapDetails[m.id]?.locks ?? []).some((l) => l.keyId === picked.item.id)).map((m) => m.name)}
+          keyMaps={keyMaps(picked.item)}
+          onShowKey={(k) => setPicked({ kind: 'map', map: k.option, pins: k.pins, title: `${picked.item.shortName}: lock${k.pins.filter((p) => p.kind === 'lock').length > 1 ? 's' : ''} on ${k.option.name}` })}
           onBack={() => setPicked(null)}
           onOpen={() => openInApp(picked)}
         />
       )}
-      {picked?.kind === 'quest' && (
-        <QuestCard task={picked.task} status={STATUS_LABEL[statuses[picked.task.id] ?? 'locked']} onMap={onMap.includes(picked.task.id)} setOnMap={(on) => setOnMap(picked.task.id, on)} onBack={() => setPicked(null)} onOpen={() => openInApp(picked)} />
+      {expanded && picked?.kind === 'quest' && (
+        <QuestCard task={picked.task} status={STATUS_LABEL[statuses[picked.task.id] ?? 'locked']} onMap={onMap.includes(picked.task.id)} setOnMap={(on) => tickQuest(picked.task, on)} onBack={() => setPicked(null)} onOpen={() => openInApp(picked)} />
       )}
     </div>
   )
@@ -236,7 +304,7 @@ function CardFrame({ children, onBack, onOpen }: { children: React.ReactNode; on
   )
 }
 
-function ItemCard({ item, traderName, remaining, fir, lockMaps, onBack, onOpen }: { item: Item; traderName: (id: string) => string; remaining: number; fir: boolean; lockMaps: string[]; onBack: () => void; onOpen: () => void }) {
+function ItemCard({ item, traderName, remaining, fir, keyMaps, onShowKey, onBack, onOpen }: { item: Item; traderName: (id: string) => string; remaining: number; fir: boolean; keyMaps: { option: MapOption; pins: MapPin[] }[]; onShowKey: (k: { option: MapOption; pins: MapPin[] }) => void; onBack: () => void; onOpen: () => void }) {
   const sell = [...item.sellToTrader].sort((a, b) => b.priceRUB - a.priceRUB)[0]
   const banned = item.types.includes('noFlea')
   return (
@@ -267,13 +335,22 @@ function ItemCard({ item, traderName, remaining, fir, lockMaps, onBack, onOpen }
         )}
         <dt className="text-white/50">Needed</dt>
         <dd>{remaining > 0 ? `${remaining} more${fir ? ' (found in raid)' : ''}` : 'nothing open needs it'}</dd>
-        {lockMaps.length > 0 && (
+        {keyMaps.length > 0 && (
           <>
             <dt className="text-white/50">Opens</dt>
-            <dd>a lock on {[...new Set(lockMaps)].join(', ')}</dd>
+            <dd>a lock on {keyMaps.map((k) => k.option.name).join(', ')}</dd>
           </>
         )}
       </dl>
+      {keyMaps.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {keyMaps.map((k) => (
+            <button key={k.option.key} type="button" onClick={() => onShowKey(k)} className="inline-flex items-center gap-1 rounded border border-white/20 bg-white/10 px-2 py-0.5 text-xs hover:bg-white/20">
+              <MapIcon className="h-3 w-3" /> Show the lock on {k.option.name}
+            </button>
+          ))}
+        </div>
+      )}
     </CardFrame>
   )
 }
@@ -315,16 +392,16 @@ function OnMapBox({ checked, onChange }: { checked: boolean; onChange: (on: bool
   )
 }
 
-function MapCard({ option, onBack, onOpen }: { option: MapOption; onBack: () => void; onOpen: () => void }) {
+function MapCard({ option, pins, focus, title, sidebar, onSidebar, onBack, onOpen }: { option: MapOption; pins?: MapPin[]; focus?: string; title?: string; sidebar: boolean; onSidebar: (on: boolean) => void; onBack: () => void; onOpen: () => void }) {
   const ticked = useTickedOnMap(option)
   return (
     <div className="mt-1 rounded-lg border border-white/20 bg-black/85 p-2 shadow-2xl backdrop-blur-sm">
-      <div className="mb-1.5 flex items-baseline justify-between px-1">
-        <span className="font-medium">{option.name}</span>
-        <span className="text-[11px] text-white/55">{ticked ? `${ticked} quest${ticked === 1 ? '' : 's'} on the map` : 'Tick "On map" next to a quest to show it'}</span>
+      <div className="mb-1.5 flex items-baseline justify-between gap-2 px-1">
+        <span className="truncate font-medium">{title ?? option.name}</span>
+        <span className="shrink-0 text-[11px] text-white/55">{pins?.length ? 'Red = lock, green = where it lies around' : ticked ? `${ticked} quest${ticked === 1 ? '' : 's'} on the map` : 'Tick quests on the right to show them'}</span>
       </div>
       <Suspense fallback={<div className="h-72 rounded-md bg-white/5" />}>
-        <SearchBarMap option={option} />
+        <SearchBarMap option={option} pins={pins} focus={focus} sidebar={sidebar} onSidebar={onSidebar} />
       </Suspense>
       <div className="mt-1.5 flex justify-between px-1 text-xs">
         <button type="button" onClick={onBack} className="text-white/60 hover:text-white">← Results</button>

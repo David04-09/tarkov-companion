@@ -11,7 +11,7 @@ const api: DesktopApi = {
   platform: process.platform,
   appVersion: process.argv.find((a) => a.startsWith('--tc-version='))?.slice('--tc-version='.length) ?? '',
   windowKind: process.argv.includes('--tc-window=searchbar') ? 'searchbar' : 'main',
-  setSearchBarHeight: (px) => ipcRenderer.invoke('searchbar:height', px),
+  setSearchBarSize: (width, height) => ipcRenderer.invoke('searchbar:size', width, height),
   openInApp: (to) => ipcRenderer.invoke('searchbar:open', to),
   getState: () => ipcRenderer.invoke('watcher:getState'),
   ensurePack: (name: PackName) => ipcRenderer.invoke('pack:ensure', name),
