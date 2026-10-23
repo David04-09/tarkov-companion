@@ -211,9 +211,27 @@ export interface PackProgress {
   state: 'downloading' | 'installing' | 'done'
 }
 
+/** What the assistant's pop-up shows over the game (desktop). */
+export interface PopupData {
+  /** The question, as asked. */
+  title: string
+  text: string
+  lines: string[]
+  /** How to close it, as shown at the bottom ("Say \"close that\" to hide this"). */
+  hint: string
+}
+
 export interface DesktopApi {
   platform: string
   appVersion: string
+  /** 'main' for the app window, 'popup' for the assistant's pop-up. */
+  windowKind: 'main' | 'popup'
+  /** Shows the assistant's answer in a small see-through window over the screen under the mouse. */
+  showPopup: (data: PopupData) => Promise<void>
+  hidePopup: () => Promise<void>
+  /** Pop-up window only: the content to show, and its height once drawn. */
+  onPopupData: (cb: (data: PopupData) => void) => () => void
+  setPopupHeight: (px: number) => Promise<void>
   /** Makes sure a content pack is downloaded and installed (no-op in development). */
   ensurePack: (name: PackName) => Promise<void>
   onPackProgress: (cb: (p: PackProgress) => void) => () => void

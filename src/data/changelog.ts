@@ -12,7 +12,10 @@ export interface ChangelogEntry {
 }
 
 /** Committed, waiting for the next update. */
-export const UNRELEASED: string[] = []
+export const UNRELEASED: string[] = [
+  "Removed the Weapon builder, Crafts and Money makers tabs to keep the app lighter. Favourite crafts no longer count towards the Item Collection (they could not be changed any more), and the Dashboard's top crafts card is gone with them.",
+  "Desktop: the assistant shows its answers in a pop-up over the game. A small see-through card in the top right of the screen your mouse is on, with the answer and its details. It never takes the mouse or keyboard from the game (clicks go straight through). Say \"close that\" (or \"hide it\") to close it and \"show that again\" to bring it back. Switch it off under Voice on the Neural network tab. Shows over the game in borderless or windowed mode, not in exclusive full screen.",
+]
 
 export const RELEASES: ChangelogEntry[] = [
   {

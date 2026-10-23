@@ -144,3 +144,15 @@ export function isSameFileUrl(url: string, filePath: string): boolean {
     return false
   }
 }
+
+/** The pop-up's content comes from the page: plain strings only, short, never markup that runs. */
+export function cleanPopupData(v: unknown): { title: string; text: string; lines: string[]; hint: string } | null {
+  if (typeof v !== 'object' || v === null) return null
+  const o = v as Record<string, unknown>
+  // Control characters dropped (line breaks kept).
+  const str = (x: unknown, max: number) => (typeof x === 'string' ? [...x].filter((c) => c >= ' ' || c === '\n').join('').slice(0, max) : '')
+  const text = str(o.text, 600)
+  if (!text) return null
+  const lines = Array.isArray(o.lines) ? o.lines.map((l) => str(l, 220)).filter(Boolean).slice(0, 12) : []
+  return { title: str(o.title, 140), text, lines, hint: str(o.hint, 120) }
+}

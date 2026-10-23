@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { canonicalPath, cleanSettingsPatch, isAccelerator, isMicOnly, isSafeDirectory, isSameFileUrl, isScreenshotName, isWebUrl } from './security'
+import { canonicalPath, cleanSettingsPatch, isAccelerator, isMicOnly, isSafeDirectory, isSameFileUrl, isScreenshotName, isWebUrl, cleanPopupData } from './security'
 
 describe('settings from the page', () => {
   it('keeps only known fields with valid values', () => {
@@ -93,5 +93,18 @@ describe('microphone permission', () => {
     expect(isMicOnly('media', [])).toBe(false)
     expect(isMicOnly('media', undefined)).toBe(false)
     expect(isMicOnly('geolocation', ['audio'])).toBe(false)
+  })
+})
+
+describe('cleanPopupData', () => {
+  it('keeps short plain strings and drops everything else', () => {
+    expect(cleanPopupData({ title: 'Price of a GPU', text: 'About 325k.', lines: ['Flea: 325,473', 7, 'x'.repeat(500)], hint: 'Say "close that"', extra: 1 })).toEqual({
+      title: 'Price of a GPU',
+      text: 'About 325k.',
+      lines: ['Flea: 325,473', 'x'.repeat(220)],
+      hint: 'Say "close that"',
+    })
+    expect(cleanPopupData({ text: '' })).toBeNull()
+    expect(cleanPopupData('nope')).toBeNull()
   })
 })

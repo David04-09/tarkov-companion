@@ -93,7 +93,7 @@ export function ItemCollectionPage() {
         <div>
           <h1 className="text-2xl font-semibold">Item Collection</h1>
           <p className="text-sm text-ink-muted">
-            Everything your remaining {gameMode === 'pve' ? 'PvE' : 'PvP'} quests, unbuilt hideout levels and favourite crafts still need.
+            Everything your remaining {gameMode === 'pve' ? 'PvE' : 'PvP'} quests and unbuilt hideout levels still need.
             {hideout.isPending ? ' Loading hideout…' : ''}
             {items.isPending ? ' Loading item names…' : ''}
           </p>

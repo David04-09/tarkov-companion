@@ -317,13 +317,13 @@ function PricesSection() {
   const [note, setNote] = useState<string | null>(null)
   return (
     <Section id="prices" title="Prices & game data" icon={Database} keywords="price flea trader sell buy value fee intelligence center refresh update data cache offline tarkov.dev new quests content patch check interval">
-      <Row label="Value items by" hint="Used for item worth everywhere: scanner keep/sell, crafts, money makers, needs. Best = whichever pays more (selling) or costs less (buying).">
+      <Row label="Value items by" hint="Used for item worth everywhere: scanner keep/sell, the flea and ammo tabs, the assistant. Best = whichever pays more (selling) or costs less (buying).">
         <Segmented value={source} onChange={setSource} label="Value items by" options={[{ value: 'best', label: 'Best of both' }, { value: 'trader', label: 'Traders' }, { value: 'flea', label: 'Flea market' }]} />
       </Row>
       <Row label="Lower flea fees (Intelligence Center 3)" hint="Automatic reads your Intelligence Center level from the Hideout tab.">
         <Segmented value={fee} onChange={setFee} label="Flea fee discount" options={[{ value: 'auto', label: 'Automatic' }, { value: 'on', label: 'Yes' }, { value: 'off', label: 'No' }]} />
       </Row>
-      <Row label="Check for new quests and content every" hint="Quests, maps, traders, hideout, crafts and barters from tarkov.dev. New quests only come with game patches, so a few checks a day are enough; also checked at every start. Unchanged data is not downloaded again. Trader restock times and the Goons' map stay up to date while those screens are open.">
+      <Row label="Check for new quests and content every" hint="Quests, maps, traders and hideout from tarkov.dev. New quests only come with game patches, so a few checks a day are enough; also checked at every start. Unchanged data is not downloaded again. Trader restock times and the Goons' map stay up to date while those screens are open.">
         <Select
           value={content}
           onChange={setContent}

@@ -6,11 +6,11 @@
  * Nothing here touches the game, and nothing is shown on top of it (the old
  * overlay window was removed in 1.8.0).
  */
-import { BrowserWindow, Menu, Tray, app, dialog, globalShortcut, ipcMain, nativeImage, protocol, session, shell } from 'electron'
+import { BrowserWindow, Menu, Tray, app, dialog, globalShortcut, ipcMain, nativeImage, protocol, screen, session, shell } from 'electron'
 import type { IpcMainInvokeEvent } from 'electron'
 import fs from 'node:fs'
 import path from 'node:path'
-import type { DesktopSettings, GameEvent, LogStatsData, WipeEvent } from '../src/shared/desktop-api'
+import type { DesktopSettings, GameEvent, LogStatsData, PopupData, WipeEvent } from '../src/shared/desktop-api'
 import { detectLogsFolder } from './logs/locator'
 import { LogWatcher } from './logs/watcher'
 import { SettingsStore } from './settings'
@@ -22,7 +22,7 @@ import { captureScreenUnderCursor, listGameScreenshots, readAppResource, readGam
 // Chromium cannot fetch() file:// URLs). Must be registered before the app is ready.
 protocol.registerSchemesAsPrivileged([{ scheme: 'tcres', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } }])
 import { checkForUpdates, getUpdateOutcome, getUpdateStatus, installUpdate, runInstallerManually, setUpdateMode, setupUpdater } from './updater'
-import { cleanSettingsPatch, isSafeDirectory, isSameFileUrl, isTrustedSender, isWebUrl, lockPermissions } from './security'
+import { cleanPopupData, cleanSettingsPatch, isSafeDirectory, isSameFileUrl, isTrustedSender, isWebUrl, lockPermissions } from './security'
 import { PACK_NAMES, currentPackDirNames, ensurePack, packsEnabled } from './packs'
 import { cleanLeftovers, sizeOf } from './cleanup'
 import type { CleanupResult } from '../src/shared/desktop-api'
@@ -36,6 +36,9 @@ const APP_USER_MODEL_ID = 'io.github.david04-09.tarkov-companion'
 let win: BrowserWindow | null = null
 let tray: Tray | null = null
 let quitting = false
+/** The assistant's pop-up over the game (created on first use, hidden rather than closed). */
+let popup: BrowserWindow | null = null
+let popupReady: Promise<void> | null = null
 let settings: SettingsStore
 const watcher = new LogWatcher()
 let stopScreenshots: (() => void) | null = null
@@ -94,6 +97,7 @@ function bootstrap() {
 
   app.on('before-quit', () => {
     quitting = true
+    if (popup && !popup.isDestroyed()) popup.destroy()
     watcher.stop()
     globalShortcut.unregisterAll()
   })
@@ -248,6 +252,81 @@ function createWindow(show: boolean) {
   load(win, '/')
 }
 
+// ---------------------------------------------------------------------------
+// The assistant's pop-up
+// ---------------------------------------------------------------------------
+
+const POPUP_WIDTH = 440
+const POPUP_MARGIN = 24
+
+/**
+ * A small see-through window with the assistant's answer, on top of the screen the mouse is on
+ * (where the game is). It never takes focus or clicks: the game keeps the keyboard and mouse,
+ * and the window is closed by voice ("close that") or from the app. It only shows the app's own
+ * page; nothing about the game is read or touched.
+ */
+function ensurePopup(): { w: BrowserWindow; ready: Promise<void> } {
+  if (popup && !popup.isDestroyed() && popupReady) return { w: popup, ready: popupReady }
+  const w = new BrowserWindow({
+    width: POPUP_WIDTH,
+    height: 200,
+    show: false,
+    frame: false,
+    transparent: true,
+    backgroundColor: '#00000000',
+    hasShadow: false,
+    resizable: false,
+    movable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    skipTaskbar: true,
+    focusable: false,
+    alwaysOnTop: true,
+    title: 'Tarkov Companion pop-up',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.cjs'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      webSecurity: true,
+      allowRunningInsecureContent: false,
+      webviewTag: false,
+      devTools: !app.isPackaged,
+      additionalArguments: ['--tc-window=popup', `--tc-version=${app.getVersion()}`],
+    },
+  })
+  // Above full-screen-window games; clicks go straight through to the game.
+  w.setAlwaysOnTop(true, 'screen-saver')
+  w.setIgnoreMouseEvents(true)
+  w.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+  lockNavigation(w)
+  popupReady = new Promise<void>((resolve) => w.webContents.once('did-finish-load', () => resolve()))
+  load(w, '/popup')
+  w.on('closed', () => {
+    popup = null
+    popupReady = null
+  })
+  popup = w
+  return { w, ready: popupReady }
+}
+
+/** Top-right corner of the screen under the mouse. */
+function placePopup(w: BrowserWindow, height: number) {
+  const area = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea
+  const h = Math.max(80, Math.min(Math.round(height), Math.round(area.height * 0.7)))
+  w.setBounds({ x: area.x + area.width - POPUP_WIDTH - POPUP_MARGIN, y: area.y + POPUP_MARGIN, width: POPUP_WIDTH, height: h })
+}
+
+async function showPopup(data: PopupData) {
+  const { w, ready } = ensurePopup()
+  await ready
+  if (w.isDestroyed()) return
+  w.webContents.send('popup:data', data)
+  placePopup(w, w.getBounds().height)
+  w.showInactive()
+}
+
 let lastCleanup: CleanupResult | null = null
 
 /** Leftovers of older versions (old installers, packs, crash reports, compiled-code cache). */
@@ -386,6 +465,18 @@ function registerIpc() {
       if (!isTrustedSender(e.sender, isOwnUrl)) throw new Error('Refused')
       return fn(e, ...args)
     })
+  handle('popup:show', (_e, data: unknown) => {
+    const d = cleanPopupData(data)
+    return d ? showPopup(d) : undefined
+  })
+  handle('popup:hide', () => {
+    if (popup && !popup.isDestroyed()) popup.hide()
+  })
+  handle('popup:height', (e, px: unknown) => {
+    // Only the pop-up itself says how tall it is.
+    if (!popup || popup.isDestroyed() || e.sender !== popup.webContents || typeof px !== 'number' || !Number.isFinite(px)) return
+    placePopup(popup, px)
+  })
   handle('watcher:getState', () => watcher.getState())
   handle('pack:ensure', async (_e, name: unknown) => {
     if (!PACK_NAMES.includes(name as PackName)) throw new Error('Unknown pack')

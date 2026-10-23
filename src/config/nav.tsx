@@ -1,5 +1,5 @@
 import { lazy, type ComponentType } from 'react'
-import { BarChart3, BookOpen, Brain, Megaphone, Coins, Crosshair, Wrench, Hammer, House, KeyRound, LayoutDashboard, Map, Package, ScrollText, Store, type LucideIcon } from 'lucide-react'
+import { BarChart3, BookOpen, Brain, Megaphone, Crosshair, House, KeyRound, LayoutDashboard, Map, Package, ScrollText, Store, type LucideIcon } from 'lucide-react'
 
 /** Sidebar sections, in order. */
 export const NAV_GROUPS = [
@@ -41,13 +41,10 @@ export const NAV_ITEMS: NavItem[] = [
   { path: '/story', group: 'quests', label: 'Story', icon: BookOpen, component: page(() => import('../pages/StoryPage'), 'StoryPage') },
   { path: '/maps', group: 'raid', label: 'Maps', icon: Map, component: page(() => import('../pages/MapsPage'), 'MapsPage'), fullBleed: true },
   { path: '/keys', group: 'raid', label: 'Keys', icon: KeyRound, component: page(() => import('../pages/KeysPage'), 'KeysPage') },
-  { path: '/weapons', group: 'gear', label: 'Weapon builder', icon: Wrench, component: page(() => import('../pages/WeaponsPage'), 'WeaponsPage') },
   { path: '/ammo', group: 'gear', label: 'Ammo', icon: Crosshair, component: page(() => import('../pages/AmmoPage'), 'AmmoPage') },
   { path: '/items', group: 'gear', label: 'Item Collection', icon: Package, component: page(() => import('../pages/ItemCollectionPage'), 'ItemCollectionPage') },
   { path: '/hideout', group: 'gear', label: 'Hideout', icon: House, component: page(() => import('../pages/HideoutPage'), 'HideoutPage') },
-  { path: '/crafts', group: 'gear', label: 'Crafts', icon: Hammer, component: page(() => import('../pages/CraftsPage'), 'CraftsPage') },
   { path: '/flea', group: 'trading', label: 'Flea Market', icon: Store, component: page(() => import('../pages/FleaMarketPage'), 'FleaMarketPage'), fullBleed: true },
-  { path: '/money', group: 'trading', label: 'Money makers', icon: Coins, component: page(() => import('../pages/MoneyPage'), 'MoneyPage') },
 ]
 
 /** Tabs shown in the sidebar (Settings → General can hide any except the Dashboard). */

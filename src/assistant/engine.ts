@@ -59,7 +59,6 @@ export type AssistantAction =
   | { kind: 'complete'; taskId: string; done: boolean; label: string }
   | { kind: 'showOnMap'; taskId: string; mapKey: string; label: string }
   | { kind: 'openMap'; mapKey: string; label: string }
-  | { kind: 'openWeapon'; itemId: string; label: string }
   | { kind: 'setCollected'; itemId: string; count: number; label: string }
   | { kind: 'routeOnMap'; mapKey: string; path: Position[]; fromLabel: string; toLabel: string; label: string }
 
@@ -394,20 +393,6 @@ export function answer(question: string, ctx: AssistantContext): Reply {
     }
   }
 
-  // 7. "Build me an M4": open the gun in the Weapon builder.
-  if (/\bbuild\b/.test(said)) {
-    if (!index.items) return { text: 'Loading the item list…', needsItems: true }
-    const gun = findWeapon(q.slice(q.indexOf('build') + 1), ctx)
-    if (gun.best) {
-      return {
-        text: `Open the ${gun.best.shortName} in the Weapon builder?`,
-        lines: gun.others.length ? [`Did you mean another one? ${gun.others.map((o) => o.shortName).join(', ')}`] : undefined,
-        actions: [{ kind: 'openWeapon', itemId: gun.best.id, label: `Build the ${gun.best.shortName}` }, ...gun.others.slice(0, 3).map((o) => ({ kind: 'openWeapon' as const, itemId: o.id, label: o.shortName }))],
-      }
-    }
-    if (q.length > 1) return { text: 'I could not find that weapon. Try its short name, like "build an AK-74N" or "build an M4".' }
-  }
-
   if (questHit && questHit.len >= 5) return questInfo(questHit.value, ctx)
 
   // 8. An item named on its own ("LEDX", "dorm 303 key").
@@ -429,22 +414,6 @@ export function answer(question: string, ctx: AssistantContext): Reply {
   return { text: 'Sorry, I did not get that.', lines: HELP.lines }
 }
 
-/** A gun by (short) name: exact first, else names that start with what was said ("M4" -> M4A1). */
-function findWeapon(said: string[], ctx: AssistantContext): { best: Item | null; others: Item[] } {
-  const want = compact(said.filter((w) => !['me', 'a', 'an', 'the', 'my', 'gun', 'weapon', 'build', 'for'].includes(w)).join(' '))
-  if (want.length < 2 || !ctx.items) return { best: null, others: [] }
-  const guns = Object.values(ctx.items).filter((it) => it.weapon)
-  const scored = guns
-    .map((it) => {
-      const s = compact(it.shortName)
-      const n = compact(it.name)
-      const score = s === want ? 0 : n === want ? 1 : s.startsWith(want) ? 2 + s.length - want.length : n.includes(want) ? 20 + n.length / 100 : Infinity
-      return { it, score }
-    })
-    .filter((x) => Number.isFinite(x.score))
-    .sort((a, b) => a.score - b.score || a.it.shortName.length - b.it.shortName.length)
-  return { best: scored[0]?.it ?? null, others: scored.slice(1, 4).map((x) => x.it) }
-}
 
 /** Routes: where to (after the last "to") and where from (before it, or where the player last said they were). */
 /** Is the question about the best / safest way (not just a way)? The data cannot say what is safe. */

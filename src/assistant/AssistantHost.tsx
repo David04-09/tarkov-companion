@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { itemKeys, useCrafts, useGameData, useHideout } from '../api/hooks'
+import { itemKeys, useGameData, useHideout } from '../api/hooks'
 import { fetchItems } from '../api/queries'
 import type { GameData, GameMap, ItemsById } from '../api/types'
 import { computeNeeds, type ItemNeed } from '../lib/needs'
@@ -30,6 +30,11 @@ import { listenOnce, type ListenState } from './listen'
 import { ALL_PLACES, type Place } from './places'
 import { cutCount, onSpeakingChange, speak, stopSpeaking } from './speech'
 import { addressed, naturalSpeech } from './humanize'
+import type { PopupData } from '../shared/desktop-api'
+
+/** Phrases that close the pop-up over the game, and that show it again. */
+const CLOSE_POPUP = /^(?:ok |okay |thanks )?(?:close|close it|close that|close this|close the window|close the pop up|close the popup|hide|hide it|hide that|hide this|hide the window|get rid of (?:it|that)|dismiss|dismiss that|clear (?:it|that|the screen)|go away|thats enough|got it close it)$/
+const SHOW_POPUP_AGAIN = /^(?:show (?:that|it) again|show me again|open (?:that|it) again|bring (?:that|it) back|pop (?:that|it) up again)$/
 import { GOOD_ANSWER, kindWords, parseAddress, TELL_MORE, TOO_LONG } from './memory'
 import { applyWords, askKind, asksAboutOwn, findNote, firstSentence, FORGET_ALL, FORGET_LAST, greetingText, isLearnedChatter, NOT_FOR_YOU, parseMeant, parseRemember, parseStyle, parseTeach, subjectOf, wantsShort, WAS_FOR_YOU, WHAT_YOU_KNOW } from './memory'
 import { greetingFacts, habitsFromLogs, knowReply, noteReply, RECOMMEND, recommendReply, resolveName } from './memoryAnswers'
@@ -100,7 +105,6 @@ export function AssistantHost() {
       useProgressStore.getState().setTaskCompleted(a.taskId, a.done)
       return
     }
-    if (a.kind === 'openWeapon') return navigate(`/weapons?weapon=${encodeURIComponent(a.itemId)}`)
     if (a.kind === 'showOnMap') useMapOverlayStore.getState().setTasksChecked([a.taskId], true)
     if (a.kind === 'routeOnMap') useAssistantRouteStore.getState().set({ mapKey: a.mapKey, path: a.path, fromLabel: a.fromLabel, toLabel: a.toLabel })
     useUiStore.getState().setLastMapKey(a.mapKey)
@@ -113,16 +117,14 @@ export function AssistantHost() {
 
   // Item Collection: the same "still needed" numbers as the Item Collection page.
   const inventory = useModeInventory()
-  const favoriteCraftIds = useInventoryStore((st) => st.favoriteCraftIds)
   const hideout = useHideout()
-  const crafts = useCrafts()
   const needsCache = useRef<{ inputs: unknown[]; list: ItemNeed[] } | null>(null)
   const needsFor = (data: GameData, items: ItemsById | undefined): ItemNeed[] => {
-    const inputs = [data, items, profile.completedTaskIds, profile.faction, hideout.data, crafts.data, inventory.stationLevels, favoriteCraftIds]
+    const inputs = [data, items, profile.completedTaskIds, profile.faction, hideout.data, inventory.stationLevels]
     const c = needsCache.current
     if (c && c.inputs.every((v, i) => v === inputs[i])) return c.list
     const list = [
-      ...computeNeeds({ tasks: data.tasks, completedTaskIds: profile.completedTaskIds, faction: profile.faction, stations: hideout.data ?? [], stationLevels: inventory.stationLevels, crafts: crafts.data ?? [], favoriteCraftIds, items }).values(),
+      ...computeNeeds({ tasks: data.tasks, completedTaskIds: profile.completedTaskIds, faction: profile.faction, stations: hideout.data ?? [], stationLevels: inventory.stationLevels, crafts: [], favoriteCraftIds: [], items }).values(),
     ]
     needsCache.current = { inputs, list }
     return list
@@ -197,6 +199,9 @@ export function AssistantHost() {
 
   /** The topic of the question being answered (askKind), and the last answer, for "too long" / "tell me more". */
   const currentKind = useRef('other')
+  /** The question being answered (the pop-up's title) and the last pop-up shown (for "show that again"). */
+  const currentQuestion = useRef('')
+  const lastPopup = useRef<PopupData | null>(null)
   const lastReply = useRef<{ reply: Reply; kind: string } | null>(null)
 
   const present = useCallback(
@@ -210,6 +215,13 @@ export function AssistantHost() {
       // "Add 1 GPU": asked first; kept until the next message ("yes" applies it).
       pendingConfirm.current = reply.confirm ?? null
       chat().set({ card: reply.map ?? null })
+      // Desktop: answers with details also go in the pop-up over the game (closed by "close that").
+      const details = (reply.lines ?? []).filter((l) => !l.startsWith('I took that as'))
+      if (window.desktop && useAssistantStore.getState().popup && !reply.quiet && (details.length > 0 || reply.map || reply.text.length > 90)) {
+        const data = { title: currentQuestion.current, text: reply.text, lines: details.slice(0, 8), hint: 'Say "close that" to hide this.' }
+        lastPopup.current = data
+        void window.desktop.showPopup(data)
+      }
       if (voice.speak && !reply.quiet) {
         const cutBefore = cutCount()
         // Short or full as learned for this topic, then said the way a person would say it.
@@ -287,6 +299,18 @@ export function AssistantHost() {
     // Answer etiquette, learned from the player: how to call them, "too long", "tell me more", "perfect".
     currentKind.current = 'other'
     const plain = words(text).join(' ')
+    currentQuestion.current = text
+    // The pop-up over the game: "close that" hides it, "show that again" brings it back.
+    if (CLOSE_POPUP.test(plain)) {
+      void window.desktop?.hidePopup()
+      show(id, { text: 'Closed.', quiet: true })
+      return
+    }
+    if (SHOW_POPUP_AGAIN.test(plain) && lastPopup.current && window.desktop) {
+      void window.desktop.showPopup(lastPopup.current)
+      show(id, { text: 'Here it is again.', quiet: true })
+      return
+    }
     const mem0 = useAssistantMemory.getState()
     const address = parseAddress(text)
     if (address !== null) {

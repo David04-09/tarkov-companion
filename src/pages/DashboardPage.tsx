@@ -1,15 +1,14 @@
 import { useMemo } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { ArrowRight, ExternalLink, Gauge, Map as MapIcon, Minus, Plus } from 'lucide-react'
-import { useCrafts, useGameData, useHideout, useItems } from '../api/hooks'
+import { useGameData, useHideout, useItems } from '../api/hooks'
 import type { Task } from '../api/types'
 import { ErrorPanel, LoadingPanel, RefreshErrorBanner } from '../components/DataState'
 import { KappaBadge } from '../components/Badges'
 import { TimersCard } from '../desktop/TimersCard'
 import { isDesktop } from '../desktop/useDesktop'
 import { useNeeds } from '../hooks/useNeeds'
-import { craftEconomics } from '../lib/economy'
-import { formatNumber, formatRoubles, formatTimeAgo } from '../lib/format'
+import { formatNumber, formatTimeAgo } from '../lib/format'
 import { nextHideoutLevels } from '../lib/hideoutPlan'
 import { estimateLevelFromQuests, type LevelEstimate } from '../lib/levelEstimate'
 import { CURRENCY_ITEM_IDS, remainingFor } from '../lib/needs'
@@ -18,7 +17,6 @@ import { findMapConfig, resolveBaseLayer } from '../maps/mapConfig'
 import { buildMapTasks, type MapTask } from '../maps/overlay/mapTasks'
 import { buildBringList } from '../maps/overlay/bringList'
 import { buildSpawnModel } from '../maps/overlay/spawns'
-import { useInventoryStore } from '../store/inventory'
 import { useMapOverlayStore } from '../store/mapOverlay'
 import { MAX_LEVEL, MIN_LEVEL, useProfile, useProgressStore, type Faction } from '../store/progress'
 import { useUiStore } from '../store/ui'
@@ -105,9 +103,7 @@ export function DashboardPage() {
   const query = useGameData()
   const itemsQuery = useItems()
   const hideout = useHideout()
-  const crafts = useCrafts()
   const { needs, inventory } = useNeeds()
-  const favorites = useInventoryStore((s) => s.favoriteCraftIds)
   const setLastMapKey = useUiStore((s) => s.setLastMapKey)
   const setTasksChecked = useMapOverlayStore((s) => s.setTasksChecked)
   const checkedTaskIds = useMapOverlayStore((s) => s.checkedTaskIds)
@@ -152,17 +148,6 @@ export function DashboardPage() {
     [hideout.data, inventory.stationLevels, inventory.collected],
   )
 
-  const topCrafts = useMemo(() => {
-    if (!crafts.data || !itemsQuery.data || !hideout.data) return []
-    const stationsById = Object.fromEntries(hideout.data.map((s) => [s.id, s]))
-    const anyBuilt = Object.values(inventory.stationLevels).some((l) => l > 0)
-    return crafts.data
-      .filter((c) => !anyBuilt || (inventory.stationLevels[c.stationId] ?? 0) >= c.level)
-      .map((c) => craftEconomics(c, itemsQuery.data!.items, stationsById))
-      .filter((e) => e.profitPerHour != null && e.profitPerHour > 0)
-      .sort((a, b) => (b.profitPerHour ?? 0) - (a.profitPerHour ?? 0))
-      .slice(0, 5)
-  }, [crafts.data, itemsQuery.data, hideout.data, inventory.stationLevels])
 
   // Every map's quest spots and bosses depend only on the game data: built once per data load,
   // not again on every quest tick (that rebuilt all ~515 quests for a dozen maps each time).
@@ -310,23 +295,7 @@ export function DashboardPage() {
         </div>
       </div>
 
-      <div className="mt-4 grid gap-4 md:grid-cols-3">
-        <div className="card md:col-span-2">
-          <div className="flex items-center justify-between"><h2 className="card-title">Top crafts by profit per hour</h2><Link to="/crafts" className="text-xs text-accent hover:underline">Crafts</Link></div>
-          {topCrafts.length === 0 ? (
-            <p className="mt-3 text-sm text-ink-muted">{crafts.isPending || itemsQuery.isPending ? 'Loading…' : 'No profitable craft at your hideout levels.'}</p>
-          ) : (
-            <ul className="mt-3 divide-y divide-line text-sm">
-              {topCrafts.map((c) => (
-                <li key={c.craft.id} className="flex items-center gap-3 py-1.5">
-                  {c.outputItem?.iconLink && <img src={c.outputItem.iconLink} alt="" className="h-7 w-7 object-contain" />}
-                  <span className="min-w-0 flex-1 truncate">{c.outputItem?.name}{favorites.includes(c.craft.id) ? ' ★' : ''}<span className="text-xs text-ink-dim"> · {c.station?.name} L{c.craft.level}</span></span>
-                  <span className="tabular-nums text-success">{formatRoubles(c.profitPerHour)}/h</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+      <div className="mt-4 grid gap-4">
         {isDesktop() ? <TimersCard /> : (
           <div className="card">
             <h2 className="card-title">Timers</h2>

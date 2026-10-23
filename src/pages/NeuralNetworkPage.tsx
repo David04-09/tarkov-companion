@@ -14,7 +14,7 @@ const ROADMAP: { done: boolean; title: string; detail: string }[] = [
   { done: true, title: 'The tab', detail: 'A place for the assistant in the app.' },
   { done: true, title: 'Answer questions and guide on the map', detail: 'Places, extracts, walking routes around water, fences, rocks and minefields, closest quests, items and keys, your progress. Spoken out loud.' },
   { done: true, title: 'Talk to it', detail: 'Mic button, or a hotkey in game (Settings → Desktop app). Recognised on this PC; nothing is sent anywhere.' },
-  { done: true, title: 'Do things for you (first steps)', detail: 'Mark quests done, show a quest or a route on the Maps tab, open a gun in the Weapon builder. Each one only when you click its button.' },
+  { done: true, title: 'Do things for you (first steps)', detail: 'Mark quests done, show a quest or a route on the Maps tab. Each one only when you click its button.' },
   { done: true, title: 'Learn from you', detail: 'Remembers what you tell it, learns your words and your maps from the game log, keeps answers short if you keep cutting it off, and greets you with real numbers. All on this PC.' },
   { done: false, title: 'More things to do', detail: 'Pick parts for a gun build, plan a whole raid.' },
 ]
@@ -43,6 +43,13 @@ function VoicePanel() {
         <input type="checkbox" checked={s.speak} onChange={(e) => s.set({ speak: e.target.checked })} className="h-4 w-4" />
         Read answers out loud
       </label>
+      {window.desktop && (
+        <label className="flex items-center gap-2">
+          <input type="checkbox" checked={s.popup} onChange={(e) => s.set({ popup: e.target.checked })} className="h-4 w-4" />
+          Show answers in a pop-up over the game
+          <span className="text-xs text-ink-dim">(see-through, top right of the screen your mouse is on; clicks go through to the game; say "close that" to hide it)</span>
+        </label>
+      )}
       <div className="flex flex-wrap items-center gap-2">
         <label className="flex items-center gap-2">
           <input type="checkbox" checked={s.wakeWord} onChange={(e) => s.set({ wakeWord: e.target.checked })} className="h-4 w-4" />
