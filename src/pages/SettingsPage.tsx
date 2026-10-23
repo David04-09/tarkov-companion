@@ -41,7 +41,6 @@ import { askNotificationPermission, notificationPermission, notify } from '../li
 import { formatDateTime, formatRoubles } from '../lib/format'
 import { JSON_API_BASE } from '../api/client'
 import { persister } from '../api/persist'
-import { useAssistantStore } from '../store/assistant'
 import type { DesktopSettings, UpdateMode } from '../shared/desktop-api'
 
 
@@ -317,7 +316,7 @@ function PricesSection() {
   const [note, setNote] = useState<string | null>(null)
   return (
     <Section id="prices" title="Prices & game data" icon={Database} keywords="price flea trader sell buy value fee intelligence center refresh update data cache offline tarkov.dev new quests content patch check interval">
-      <Row label="Value items by" hint="Used for item worth everywhere: scanner keep/sell, the flea and ammo tabs, the assistant. Best = whichever pays more (selling) or costs less (buying).">
+      <Row label="Value items by" hint="Used for item worth everywhere: scanner keep/sell, the flea and ammo tabs. Best = whichever pays more (selling) or costs less (buying).">
         <Segmented value={source} onChange={setSource} label="Value items by" options={[{ value: 'best', label: 'Best of both' }, { value: 'trader', label: 'Traders' }, { value: 'flea', label: 'Flea market' }]} />
       </Row>
       <Row label="Lower flea fees (Intelligence Center 3)" hint="Automatic reads your Intelligence Center level from the Hideout tab.">
@@ -462,8 +461,7 @@ function MapsSection() {
   const autoUntick = useMapOverlayStore((s) => s.autoUntickCompleted)
   const setAutoUntick = useMapOverlayStore((s) => s.setAutoUntickCompleted)
   const [openOnRaid, setOpenOnRaid] = useDesktopSetting('openMapOnRaid', true)
-  const briefing = useAssistantStore((s) => s.briefing)
-  const setAssistant = useAssistantStore((s) => s.set)
+  const [briefing, setBriefing] = usePref('raidBriefing')
   return (
     <Section id="maps" title="Maps" icon={MapIcon} keywords="map marker size icon bring box untick completed quests raid open briefing">
       <Row label="Marker size" hint="Quest, extract, boss and position markers.">
@@ -482,7 +480,7 @@ function MapsSection() {
       )}
       {isDesktop() && (
         <Row label="Raid briefing" hint="When the game loads a map: a card with your quests there (ticked on the Maps tab, else started in the game) and the keys and items they need. Started quests are put on the map.">
-          <Switch checked={briefing} onChange={(on) => setAssistant({ briefing: on })} label="Raid briefing" />
+          <Switch checked={briefing} onChange={setBriefing} label="Raid briefing" />
         </Row>
       )}
     </Section>
@@ -518,7 +516,7 @@ function ScannerSection() {
 }
 
 /** Records a key combination for a global hotkey (Electron accelerator format). */
-function HotkeyRecorder({ setting = 'scanHotkey' }: { setting?: 'scanHotkey' | 'assistantHotkey' }) {
+function HotkeyRecorder({ setting = 'scanHotkey' }: { setting?: 'scanHotkey' }) {
   const current = useDesktopStore((s) => s.settings?.[setting]) ?? ''
   const [recording, setRecording] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -568,12 +566,13 @@ function DesktopAppSection() {
   const [updates, setUpdates] = useDesktopSetting('updateMode', 'auto' as UpdateMode)
   const [track, setTrack] = useDesktopSetting('trackPosition', true)
   const [cleanAfter, setCleanAfter] = useDesktopSetting('cleanAfterUpdate', true)
+  const [searchBar, setSearchBar] = useDesktopSetting('searchBar', false)
   const [autoSwitch, setAutoSwitch] = usePref('autoSwitchGameMode')
   const [autoTick, setAutoTick] = usePref('autoTickFromLogs')
   const scavMinutes = useTimersStore((s) => s.scavCooldownMinutes)
   const setScavMinutes = useTimersStore((s) => s.setScavCooldownMinutes)
   return (
-    <Section id="desktop" title="Desktop app" icon={Monitor} desktopOnly keywords="windows start tray minimize close hotkey shortcut assistant voice talk microphone mic update clean cleanup installer leftover delete space disk logs game log watching folder pvp pve switch tick quests where am i position screenshot scav cooldown timer">
+    <Section id="desktop" title="Desktop app" icon={Monitor} desktopOnly keywords="windows start tray minimize close hotkey shortcut search bar overlay update clean cleanup installer leftover delete space disk logs game log watching folder pvp pve switch tick quests where am i position screenshot scav cooldown timer">
       <Row label="Close to tray" hint="The X button hides the window and keeps quest tracking running. Use the tray icon to reopen or quit.">
         <Switch checked={tray} onChange={setTray} label="Close to tray" />
       </Row>
@@ -595,8 +594,8 @@ function DesktopAppSection() {
       <Row label="Stash scanner hotkey" hint="Captures the screen the game is on and opens the scanner with it.">
         <HotkeyRecorder />
       </Row>
-      <Row label="Talk to the assistant hotkey" hint="Press it in game and speak a question; the answer shows in the app and in the pop-up over the game. The app stays in the background and the game keeps focus. Recognised on this PC, nothing is sent anywhere. Off until you set one.">
-        <HotkeyRecorder setting="assistantHotkey" />
+      <Row label="Search bar over the game" hint="A small search box in the top left corner of your main screen, on top of the game (borderless or windowed mode). It stays faint until you move the mouse over it. Type an item, key or quest to see its price, where it is needed or what to do.">
+        <Switch checked={searchBar} onChange={setSearchBar} label="Search bar over the game" />
       </Row>
       <Row label="Switch PvP / PvE with the game" hint="Follows the mode you play in, read from the game log.">
         <Switch checked={autoSwitch} onChange={setAutoSwitch} label="Switch game mode" />

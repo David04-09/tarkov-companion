@@ -7,7 +7,6 @@ import { NAV_ITEMS } from '../config/nav'
 import { FirstRunSetup } from '../desktop/FirstRunSetup'
 import { SyncReviewDialog, SyncToast } from '../desktop/SyncReview'
 import { useScanStore } from '../scan/scanStore'
-import { useAssistantListenStore } from '../store/assistantListen'
 import { UpdateBanner } from '../desktop/UpdateBanner'
 import { hasAnyProgress, useLocalFlags } from '../desktop/localFlags'
 import { isDesktop, useDesktopStore } from '../desktop/useDesktop'
@@ -18,8 +17,6 @@ import { StoryTimerWatcher } from '../story/StoryTimerWatcher'
 import { AutoUntickCompleted } from '../maps/AutoUntick'
 import { RaidResultPrompt } from '../stats/RaidResultPrompt'
 import { RaidBriefingHost } from '../briefing/RaidBriefingHost'
-import { AssistantGate } from '../assistant/AssistantGate'
-import { AssistantBubble } from '../assistant/AssistantBubble'
 import { PositionListener } from '../maps/position'
 import { AutoBackup } from '../desktop/HealthAndBackups'
 import { Sidebar } from './Sidebar'
@@ -53,15 +50,8 @@ export function Layout() {
   }, [landingPage, hiddenTabs, pathname, navigate])
   // Desktop scan hotkey: the main process captured the game screen; open the scanner with it.
   useEffect(() => window.desktop?.onScanCapture((png) => useScanStore.getState().openWith(new Blob([png as BlobPart], { type: 'image/png' }))), [])
-  // Desktop assistant hotkey: switch to the assistant tab (the window stays in the background) and listen.
-  useEffect(
-    () =>
-      window.desktop?.onAssistantListen(() => {
-        useAssistantListenStore.getState().ask()
-        navigate('/neural')
-      }),
-    [navigate],
-  )
+  // Desktop search bar over the game: "Open in the app" on one of its results.
+  useEffect(() => window.desktop?.onOpenInApp((to) => to.startsWith('/') && navigate(to)), [navigate])
   const settings = useDesktopStore((s) => s.settings)
   const localSetupDone = useLocalFlags((s) => s.setupDone)
   const hasProgress = useProgressStore((s) => hasAnyProgress(s.profiles))
@@ -86,11 +76,6 @@ export function Layout() {
       <ErrorBoundary area="Raid briefing" quiet>
         {/* Briefs when the game log (desktop) says a map is loading. */}
         <RaidBriefingHost />
-      </ErrorBoundary>
-      <ErrorBoundary area="The assistant" quiet>
-        {/* The assistant lives here so the wake word works on every tab. */}
-        <AssistantGate />
-        <AssistantBubble />
       </ErrorBoundary>
       {isDesktop() && (
         <ErrorBoundary area="Game log features" quiet>

@@ -27,7 +27,7 @@ declare const __TC_PACKS__: PackManifest | null
 const RELEASES = 'https://github.com/David04-09/tarkov-companion/releases/download'
 const MAGIC = 'TCPK1\n'
 const MAX_PACK_BYTES = 300 * 1024 * 1024
-export const PACK_NAMES: PackName[] = ['lighthouse', 'scan', 'voice', 'asr', 'nlu']
+export const PACK_NAMES: PackName[] = ['lighthouse', 'scan']
 
 const manifest: PackManifest | null = typeof __TC_PACKS__ === 'undefined' ? null : __TC_PACKS__
 const packsRoot = () => path.join(app.getPath('userData'), 'packs')

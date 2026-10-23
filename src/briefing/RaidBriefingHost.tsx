@@ -8,8 +8,7 @@ import type { GameData, ItemsById } from '../api/types'
 import { computeTaskStatuses, isFactionEligible } from '../lib/taskStatus'
 import { findMapConfig, resolveBaseLayer } from '../maps/mapConfig'
 import { buildMapTasks } from '../maps/overlay/mapTasks'
-import { useAssistantStore } from '../store/assistant'
-import { useAssistantMemory } from '../store/assistantMemory'
+import { prefs } from '../store/prefs'
 import { useMapOverlayStore } from '../store/mapOverlay'
 import { useProgressStore } from '../store/progress'
 import { useRaidBriefingStore } from '../store/raidBriefing'
@@ -47,8 +46,6 @@ export function RaidBriefingHost() {
             ? data?.maps.find((m) => m.nameId.toLowerCase() === e.location.toLowerCase())
             : data?.maps.find((m) => m.scenePath && m.scenePath.toLowerCase() === e.scenePath.toLowerCase())
         if (!map) return
-        // Habits: which maps are played and when (assistant memory).
-        useAssistantMemory.getState().raid(map.normalizedName, e.at)
         store.ask(map.normalizedName, e.at)
       }),
     [queryClient],
@@ -56,9 +53,8 @@ export function RaidBriefingHost() {
 
   useEffect(() => {
     if (!request) return
-    const assistant = useAssistantStore.getState()
     const store = useRaidBriefingStore.getState()
-    if (!assistant.briefing || isRepeat(store.last, request.mapKey, request.at, store.ended)) return
+    if (!prefs().raidBriefing || isRepeat(store.last, request.mapKey, request.at, store.ended)) return
     const progress = useProgressStore.getState()
     const gameMode = progress.gameMode
     const data = queryClient.getQueryData<GameData>(gameDataKeys.mode(gameMode))

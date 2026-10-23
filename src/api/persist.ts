@@ -72,6 +72,11 @@ export const persister: Persister = {
   },
 }
 
+/** The search bar's window: reads the app's saved data but never writes it (the app window owns it). */
+export function readOnlyPersistOptions(client: QueryClient): Omit<PersistQueryClientOptions, 'queryClient'> & { queryClient: QueryClient } {
+  return { ...persistOptions(client), persister: { ...persister, persistClient: async () => undefined, removeClient: async () => undefined } }
+}
+
 export function persistOptions(client: QueryClient): Omit<PersistQueryClientOptions, 'queryClient'> & { queryClient: QueryClient } {
   return {
     queryClient: client,

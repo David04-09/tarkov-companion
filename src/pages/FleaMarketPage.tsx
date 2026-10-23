@@ -8,6 +8,7 @@ import { TradersPanel } from '../components/TradersPanel'
 import { useNeeds } from '../hooks/useNeeds'
 import { FEE_NOTE, fleaFee } from '../lib/economy'
 import { matchesSearch, rankMatch, searchWords } from '../lib/fleaSearch'
+import { useLinkParam } from '../lib/linkParam'
 import { formatNumber, formatRoubles, formatTimeAgo } from '../lib/format'
 import { remainingFor, type ItemNeed } from '../lib/needs'
 import { useFleaStore, type FleaSortKey } from '../store/flea'
@@ -210,6 +211,8 @@ export function FleaMarketPage() {
   const filters = useFleaStore((s) => s.filters)
   const setFilters = useFleaStore((s) => s.setFilters)
   const resetFilters = useFleaStore((s) => s.resetFilters)
+  // "?q=…" (the search bar's "Open in the app") fills in the search.
+  useLinkParam('q', (q) => setFilters({ search: q }))
   const [expandedId, setExpandedId] = useState<string | null>(null)
   // Like the game: typing lists every item whose name has all the words; picking one shows just it.
   const [picked, setPicked] = useState<{ id: string; name: string } | null>(null)

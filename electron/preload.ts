@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { BackfillProgress, DesktopApi, DesktopSettings, GameEvent, PackName, PackProgress, PlayerPosition, PopupData, UpdateStatus, WatcherState, WipeEvent } from '../src/shared/desktop-api'
+import type { BackfillProgress, DesktopApi, DesktopSettings, GameEvent, PackName, PackProgress, PlayerPosition, UpdateStatus, WatcherState, WipeEvent } from '../src/shared/desktop-api'
 
 function subscribe<T>(channel: string, cb: (payload: T) => void): () => void {
   const listener = (_e: Electron.IpcRendererEvent, payload: T) => cb(payload)
@@ -10,11 +10,9 @@ function subscribe<T>(channel: string, cb: (payload: T) => void): () => void {
 const api: DesktopApi = {
   platform: process.platform,
   appVersion: process.argv.find((a) => a.startsWith('--tc-version='))?.slice('--tc-version='.length) ?? '',
-  windowKind: process.argv.includes('--tc-window=popup') ? 'popup' : 'main',
-  showPopup: (data) => ipcRenderer.invoke('popup:show', data),
-  hidePopup: () => ipcRenderer.invoke('popup:hide'),
-  onPopupData: (cb) => subscribe<PopupData>('popup:data', cb),
-  setPopupHeight: (px) => ipcRenderer.invoke('popup:height', px),
+  windowKind: process.argv.includes('--tc-window=searchbar') ? 'searchbar' : 'main',
+  setSearchBarHeight: (px) => ipcRenderer.invoke('searchbar:height', px),
+  openInApp: (to) => ipcRenderer.invoke('searchbar:open', to),
   getState: () => ipcRenderer.invoke('watcher:getState'),
   ensurePack: (name: PackName) => ipcRenderer.invoke('pack:ensure', name),
   onPackProgress: (cb) => subscribe<PackProgress>('pack:progress', cb),
@@ -33,7 +31,7 @@ const api: DesktopApi = {
   listGameScreenshots: () => ipcRenderer.invoke('scan:listShots'),
   readGameScreenshot: (name: string) => ipcRenderer.invoke('scan:readShot', name),
   onScanCapture: (cb) => subscribe<Uint8Array>('scan:captured', cb),
-  onAssistantListen: (cb) => subscribe<null>('assistant:listen', () => cb()),
+  onOpenInApp: (cb) => subscribe<string>('app:open', cb),
   getUpdateStatus: () => ipcRenderer.invoke('update:status'),
   checkForUpdates: () => ipcRenderer.invoke('update:check'),
   installUpdate: () => ipcRenderer.invoke('update:install'),

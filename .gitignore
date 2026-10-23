@@ -49,14 +49,6 @@ public/scan/
 # Offline text reader for the stash scanner (generated: npm run ocr:assets)
 public/ocr/
 
-# Speech model and recogniser worker for the assistant's voice input (generated: npm run voice:assets)
-public/voice/
-public/vosk/
-
-public/asr/
-public/nlu/
-public/asr-test/
-
 # Tesseract model downloaded by older OCR test runs (the app ships public/ocr)
 /eng.traineddata
 

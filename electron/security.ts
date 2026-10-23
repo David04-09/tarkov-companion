@@ -7,7 +7,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Session, WebContents } from 'electron'
-import type { DesktopSettings, PopupData } from '../src/shared/desktop-api'
+import type { DesktopSettings } from '../src/shared/desktop-api'
 
 /** Absolute local folder that exists (no network shares, no files: shell.openPath runs files). */
 export function isSafeDirectory(p: unknown): p is string {
@@ -58,7 +58,7 @@ const CHECKS: { [K in keyof DesktopSettings]?: (v: unknown) => boolean } = {
   setupDone: (v) => typeof v === 'boolean',
   initialBackfillDone: (v) => typeof v === 'boolean',
   scanHotkey: isAccelerator,
-  assistantHotkey: isAccelerator,
+  searchBar: (v) => typeof v === 'boolean',
   updateMode: (v) => v === 'auto' || v === 'notify' || v === 'off',
   trackPosition: (v) => typeof v === 'boolean',
   backupKeep: (v) => typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= 60,
@@ -83,26 +83,14 @@ export function isScreenshotName(n: unknown): n is string {
 
 /**
  * The app needs exactly one browser permission: notifications (raid timers, trader restocks).
- * Everything else (camera, location, screen capture from the page, USB, …) is refused; the
- * microphone only as below.
+ * Everything else (camera, microphone, location, screen capture from the page, USB, …) is refused.
  * Screen capture for the scanner happens in the main process, not through the page.
  */
 const ALLOWED_PERMISSIONS = new Set(['notifications', 'clipboard-sanitized-write'])
 
-/**
- * The microphone, for the assistant's voice input (asked for only when the player clicks the
- * mic button or presses its hotkey; speech is recognised on this PC, nothing is sent anywhere).
- * Audio only: a request that also wants the camera, or any other media type, is refused.
- */
-export function isMicOnly(permission: string, mediaTypes: readonly string[] | undefined): boolean {
-  return permission === 'media' && Array.isArray(mediaTypes) && mediaTypes.length > 0 && mediaTypes.every((t) => t === 'audio')
-}
-
 export function lockPermissions(session: Session) {
-  session.setPermissionRequestHandler((_wc, permission, callback, details) =>
-    callback(ALLOWED_PERMISSIONS.has(permission) || isMicOnly(permission, 'mediaTypes' in details ? details.mediaTypes : undefined)),
-  )
-  session.setPermissionCheckHandler((_wc, permission, _origin, details) => ALLOWED_PERMISSIONS.has(permission) || (permission === 'media' && details.mediaType === 'audio'))
+  session.setPermissionRequestHandler((_wc, permission, callback) => callback(ALLOWED_PERMISSIONS.has(permission)))
+  session.setPermissionCheckHandler((_wc, permission) => ALLOWED_PERMISSIONS.has(permission))
   session.setDevicePermissionHandler(() => false)
 }
 
@@ -144,71 +132,10 @@ export function isSameFileUrl(url: string, filePath: string): boolean {
     return false
   }
 }
-
-/** The pop-up's content comes from the page: plain strings only, short, never markup that runs. */
-export function cleanPopupData(v: unknown): PopupData | null {
-  if (typeof v !== 'object' || v === null) return null
-  const o = v as Record<string, unknown>
-  // Control characters dropped (line breaks kept).
-  const str = (x: unknown, max: number) => (typeof x === 'string' ? [...x].filter((c) => c >= ' ' || c === '\n').join('').slice(0, max) : '')
-  const text = str(o.text, 600)
-  if (!text) return null
-  const lines = Array.isArray(o.lines) ? o.lines.map((l) => str(l, 220)).filter(Boolean).slice(0, 12) : []
-  const secs = typeof o.autoCloseSeconds === 'number' && Number.isFinite(o.autoCloseSeconds) ? Math.min(600, Math.max(0, Math.round(o.autoCloseSeconds))) : 0
-  const out: PopupData = { title: str(o.title, 140), text, lines, hint: str(o.hint, 120), autoCloseSeconds: secs }
-  const num = (x: unknown) => (typeof x === 'number' && Number.isFinite(x) ? x : null)
-  const obj = (x: unknown) => (typeof x === 'object' && x !== null ? (x as Record<string, unknown>) : null)
-  const pos = (x: unknown) => {
-    const p = obj(x)
-    const px = num(p?.x)
-    const pz = num(p?.z)
-    return p && px !== null && pz !== null ? { x: px, y: num(p.y) ?? 0, z: pz } : null
-  }
-  const KINDS = ['you', 'quest', 'place', 'extract', 'loot'] as const
-  const m = obj(o.map)
-  if (m && typeof m.mapKey === 'string' && /^[a-z0-9-]{2,40}$/.test(m.mapKey) && Array.isArray(m.points)) {
-    const points = m.points.slice(0, 40).flatMap((p) => {
-      const at = pos(p)
-      const kind = obj(p)?.kind
-      return at ? [{ ...at, label: str(obj(p)?.label, 60), kind: KINDS.includes(kind as (typeof KINDS)[number]) ? (kind as (typeof KINDS)[number]) : 'place' }] : []
-    })
-    const path = Array.isArray(m.path) ? m.path.slice(0, 600).flatMap((p) => { const at = pos(p); return at ? [at] : [] }) : undefined
-    const focus = Array.isArray(m.focus) ? m.focus.slice(0, 4).flatMap((p) => { const at = pos(p); return at ? [at] : [] }) : []
-    const zoomDelta = Math.max(-4, Math.min(4, Math.round(num(m.zoomDelta) ?? 0)))
-    if (points.length || focus.length) out.map = { mapKey: m.mapKey, mapName: str(m.mapName, 40), points, ...(path?.length ? { path } : {}), ...(focus.length ? { focus } : {}), ...(zoomDelta ? { zoomDelta } : {}) }
-  }
-  const it = obj(o.item)
-  if (it && typeof it.name === 'string') {
-    const icon = typeof it.iconLink === 'string' && /^https:\/\/assets\.tarkov\.dev\/[\w.-]+$/.test(it.iconLink) ? it.iconLink : null
-    const tr = obj(it.trader)
-    out.item = {
-      name: str(it.name, 80),
-      iconLink: icon,
-      flea: num(it.flea),
-      trader: tr && typeof tr.name === 'string' && num(tr.price) !== null ? { name: str(tr.name, 30), price: num(tr.price)! } : null,
-      fleaLevel: num(it.fleaLevel),
-      banned: it.banned === true,
-      needed: Math.max(0, Math.min(9999, num(it.needed) ?? 0)),
-      fir: it.fir === true,
-    }
-  }
-  if (o.paused === true) out.paused = true
-  if (Array.isArray(o.images)) {
-    const images = o.images.slice(0, 3).flatMap((x) => {
-      const im = obj(x)
-      return im && typeof im.thumb === 'string' && /^https:\/\/static\.wikia\.nocookie\.net\/[^\s"'<>]+$/.test(im.thumb) ? [{ thumb: im.thumb, caption: str(im.caption, 120) }] : []
-    })
-    if (images.length) out.images = images
-  }
-  const q = obj(o.quest)
-  if (q && typeof q.trader === 'string') {
-    out.quest = {
-      trader: str(q.trader, 30),
-      map: typeof q.map === 'string' ? str(q.map, 40) : null,
-      status: str(q.status, 20),
-      level: Math.max(0, Math.min(99, num(q.level) ?? 0)),
-      objectives: Array.isArray(q.objectives) ? q.objectives.map((x) => str(x, 140)).filter(Boolean).slice(0, 6) : [],
-    }
-  }
-  return out
+/**
+ * Pages the search bar may open in the app window: a tab path with an optional plain query
+ * ("/flea", "/quests?q=Debut", "/keys?key=<id>"). Anything else is refused.
+ */
+export function isAppPath(to: unknown): to is string {
+  return typeof to === 'string' && to.length <= 300 && /^\/(?:flea|keys|quests|items|ammo|hideout|maps)?(?:\?[\w%=&.+-]*)?$/.test(to)
 }

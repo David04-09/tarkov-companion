@@ -10,7 +10,7 @@ import { BrowserWindow, Menu, Tray, app, dialog, globalShortcut, ipcMain, native
 import type { IpcMainInvokeEvent } from 'electron'
 import fs from 'node:fs'
 import path from 'node:path'
-import type { DesktopSettings, GameEvent, LogStatsData, PopupData, WipeEvent } from '../src/shared/desktop-api'
+import type { DesktopSettings, GameEvent, LogStatsData, WipeEvent } from '../src/shared/desktop-api'
 import { detectLogsFolder } from './logs/locator'
 import { LogWatcher } from './logs/watcher'
 import { SettingsStore } from './settings'
@@ -22,7 +22,7 @@ import { captureScreenUnderCursor, listGameScreenshots, readAppResource, readGam
 // Chromium cannot fetch() file:// URLs). Must be registered before the app is ready.
 protocol.registerSchemesAsPrivileged([{ scheme: 'tcres', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } }])
 import { checkForUpdates, getUpdateOutcome, getUpdateStatus, installUpdate, runInstallerManually, setUpdateMode, setupUpdater } from './updater'
-import { cleanPopupData, cleanSettingsPatch, isSafeDirectory, isSameFileUrl, isTrustedSender, isWebUrl, lockPermissions } from './security'
+import { cleanSettingsPatch, isAppPath, isSafeDirectory, isSameFileUrl, isTrustedSender, isWebUrl, lockPermissions } from './security'
 import { PACK_NAMES, currentPackDirNames, ensurePack, packsEnabled } from './packs'
 import { cleanLeftovers, sizeOf } from './cleanup'
 import type { CleanupResult } from '../src/shared/desktop-api'
@@ -36,9 +36,8 @@ const APP_USER_MODEL_ID = 'io.github.david04-09.tarkov-companion'
 let win: BrowserWindow | null = null
 let tray: Tray | null = null
 let quitting = false
-/** The assistant's pop-up over the game (created on first use, hidden rather than closed). */
-let popup: BrowserWindow | null = null
-let popupReady: Promise<void> | null = null
+/** The search bar over the game (only while switched on in Settings). */
+let searchBar: BrowserWindow | null = null
 let settings: SettingsStore
 const watcher = new LogWatcher()
 let stopScreenshots: (() => void) | null = null
@@ -94,10 +93,11 @@ function bootstrap() {
   })
   watcher.on('state', (s) => broadcast('watcher:state', s))
   applyPositionTracking()
+  applySearchBar()
 
   app.on('before-quit', () => {
     quitting = true
-    if (popup && !popup.isDestroyed()) popup.destroy()
+    if (searchBar && !searchBar.isDestroyed()) searchBar.destroy()
     watcher.stop()
     globalShortcut.unregisterAll()
   })
@@ -253,37 +253,44 @@ function createWindow(show: boolean) {
 }
 
 // ---------------------------------------------------------------------------
-// The assistant's pop-up
+// The search bar over the game
 // ---------------------------------------------------------------------------
 
-const POPUP_WIDTH = 440
-const POPUP_MARGIN = 24
+const SEARCH_WIDTH = 380
+const SEARCH_MARGIN = 16
 
 /**
- * A small see-through window with the assistant's answer, on top of the screen the mouse is on
- * (where the game is). It never takes focus or clicks: the game keeps the keyboard and mouse,
- * and the window is closed by voice ("close that") or from the app. It only shows the app's own
- * page; nothing about the game is read or touched.
+ * A small search box in the top-left corner of the main screen, above the game (borderless or
+ * windowed). It shows only the app's own page: type an item, key or quest and its price or
+ * details drop down. It never takes focus by itself; clicking into it does, like any window.
+ * Nothing about the game is read or touched.
  */
-function ensurePopup(): { w: BrowserWindow; ready: Promise<void> } {
-  if (popup && !popup.isDestroyed() && popupReady) return { w: popup, ready: popupReady }
+function applySearchBar() {
+  const on = settings.get().searchBar
+  if (!on) {
+    if (searchBar && !searchBar.isDestroyed()) searchBar.destroy()
+    searchBar = null
+    return
+  }
+  if (searchBar && !searchBar.isDestroyed()) return
+  const area = screen.getPrimaryDisplay().workArea
   const w = new BrowserWindow({
-    width: POPUP_WIDTH,
-    height: 200,
+    x: area.x + SEARCH_MARGIN,
+    y: area.y + SEARCH_MARGIN,
+    width: SEARCH_WIDTH,
+    height: 56,
     show: false,
     frame: false,
     transparent: true,
     backgroundColor: '#00000000',
     hasShadow: false,
     resizable: false,
-    movable: false,
     minimizable: false,
     maximizable: false,
     fullscreenable: false,
     skipTaskbar: true,
-    focusable: false,
     alwaysOnTop: true,
-    title: 'Tarkov Companion pop-up',
+    title: 'Tarkov Companion search',
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -293,48 +300,28 @@ function ensurePopup(): { w: BrowserWindow; ready: Promise<void> } {
       allowRunningInsecureContent: false,
       webviewTag: false,
       devTools: !app.isPackaged,
-      additionalArguments: ['--tc-window=popup', `--tc-version=${app.getVersion()}`],
+      additionalArguments: ['--tc-window=searchbar', `--tc-version=${app.getVersion()}`],
     },
   })
-  // Above full-screen-window games; clicks go straight through to the game.
+  // Above full-screen-window games.
   w.setAlwaysOnTop(true, 'screen-saver')
-  w.setIgnoreMouseEvents(true)
   w.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
   lockNavigation(w)
-  popupReady = new Promise<void>((resolve) => w.webContents.once('did-finish-load', () => resolve()))
-  load(w, '/popup')
+  w.webContents.once('did-finish-load', () => w.showInactive())
+  load(w, '/searchbar')
   w.on('closed', () => {
-    popup = null
-    popupReady = null
+    if (searchBar === w) searchBar = null
   })
-  popup = w
-  return { w, ready: popupReady }
+  searchBar = w
 }
 
-/** Top-left corner of the screen under the mouse. */
-function placePopup(w: BrowserWindow, height: number) {
-  const area = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea
-  const h = Math.max(80, Math.min(Math.round(height), Math.round(area.height * 0.7)))
-  w.setBounds({ x: area.x + POPUP_MARGIN, y: area.y + POPUP_MARGIN, width: POPUP_WIDTH, height: h })
-}
-
-/** Hides the pop-up by itself after the player's chosen time (main-process timers are not slowed while the game has focus). */
-let popupTimer: NodeJS.Timeout | undefined
-async function showPopup(data: PopupData) {
-  const { w, ready } = ensurePopup()
-  await ready
-  if (w.isDestroyed()) return
-  w.webContents.send('popup:data', data)
-  placePopup(w, w.getBounds().height)
-  w.showInactive()
-  clearTimeout(popupTimer)
-  const secs = data.autoCloseSeconds ?? 0
-  if (secs > 0) popupTimer = setTimeout(() => hidePopup(), secs * 1000)
-}
-
-function hidePopup() {
-  clearTimeout(popupTimer)
-  if (popup && !popup.isDestroyed()) popup.hide()
+/** The search bar grows with its results (never past 70% of the screen). */
+function sizeSearchBar(height: number) {
+  if (!searchBar || searchBar.isDestroyed()) return
+  const area = screen.getDisplayMatching(searchBar.getBounds()).workArea
+  const h = Math.max(40, Math.min(Math.round(height), Math.round(area.height * 0.7)))
+  const b = searchBar.getBounds()
+  if (b.height !== h) searchBar.setBounds({ x: b.x, y: b.y, width: SEARCH_WIDTH, height: h })
 }
 
 let lastCleanup: CleanupResult | null = null
@@ -397,8 +384,6 @@ function registerHotkey() {
     }
   }
   tryRegister(settings.get().scanHotkey, () => void captureForScan())
-  // The window is not brought forward: the game keeps focus while the assistant listens and talks.
-  tryRegister(settings.get().assistantHotkey, () => win?.webContents.send('assistant:listen', null))
 }
 
 /** Scan hotkey: capture the game screen first, then bring the app up with the scan. */
@@ -460,7 +445,8 @@ function updateSettings(patch: Partial<DesktopSettings>): DesktopSettings {
     app.setLoginItemSettings({ openAtLogin: after.startWithWindows, args: ['--minimized'] })
   }
   if (patch.logsPath !== undefined || patch.paused !== undefined) applyWatcherSettings()
-  if (patch.scanHotkey !== undefined || patch.assistantHotkey !== undefined) registerHotkey()
+  if (patch.scanHotkey !== undefined) registerHotkey()
+  if (patch.searchBar !== undefined) applySearchBar()
   if (patch.updateMode !== undefined) setUpdateMode(after.updateMode)
   if (patch.trackPosition !== undefined) applyPositionTracking()
   broadcast('watcher:state', watcher.getState())
@@ -475,15 +461,16 @@ function registerIpc() {
       if (!isTrustedSender(e.sender, isOwnUrl)) throw new Error('Refused')
       return fn(e, ...args)
     })
-  handle('popup:show', (_e, data: unknown) => {
-    const d = cleanPopupData(data)
-    return d ? showPopup(d) : undefined
+  handle('searchbar:height', (e, px: unknown) => {
+    // Only the search bar itself says how tall it is.
+    if (!searchBar || searchBar.isDestroyed() || e.sender !== searchBar.webContents || typeof px !== 'number' || !Number.isFinite(px)) return
+    sizeSearchBar(px)
   })
-  handle('popup:hide', () => hidePopup())
-  handle('popup:height', (e, px: unknown) => {
-    // Only the pop-up itself says how tall it is.
-    if (!popup || popup.isDestroyed() || e.sender !== popup.webContents || typeof px !== 'number' || !Number.isFinite(px)) return
-    placePopup(popup, px)
+  handle('searchbar:open', (e, to: unknown) => {
+    // "Open in the app" from a search result: only the app's own tab pages.
+    if (!searchBar || e.sender !== searchBar.webContents || !isAppPath(to)) return
+    showWindow()
+    win?.webContents.send('app:open', to)
   })
   handle('watcher:getState', () => watcher.getState())
   handle('pack:ensure', async (_e, name: unknown) => {

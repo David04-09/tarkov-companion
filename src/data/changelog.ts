@@ -12,7 +12,11 @@ export interface ChangelogEntry {
 }
 
 /** Committed, waiting for the next update. */
-export const UNRELEASED: string[] = []
+export const UNRELEASED: string[] = [
+  "The assistant (Neural network tab) is gone: no voice input, no speech or language models, no wake word, no pop-up over the game. The app is back to quick-loading, hand-picked information. What it kept on your PC (its settings, memory and the downloaded speech models) is cleaned up after the update.",
+  "Desktop: a search bar over the game. Switch it on under Settings → Desktop app → \"Search bar over the game\". It sits in the top left corner of your main screen, faint until you move the mouse over it. Type any words of an item, key or quest: items show their flea price, best trader price, the level you need to sell them on the flea, how many you still need and which map a key's lock is on; quests show trader, map, status and objectives. \"Open in the app\" jumps to it on the Flea Market, Keys or Quests tab. Works over the game in borderless or windowed mode.",
+  "The raid briefing (desktop) stays: its switch is under Settings → Maps.",
+]
 
 export const RELEASES: ChangelogEntry[] = [
   {

@@ -22,9 +22,6 @@ export const CREDITS: Credit[] = [
   { name: 'RE3MR', url: 'https://reemr.se', license: 'CC BY-NC-SA 4.0', what: 'The post-1.1.5 Lighthouse render, sliced into tiles for this app.' },
   { name: 'Escape from Tarkov Wiki', url: 'https://escapefromtarkov.fandom.com', license: 'CC BY-SA 3.0', what: 'Quest guide pictures, the story chapter walkthroughs with their waiting times, and the endings.' },
   { name: 'TarkovMonitor', url: 'https://github.com/the-hideout/TarkovMonitor', license: 'GPL-3.0 (reference only; no code copied)', what: 'Where the meaning of the game log lines was learned. The parser here is an independent implementation.' },
-  { name: 'Moonshine (Useful Sensors)', url: 'https://huggingface.co/UsefulSensors/moonshine-tiny', license: 'MIT', what: 'Offline speech recognition: turns your spoken questions to the assistant into text.' },
-  { name: 'paraphrase-MiniLM-L3-v2 (sentence-transformers)', url: 'https://huggingface.co/sentence-transformers/paraphrase-MiniLM-L3-v2', license: 'Apache-2.0', what: 'Offline plain-English helper: matches a question the assistant did not understand to one it knows.' },
-  { name: 'Vosk (vosk-browser)', url: 'https://alphacephei.com/vosk/', license: 'Apache-2.0', what: 'Offline wake word ("Hey Ranger") and hearing when you have finished a question, with the small English model.' },
   { name: 'Tesseract OCR (tesseract.js)', url: 'https://github.com/naptha/tesseract.js', license: 'Apache-2.0', what: 'Reads the item names printed in stash screenshots, offline, for the stash scanner.' },
   { name: 'Electron, React, Leaflet, TanStack, Zustand, Tailwind, Geoman, lucide', url: 'https://github.com/David04-09/tarkov-companion/blob/main/THIRD_PARTY_NOTICES.txt', license: 'MIT and similar (full texts in THIRD_PARTY_NOTICES.txt)', what: 'The open-source libraries the app is built with.' },
 ]

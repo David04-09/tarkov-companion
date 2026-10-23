@@ -1,7 +1,7 @@
 /** Map drawings fetched this session (switching maps, layers or floors used to download them again). */
 const svgCache = new Map<string, Promise<string>>()
 
-/** The text of a tarkov.dev map SVG, downloaded once per session and shared by the map and the assistant's routes. */
+/** The text of a tarkov.dev map SVG, downloaded once per session and cached for the session. */
 export function svgText(url: string, signal?: AbortSignal): Promise<string> {
   let p = svgCache.get(url)
   if (!p) {

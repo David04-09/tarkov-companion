@@ -1,5 +1,5 @@
 import { lazy, type ComponentType } from 'react'
-import { BarChart3, BookOpen, Brain, Megaphone, Crosshair, House, KeyRound, LayoutDashboard, Map, Package, ScrollText, Store, type LucideIcon } from 'lucide-react'
+import { BarChart3, BookOpen, Megaphone, Crosshair, House, KeyRound, LayoutDashboard, Map, Package, ScrollText, Store, type LucideIcon } from 'lucide-react'
 
 /** Sidebar sections, in order. */
 export const NAV_GROUPS = [
@@ -34,7 +34,6 @@ const page = <K extends string>(load: () => Promise<Record<K, ComponentType>>, n
  */
 export const NAV_ITEMS: NavItem[] = [
   { path: '/', group: 'overview', label: 'Dashboard', icon: LayoutDashboard, component: page(() => import('../pages/DashboardPage'), 'DashboardPage') },
-  { path: '/neural', group: 'overview', label: 'Neural network', icon: Brain, component: page(() => import('../pages/NeuralNetworkPage'), 'NeuralNetworkPage') },
   { path: '/stats', group: 'overview', label: 'My stats', icon: BarChart3, component: page(() => import('../pages/StatsPage'), 'StatsPage') },
   { path: '/events', group: 'overview', label: 'Events & patches', icon: Megaphone, component: page(() => import('../pages/EventsPage'), 'EventsPage') },
   { path: '/quests', group: 'quests', label: 'Quests', icon: ScrollText, component: page(() => import('../pages/QuestsPage'), 'QuestsPage') },

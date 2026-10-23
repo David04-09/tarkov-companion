@@ -28,7 +28,7 @@ export const DEFAULT_SETTINGS: StoredSettings = {
   initialBackfillDone: false,
   paused: false,
   scanHotkey: 'Alt+Shift+S',
-  assistantHotkey: '',
+  searchBar: false,
   knownProfileId: null,
   knownGameVersion: null,
   setupDone: false,
@@ -51,7 +51,7 @@ export class SettingsStore {
     try {
       const raw = JSON.parse(fs.readFileSync(this.file, 'utf8')) as Partial<StoredSettings> & Record<string, unknown>
       // The overlay window was removed in 1.8.0: drop its old settings.
-      for (const k of ['overlay', 'overlayHotkey', 'overlayOpacity']) delete raw[k]
+      for (const k of ['overlay', 'overlayHotkey', 'overlayOpacity', 'assistantHotkey']) delete raw[k]
       this.data = {
         ...DEFAULT_SETTINGS,
         ...raw,

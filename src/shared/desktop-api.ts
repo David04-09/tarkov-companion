@@ -90,8 +90,8 @@ export interface DesktopSettings {
   paused: boolean
   /** Electron accelerator that captures the screen and opens the stash scanner. */
   scanHotkey: string
-  /** Electron accelerator that starts the assistant listening (empty = off). */
-  assistantHotkey: string
+  /** A small search bar over the game, top left of the main screen. */
+  searchBar: boolean
   /** Last profile id / game version seen in the logs, for wipe detection. */
   knownProfileId: string | null
   knownGameVersion: string | null
@@ -202,7 +202,7 @@ export interface BackfillResult {
 }
 
 /** Content packs downloaded on first use (scripts/build-packs.mjs). */
-export type PackName = 'lighthouse' | 'scan' | 'voice' | 'asr' | 'nlu'
+export type PackName = 'lighthouse' | 'scan'
 export interface PackProgress {
   name: PackName
   label: string
@@ -211,71 +211,15 @@ export interface PackProgress {
   state: 'downloading' | 'installing' | 'done'
 }
 
-/** What the assistant's pop-up shows over the game (desktop). */
-export interface PopupData {
-  /** The question, as asked. */
-  title: string
-  text: string
-  lines: string[]
-  /** How to close it, as shown at the bottom ("Say \"close that\" to hide this"). */
-  hint: string
-  /** Hide it by itself after this many seconds (0 = only when told to). */
-  autoCloseSeconds?: number
-  /** What the card shows besides the text: a mini-map, an item card or a quest card. */
-  map?: PopupMap
-  item?: PopupItem
-  quest?: PopupQuest
-  /** The countdown was stopped ("pause"): it stays until "close". */
-  paused?: boolean
-  /** Quest guide pictures from the wiki, shown under the map. */
-  images?: { thumb: string; caption: string }[]
-}
-
-export interface PopupMap {
-  mapKey: string
-  mapName: string
-  points: { x: number; y: number; z: number; label: string; kind: 'you' | 'quest' | 'place' | 'extract' | 'loot' }[]
-  /** A walking route or straight line through the points. */
-  path?: { x: number; y: number; z: number }[]
-  /** Asked to look at a part of the map ("zoom in on D3"): its corners, and zoom steps on top. */
-  focus?: { x: number; y: number; z: number }[]
-  zoomDelta?: number
-}
-
-export interface PopupItem {
-  name: string
-  /** https://assets.tarkov.dev picture. */
-  iconLink: string | null
-  flea: number | null
-  /** Best trader buy-back. */
-  trader: { name: string; price: number } | null
-  /** Player level to sell it on the flea (null = the market's own level). */
-  fleaLevel: number | null
-  banned: boolean
-  /** Still needed for quests and hideout, and found in raid. */
-  needed: number
-  fir: boolean
-}
-
-export interface PopupQuest {
-  trader: string
-  map: string | null
-  status: string
-  level: number
-  objectives: string[]
-}
-
 export interface DesktopApi {
   platform: string
   appVersion: string
-  /** 'main' for the app window, 'popup' for the assistant's pop-up. */
-  windowKind: 'main' | 'popup'
-  /** Shows the assistant's answer in a small see-through window over the screen under the mouse. */
-  showPopup: (data: PopupData) => Promise<void>
-  hidePopup: () => Promise<void>
-  /** Pop-up window only: the content to show, and its height once drawn. */
-  onPopupData: (cb: (data: PopupData) => void) => () => void
-  setPopupHeight: (px: number) => Promise<void>
+  /** 'main' for the app window, 'searchbar' for the search bar over the game. */
+  windowKind: 'main' | 'searchbar'
+  /** Search bar only: its height once drawn (the window follows it). */
+  setSearchBarHeight: (px: number) => Promise<void>
+  /** Search bar only: show the app window on this page. */
+  openInApp: (to: string) => Promise<void>
   /** Makes sure a content pack is downloaded and installed (no-op in development). */
   ensurePack: (name: PackName) => Promise<void>
   onPackProgress: (cb: (p: PackProgress) => void) => () => void
@@ -313,8 +257,8 @@ export interface DesktopApi {
   readGameScreenshot: (name: string) => Promise<Uint8Array>
   /** Scan hotkey pressed: a fresh capture to scan. */
   onScanCapture: (cb: (png: Uint8Array) => void) => () => void
-  /** The assistant hotkey was pressed: start listening. */
-  onAssistantListen: (cb: () => void) => () => void
+  /** Main window: the search bar asked to open a page ("/flea?…", "/quests?q=…"). */
+  onOpenInApp: (cb: (to: string) => void) => () => void
   getUpdateStatus: () => Promise<UpdateStatus>
   checkForUpdates: () => Promise<UpdateStatus>
   installUpdate: () => Promise<void>

@@ -69,16 +69,6 @@ jobs:
       - name: Offline text reader for the scanner (Tesseract)
         run: npm run ocr:assets
 
-      - name: Speech model for the assistant's voice input (Vosk)
-        run: npm run voice:assets
-
-
-      - name: Speech recognition for the assistant (Moonshine)
-        run: npm run asr:assets
-
-      - name: Plain-English helper for the assistant (paraphrase-MiniLM)
-        run: npm run nlu:assets
-
       - name: Unit tests and lint
         run: |
           npm test

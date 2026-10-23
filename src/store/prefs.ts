@@ -83,6 +83,8 @@ export interface Prefs {
   // Maps
   markerScale: number
   bringBoxOpen: boolean
+  /** Desktop: a card with the raid's quests and what they need when the game loads a map. */
+  raidBriefing: boolean
   questPanelOpen: boolean
   showMapCredits: boolean
   // Scanner
@@ -121,6 +123,7 @@ export const DEFAULT_PREFS: Prefs = {
   soundVolume: 50,
   markerScale: 100,
   bringBoxOpen: true,
+  raidBriefing: true,
   questPanelOpen: true,
   showMapCredits: true,
   scanTicking: 'sure',
@@ -161,6 +164,7 @@ const VALID: { [K in keyof Prefs]: (v: unknown) => boolean } = {
   soundVolume: clampNum(0, 100),
   markerScale: clampNum(60, 200),
   bringBoxOpen: isBool,
+  raidBriefing: isBool,
   questPanelOpen: isBool,
   showMapCredits: isBool,
   scanTicking: oneOf('needed', 'sure', 'none'),

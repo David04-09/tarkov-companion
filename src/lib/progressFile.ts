@@ -4,7 +4,6 @@
  * contain the same things.
  */
 import type { GameMode } from '../api/client'
-import { useAssistantMemory } from '../store/assistantMemory'
 import { parseDrawings, useDrawingsStore } from '../store/drawings'
 import { useInventoryStore, type ModeInventory } from '../store/inventory'
 import { useProgressStore } from '../store/progress'
@@ -21,14 +20,7 @@ export function buildProgressFile() {
     raidLog: raid.byMode,
     raidLogManual: raid.manual,
     raidLogHidden: raid.hidden,
-    assistantMemory: assistantMemory(),
   }
-}
-
-/** What the assistant learned about you (notes, words, habits, answer style). */
-function assistantMemory() {
-  const m = useAssistantMemory.getState()
-  return { learning: m.learning, notes: m.notes, words: m.words, habits: m.habits, style: m.style }
 }
 
 const isObj = (x: unknown): x is Record<string, unknown> => typeof x === 'object' && x !== null && !Array.isArray(x)
@@ -68,12 +60,6 @@ export function importProgressFile(parsed: unknown): string[] {
       { regular: Array.isArray(h.regular) ? h.regular : [], pve: Array.isArray(h.pve) ? h.pve : [] },
     )
     restored.push('raid log')
-  }
-  if (isObj(p.assistantMemory)) {
-    // Same checks as loading it from this PC: damaged parts are left out.
-    const merge = useAssistantMemory.persist.getOptions().merge
-    if (merge) useAssistantMemory.setState(merge(p.assistantMemory, useAssistantMemory.getState()))
-    restored.push("the assistant's memory")
   }
   return restored
 }
