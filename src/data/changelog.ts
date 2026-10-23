@@ -12,13 +12,22 @@ export interface ChangelogEntry {
 }
 
 /** Committed, waiting for the next update. */
-export const UNRELEASED: string[] = [
-  "The assistant (Neural network tab) is gone: no voice input, no speech or language models, no wake word, no pop-up over the game. The app is back to quick-loading, hand-picked information. What it kept on your PC (its settings, memory and the downloaded speech models) is cleaned up after the update.",
-  "Desktop: a search bar over the game. Switch it on under Settings → Desktop app → \"Search bar over the game\". It sits in the top left corner of your main screen, faint until you move the mouse over it. Type any words of an item, key or quest: items show their flea price, best trader price, the level you need to sell them on the flea, how many you still need and which map a key's lock is on; quests show trader, map, status and objectives. \"Open in the app\" jumps to it on the Flea Market, Keys or Quests tab. Works over the game in borderless or windowed mode.",
-  "The raid briefing (desktop) stays: its switch is under Settings → Maps.",
-]
+export const UNRELEASED: string[] = []
 
 export const RELEASES: ChangelogEntry[] = [
+  {
+    version: '2.8.0',
+    date: '2026-10-24',
+    title: 'Back to basics: the assistant is gone; a search bar with maps over the game, and done ticks on map spots',
+    changes: [
+      "The assistant (Neural network tab) is gone: no voice input, no speech or language models, no wake word, no pop-up over the game. The app is back to quick-loading, hand-picked information. What it kept on your PC (its settings, memory and the downloaded speech models) is cleaned up after the update.",
+      "Desktop: a search bar over the game. Switch it on under Settings → Desktop app → \"Search bar over the game\". It sits in the top left corner of your main screen, faint until you move the mouse over it. Type any words of an item, key or quest: items show their flea price, best trader price, the level you need to sell them on the flea, how many you still need and which map a key's lock is on; quests show trader, map, status and objectives. \"Open in the app\" jumps to it on the Flea Market, Keys or Quests tab. Works over the game in borderless or windowed mode.",
+      "The raid briefing (desktop) stays: its switch is under Settings → Maps.",
+      "Search bar: maps too. Type a map's name (\"customs\", \"labs\", \"streets\") and it opens right in the search bar: the same picture, extracts and quest markers as the Maps tab, which you can drag and zoom. While a map is showing, the bar stays clearer (80% instead of faint) so you can glance at it in raid.",
+      "Search bar: an \"On map\" tick box next to every quest. Ticked quests are drawn on their map, in the search bar and on the app's Maps tab at the same time. \"Open in the app\" on a map opens that map on the Maps tab.",
+      "Maps: double-click a quest marker or zone when you have done that part (one of several spots, or a single objective). It fades and gets a green tick above it; double-click again to put it back. Kept separately for PvP and PvE, on the Maps tab and in the search bar.",
+    ],
+  },
   {
     version: '2.7.0',
     date: '2026-10-23',

@@ -366,3 +366,18 @@ select option {
 .leaflet-marker-icon > :first-child {
   scale: var(--tc-marker-scale, 1);
 }
+
+/* A quest spot ticked off on the map (double-click): a check mark above it. */
+.tc-done-badge span {
+  display: flex;
+  height: 18px;
+  width: 18px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  background: #16a34a;
+  border: 1.5px solid #fff;
+  color: #fff;
+  font: 700 12px/1 system-ui, sans-serif;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.6);
+}

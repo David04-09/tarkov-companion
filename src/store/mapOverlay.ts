@@ -38,6 +38,8 @@ export interface MapOverlayState {
   autoUntickCompleted: boolean
   /** Quest list scan: tick only the quests found on the screenshot (untick this map's others) instead of adding them. */
   questScanOnlyFound: boolean
+  /** Quest spots ticked off on the map (double-click), per game mode: "<objectiveId>:<placementId>". */
+  doneSpots: Record<string, string[]>
   /** Set by the panel's Focus button; consumed by the map. */
   focusRequest: { taskId: string; nonce: number } | null
   setTaskChecked: (taskId: string, checked: boolean) => void
@@ -52,6 +54,7 @@ export interface MapOverlayState {
   setAutoUntickCompleted: (on: boolean) => void
   setQuestScanOnlyFound: (on: boolean) => void
   requestFocus: (taskId: string) => void
+  toggleDoneSpot: (mode: string, key: string) => void
 }
 
 function assignColors(checked: string[], existing: Record<string, number>): Record<string, number> {
@@ -86,6 +89,7 @@ export const useMapOverlayStore = create<MapOverlayState>()(
       autoUntickCompleted: true,
       questScanOnlyFound: true,
       focusRequest: null,
+      doneSpots: {},
       setTaskChecked: (taskId, checked) =>
         set((s) => {
           const has = s.checkedTaskIds.includes(taskId)
@@ -123,6 +127,11 @@ export const useMapOverlayStore = create<MapOverlayState>()(
       setAutoUntickCompleted: (autoUntickCompleted) => set({ autoUntickCompleted }),
       setQuestScanOnlyFound: (questScanOnlyFound) => set({ questScanOnlyFound }),
       requestFocus: (taskId) => set({ focusRequest: { taskId, nonce: Date.now() } }),
+      toggleDoneSpot: (mode, key) =>
+        set((s) => {
+          const list = s.doneSpots[mode] ?? []
+          return { doneSpots: { ...s.doneSpots, [mode]: list.includes(key) ? list.filter((k) => k !== key) : [...list, key].slice(-2000) } }
+        }),
     }),
     {
       name: 'tarkov-companion-map-overlay',
@@ -137,6 +146,7 @@ export const useMapOverlayStore = create<MapOverlayState>()(
         panelCollapsed: s.panelCollapsed,
         autoUntickCompleted: s.autoUntickCompleted,
         questScanOnlyFound: s.questScanOnlyFound,
+        doneSpots: s.doneSpots,
       }),
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<MapOverlayState> & { layers?: Record<string, boolean> }
@@ -152,6 +162,10 @@ export const useMapOverlayStore = create<MapOverlayState>()(
           autoUntickCompleted: p.autoUntickCompleted ?? true,
           questScanOnlyFound: typeof p.questScanOnlyFound === 'boolean' ? p.questScanOnlyFound : true,
           layers,
+          doneSpots:
+            p.doneSpots && typeof p.doneSpots === 'object'
+              ? Object.fromEntries(Object.entries(p.doneSpots).filter(([, v]) => Array.isArray(v)).map(([k, v]) => [k, (v as unknown[]).filter((x): x is string => typeof x === 'string')]))
+              : {},
           focusRequest: null,
         }
       },

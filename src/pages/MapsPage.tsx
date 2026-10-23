@@ -31,6 +31,7 @@ import { taskColor, useMapOverlayStore } from '../store/mapOverlay'
 import { useProfile, useProgressStore } from '../store/progress'
 import { useUiStore } from '../store/ui'
 import { formatTime } from '../lib/format'
+import { useLinkParam } from '../lib/linkParam'
 
 /** Above this many markers on screen, quest markers switch to canvas circles. */
 const CANVAS_THRESHOLD = 200
@@ -46,6 +47,8 @@ export function MapsPage() {
   const ownedKeyIds = useMemo(() => new Set(inventory.ownedKeyIds), [inventory.ownedKeyIds])
   const lastMapKey = useUiStore((s) => s.lastMapKey)
   const setLastMapKey = useUiStore((s) => s.setLastMapKey)
+  // "?map=customs" (the search bar's "Open in the app") opens that map.
+  useLinkParam('map', setLastMapKey)
   const baseLayerByMap = useUiStore((s) => s.baseLayerByMap)
   const setBaseLayer = useUiStore((s) => s.setBaseLayer)
   const floorByMap = useUiStore((s) => s.floorByMap)
