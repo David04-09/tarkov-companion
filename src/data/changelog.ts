@@ -12,20 +12,26 @@ export interface ChangelogEntry {
 }
 
 /** Committed, waiting for the next update. */
-export const UNRELEASED: string[] = [
-  "Assistant: does things when you ask, with an Undo button (or say \"undo that\"). \"Mark Debut done\", \"untick Checking\", \"I'm level 30\", \"I'm BEAR\", \"switch to PvE\", \"workbench level 2\", \"I upgraded the lavatory\", \"Prapor is level 3\", \"collected 2 GPUs\" are done at once instead of asking first.",
-  "Assistant: fixes a quest the app shows as locked. \"Set Shootout Picnic to available\" (or \"… should be unlocked\") marks every quest it needs first as done, all the way back, and raises your level if the quest needs a higher one; it lists what it changed, and Undo puts it all back.",
-  "Assistant: \"zoom in on Debut\" (or \"show Debut on the map\") opens its map on the Maps tab, ticks it and zooms to its objectives; this one also works without \"Hey Ranger\". \"Draw the route from Crossroads to Dorms on the map\" puts the walking route straight on the Maps tab.",
-  "Flea Market search works like the game: type any words of a name in any order (\"314 dorm\", \"ps 5.45\") and a list of every matching item drops down; click one (or use the arrow keys and Enter) to show just that item with its price chart, and \"Show all matches\" to go back. By voice: \"search the flea for ps 5.45\" fills in the words and lists every match.",
-  "Keys: the key card's \"Open in Keys\" button opens that key's details straight away.",
-  "Assistant: learns how you say things, quietly in the background. When it only understood a name by its sound (\"ledi\" for LEDX), it remembers; the same mishearing twice and it is fixed at once from then on. Letters the speech recognition keeps getting wrong for your voice (an \"f\" heard for \"th\", say) are tried on words it does not know. All on this PC; \"forget everything\" clears it with the rest of its memory.",
-  "Assistant: learns from you saying something again. When it did not understand you and you repeat yourself, what changed between the two tries is what you meant (\"leddy\" … \"LEDX\"), and from then on it hears it right the first time. Only a sound-alike change counts, so asking something else never teaches it anything wrong.",
-  "Desktop pop-up: a countdown bar at the bottom (10 seconds to start with) with \"say pause to keep it\"; say \"pause\" and it stays until \"close\". Zooming the map keeps it paused.",
-  "Desktop pop-up maps have an A1–F6 grid. Say \"zoom in on D3\" (or \"D three\"), \"bottom left corner\", \"top right\", \"zoom in\", \"zoom out\" or \"whole map\". Zooming into a square lists the quests you can do there and marks them; say a quest's name for its card, its spots on the map and its wiki guide pictures underneath. Close, pause and zoom also work without \"Hey Ranger\" while the pop-up is up.",
-  "Desktop pop-up shows what fits the question: an item gets a card with its picture, flea price, best trader price, the player level needed to sell it on the flea and how many you still need (found in raid or not); a quest gets its trader, map, status and objectives; places, extracts, bosses and routes get a mini-map with the spots marked.",
-]
+export const UNRELEASED: string[] = []
 
 export const RELEASES: ChangelogEntry[] = [
+  {
+    version: '2.7.0',
+    date: '2026-10-23',
+    title: 'An assistant that does things: quests, levels and items by voice, map grid and zoom, smarter pop-up',
+    changes: [
+      "Assistant: does things when you ask, with an Undo button (or say \"undo that\"). \"Mark Debut done\", \"untick Checking\", \"I'm level 30\", \"I'm BEAR\", \"switch to PvE\", \"workbench level 2\", \"I upgraded the lavatory\", \"Prapor is level 3\", \"collected 2 GPUs\" are done at once instead of asking first.",
+      "Assistant: fixes a quest the app shows as locked. \"Set Shootout Picnic to available\" (or \"… should be unlocked\") marks every quest it needs first as done, all the way back, and raises your level if the quest needs a higher one; it lists what it changed, and Undo puts it all back.",
+      "Assistant: \"zoom in on Debut\" (or \"show Debut on the map\") opens its map on the Maps tab, ticks it and zooms to its objectives; this one also works without \"Hey Ranger\". \"Draw the route from Crossroads to Dorms on the map\" puts the walking route straight on the Maps tab.",
+      "Flea Market search works like the game: type any words of a name in any order (\"314 dorm\", \"ps 5.45\") and a list of every matching item drops down; click one (or use the arrow keys and Enter) to show just that item with its price chart, and \"Show all matches\" to go back. By voice: \"search the flea for ps 5.45\" fills in the words and lists every match.",
+      "Keys: the key card's \"Open in Keys\" button opens that key's details straight away.",
+      "Assistant: learns how you say things, quietly in the background. When it only understood a name by its sound (\"ledi\" for LEDX), it remembers; the same mishearing twice and it is fixed at once from then on. Letters the speech recognition keeps getting wrong for your voice (an \"f\" heard for \"th\", say) are tried on words it does not know. All on this PC; \"forget everything\" clears it with the rest of its memory.",
+      "Assistant: learns from you saying something again. When it did not understand you and you repeat yourself, what changed between the two tries is what you meant (\"leddy\" … \"LEDX\"), and from then on it hears it right the first time. Only a sound-alike change counts, so asking something else never teaches it anything wrong.",
+      "Desktop pop-up: a countdown bar at the bottom (10 seconds to start with) with \"say pause to keep it\"; say \"pause\" and it stays until \"close\". Zooming the map keeps it paused.",
+      "Desktop pop-up maps have an A1–F6 grid. Say \"zoom in on D3\" (or \"D three\"), \"bottom left corner\", \"top right\", \"zoom in\", \"zoom out\" or \"whole map\". Zooming into a square lists the quests you can do there and marks them; say a quest's name for its card, its spots on the map and its wiki guide pictures underneath. Close, pause and zoom also work without \"Hey Ranger\" while the pop-up is up.",
+      "Desktop pop-up shows what fits the question: an item gets a card with its picture, flea price, best trader price, the player level needed to sell it on the flea and how many you still need (found in raid or not); a quest gets its trader, map, status and objectives; places, extracts, bosses and routes get a mini-map with the spots marked.",
+    ],
+  },
   {
     version: '2.6.0',
     date: '2026-10-23',
