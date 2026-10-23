@@ -12,15 +12,21 @@ export interface ChangelogEntry {
 }
 
 /** Committed, waiting for the next update. */
-export const UNRELEASED: string[] = [
-  "Voice commands for the whole app. With \"Always listen\" on (Neural network tab), say a tab or map on its own and the app goes there: \"Maps\", \"Flea market\", \"Quests\", \"Hideout\", \"Customs\", \"open the Woods map\", \"go back\". It also opens things by name: \"show quest Debut\", \"show key dorm 314\", \"search GPU on the flea\", \"LEDX in my collection\", \"show ammo M995\". No \"Hey Ranger\" needed for these; a command must be the whole sentence, so a tab name said in passing does nothing.",
-  "Assistant: \"Goons\" shows their spawn chance and spots on the map you are on (or the one you name, or last asked about), with where they were last reported and the chance on the other maps.",
-  "Assistant: understands spelled-out abbreviations: \"G P U\", \"gee pee you\", \"see pee you\" and the like become GPU, CPU, SSD … (every abbreviation the game uses as a short name).",
-  "Desktop: the pop-up over the game closes by itself after the time you choose (slider on the Neural network tab, 15 seconds to start with; 0 = only when you say \"close\").",
-  "The assistant no longer talks at all, also not with the Windows voices: answers are shown in the app and in the pop-up. The raid briefing is a card only.",
-]
+export const UNRELEASED: string[] = []
 
 export const RELEASES: ChangelogEntry[] = [
+  {
+    version: '2.6.0',
+    date: '2026-10-23',
+    title: 'Voice commands for the whole app, Goons per map, a quieter assistant',
+    changes: [
+      "Voice commands for the whole app. With \"Always listen\" on (Neural network tab), say a tab or map on its own and the app goes there: \"Maps\", \"Flea market\", \"Quests\", \"Hideout\", \"Customs\", \"open the Woods map\", \"go back\". It also opens things by name: \"show quest Debut\", \"show key dorm 314\", \"search GPU on the flea\", \"LEDX in my collection\", \"show ammo M995\". No \"Hey Ranger\" needed for these; a command must be the whole sentence, so a tab name said in passing does nothing.",
+      "Assistant: \"Goons\" shows their spawn chance and spots on the map you are on (or the one you name, or last asked about), with where they were last reported and the chance on the other maps.",
+      "Assistant: understands spelled-out abbreviations: \"G P U\", \"gee pee you\", \"see pee you\" and the like become GPU, CPU, SSD … (every abbreviation the game uses as a short name).",
+      "Desktop: the pop-up over the game closes by itself after the time you choose (slider on the Neural network tab, 15 seconds to start with; 0 = only when you say \"close\").",
+      "The assistant no longer talks at all, also not with the Windows voices: answers are shown in the app and in the pop-up. The raid briefing is a card only.",
+    ],
+  },
   {
     version: '2.5.0',
     date: '2026-10-23',
