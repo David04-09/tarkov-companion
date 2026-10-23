@@ -482,6 +482,7 @@ export async function fetchItems(gameMode: GameMode, signal?: AbortSignal): Prom
       iconLink: realPicture(raw.iconLink),
       wikiLink: raw.wikiLink ?? null,
       avg24hPrice: raw.avg24hPrice ?? null,
+      fleaLevel: raw.minLevelForFlea ? raw.minLevelForFlea : null,
       lastLowPrice: raw.lastLowPrice ?? null,
       low24hPrice: raw.low24hPrice ?? null,
       high24hPrice: raw.high24hPrice ?? null,

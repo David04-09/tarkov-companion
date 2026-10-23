@@ -221,6 +221,41 @@ export interface PopupData {
   hint: string
   /** Hide it by itself after this many seconds (0 = only when told to). */
   autoCloseSeconds?: number
+  /** What the card shows besides the text: a mini-map, an item card or a quest card. */
+  map?: PopupMap
+  item?: PopupItem
+  quest?: PopupQuest
+}
+
+export interface PopupMap {
+  mapKey: string
+  mapName: string
+  points: { x: number; y: number; z: number; label: string; kind: 'you' | 'quest' | 'place' | 'extract' | 'loot' }[]
+  /** A walking route or straight line through the points. */
+  path?: { x: number; y: number; z: number }[]
+}
+
+export interface PopupItem {
+  name: string
+  /** https://assets.tarkov.dev picture. */
+  iconLink: string | null
+  flea: number | null
+  /** Best trader buy-back. */
+  trader: { name: string; price: number } | null
+  /** Player level to sell it on the flea (null = the market's own level). */
+  fleaLevel: number | null
+  banned: boolean
+  /** Still needed for quests and hideout, and found in raid. */
+  needed: number
+  fir: boolean
+}
+
+export interface PopupQuest {
+  trader: string
+  map: string | null
+  status: string
+  level: number
+  objectives: string[]
 }
 
 export interface DesktopApi {

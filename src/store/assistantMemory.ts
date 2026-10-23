@@ -14,6 +14,7 @@ import {
   type Style,
   type StylePref,
 } from '../assistant/memory'
+import { emptyPronunciation, isPronunciation, learnHeard, type Pronunciation } from '../assistant/pronunciation'
 import { words } from '../assistant/text'
 import { guarded } from './guarded'
 import type { RaidResult } from './raidLog'
@@ -62,6 +63,9 @@ interface AssistantMemoryState {
   setAddress: (address: string) => void
   forMe: (text: string) => void
   clearChatter: () => void
+  /** How the player says things (pronunciation.ts): heard → meant. */
+  heard: Pronunciation
+  heardAs: (heard: string, meant: string, weight?: number) => void
 }
 
 const fresh = () => ({
@@ -73,6 +77,7 @@ const fresh = () => ({
   seededAt: null as number | null,
   lastRaid: null as { mapKey: string; at: number } | null,
   chatter: [] as string[],
+  heard: emptyPronunciation(),
 })
 
 const isNote = (n: unknown): n is MemoryNote => typeof n === 'object' && n !== null && typeof (n as MemoryNote).text === 'string' && typeof (n as MemoryNote).id === 'string'
@@ -119,10 +124,14 @@ export const useAssistantMemory = create<AssistantMemoryState>()(
       setAddress: (address) => set((s) => ({ style: { ...s.style, address } })),
       forMe: (text) => set((s) => ({ chatter: s.chatter.filter((c) => c !== words(text).join(' ')) })),
       clearChatter: () => set({ chatter: [] }),
+      heardAs: (heard, meant, weight) => {
+        if (!get().learning) return
+        set((s) => ({ heard: learnHeard(s.heard, heard, meant, Date.now(), weight) }))
+      },
     }),
     {
       name: 'tarkov-companion-assistant-memory',
-      partialize: (s) => ({ learning: s.learning, notes: s.notes, words: s.words, habits: s.habits, style: s.style, lastGreetDay: s.lastGreetDay, seededAt: s.seededAt, lastRaid: s.lastRaid, chatter: s.chatter }),
+      partialize: (s) => ({ learning: s.learning, notes: s.notes, words: s.words, habits: s.habits, style: s.style, lastGreetDay: s.lastGreetDay, seededAt: s.seededAt, lastRaid: s.lastRaid, chatter: s.chatter, heard: s.heard }),
       ...guarded<AssistantMemoryState>({
         learning: 'boolean',
         notes: (v) => (Array.isArray(v) ? v.filter(isNote).slice(-200) : undefined),
@@ -139,6 +148,7 @@ export const useAssistantMemory = create<AssistantMemoryState>()(
         seededAt: 'number',
         chatter: (v) => (Array.isArray(v) ? v.filter((x) => typeof x === 'string').slice(-60) : undefined),
         lastRaid: (v) => (v && typeof (v as { mapKey?: unknown }).mapKey === 'string' ? v : undefined),
+        heard: (v) => (isPronunciation(v) ? v : undefined),
       }),
     },
   ),

@@ -7,7 +7,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Session, WebContents } from 'electron'
-import type { DesktopSettings } from '../src/shared/desktop-api'
+import type { DesktopSettings, PopupData } from '../src/shared/desktop-api'
 
 /** Absolute local folder that exists (no network shares, no files: shell.openPath runs files). */
 export function isSafeDirectory(p: unknown): p is string {
@@ -146,7 +146,7 @@ export function isSameFileUrl(url: string, filePath: string): boolean {
 }
 
 /** The pop-up's content comes from the page: plain strings only, short, never markup that runs. */
-export function cleanPopupData(v: unknown): { title: string; text: string; lines: string[]; hint: string; autoCloseSeconds: number } | null {
+export function cleanPopupData(v: unknown): PopupData | null {
   if (typeof v !== 'object' || v === null) return null
   const o = v as Record<string, unknown>
   // Control characters dropped (line breaks kept).
@@ -155,5 +155,50 @@ export function cleanPopupData(v: unknown): { title: string; text: string; lines
   if (!text) return null
   const lines = Array.isArray(o.lines) ? o.lines.map((l) => str(l, 220)).filter(Boolean).slice(0, 12) : []
   const secs = typeof o.autoCloseSeconds === 'number' && Number.isFinite(o.autoCloseSeconds) ? Math.min(600, Math.max(0, Math.round(o.autoCloseSeconds))) : 0
-  return { title: str(o.title, 140), text, lines, hint: str(o.hint, 120), autoCloseSeconds: secs }
+  const out: PopupData = { title: str(o.title, 140), text, lines, hint: str(o.hint, 120), autoCloseSeconds: secs }
+  const num = (x: unknown) => (typeof x === 'number' && Number.isFinite(x) ? x : null)
+  const obj = (x: unknown) => (typeof x === 'object' && x !== null ? (x as Record<string, unknown>) : null)
+  const pos = (x: unknown) => {
+    const p = obj(x)
+    const px = num(p?.x)
+    const pz = num(p?.z)
+    return p && px !== null && pz !== null ? { x: px, y: num(p.y) ?? 0, z: pz } : null
+  }
+  const KINDS = ['you', 'quest', 'place', 'extract', 'loot'] as const
+  const m = obj(o.map)
+  if (m && typeof m.mapKey === 'string' && /^[a-z0-9-]{2,40}$/.test(m.mapKey) && Array.isArray(m.points)) {
+    const points = m.points.slice(0, 40).flatMap((p) => {
+      const at = pos(p)
+      const kind = obj(p)?.kind
+      return at ? [{ ...at, label: str(obj(p)?.label, 60), kind: KINDS.includes(kind as (typeof KINDS)[number]) ? (kind as (typeof KINDS)[number]) : 'place' }] : []
+    })
+    const path = Array.isArray(m.path) ? m.path.slice(0, 600).flatMap((p) => { const at = pos(p); return at ? [at] : [] }) : undefined
+    if (points.length) out.map = { mapKey: m.mapKey, mapName: str(m.mapName, 40), points, ...(path?.length ? { path } : {}) }
+  }
+  const it = obj(o.item)
+  if (it && typeof it.name === 'string') {
+    const icon = typeof it.iconLink === 'string' && /^https:\/\/assets\.tarkov\.dev\/[\w.-]+$/.test(it.iconLink) ? it.iconLink : null
+    const tr = obj(it.trader)
+    out.item = {
+      name: str(it.name, 80),
+      iconLink: icon,
+      flea: num(it.flea),
+      trader: tr && typeof tr.name === 'string' && num(tr.price) !== null ? { name: str(tr.name, 30), price: num(tr.price)! } : null,
+      fleaLevel: num(it.fleaLevel),
+      banned: it.banned === true,
+      needed: Math.max(0, Math.min(9999, num(it.needed) ?? 0)),
+      fir: it.fir === true,
+    }
+  }
+  const q = obj(o.quest)
+  if (q && typeof q.trader === 'string') {
+    out.quest = {
+      trader: str(q.trader, 30),
+      map: typeof q.map === 'string' ? str(q.map, 40) : null,
+      status: str(q.status, 20),
+      level: Math.max(0, Math.min(99, num(q.level) ?? 0)),
+      objectives: Array.isArray(q.objectives) ? q.objectives.map((x) => str(x, 140)).filter(Boolean).slice(0, 6) : [],
+    }
+  }
+  return out
 }

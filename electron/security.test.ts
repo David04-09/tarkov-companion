@@ -108,6 +108,18 @@ describe('cleanPopupData', () => {
     expect(cleanPopupData({ text: 'x', autoCloseSeconds: 15 })?.autoCloseSeconds).toBe(15)
     expect(cleanPopupData({ text: 'x', autoCloseSeconds: 1e9 })?.autoCloseSeconds).toBe(600)
     expect(cleanPopupData({ text: 'x', autoCloseSeconds: '5' })?.autoCloseSeconds).toBe(0)
+    // Cards: only known shapes, tarkov.dev pictures, sane numbers.
+    const card = cleanPopupData({
+      text: 'x',
+      item: { name: 'Graphics card', iconLink: 'https://assets.tarkov.dev/57347ca924597744596b4e71-icon.webp', flea: 320000, trader: { name: 'Therapist', price: 200000 }, fleaLevel: 40, needed: 3, fir: true, banned: false },
+      quest: { trader: 'Prapor', map: 'Customs', status: 'Available', level: 500, objectives: ['a', 7, 'b'] },
+      map: { mapKey: 'customs', mapName: 'Customs', points: [{ x: 1, y: 2, z: 3, label: 'Dorms', kind: 'place' }, { x: 'no' }], path: [{ x: 1, z: 2 }] },
+    })
+    expect(card?.item).toMatchObject({ name: 'Graphics card', fleaLevel: 40, needed: 3, fir: true })
+    expect(card?.quest).toMatchObject({ level: 99, objectives: ['a', 'b'] })
+    expect(card?.map?.points).toHaveLength(1)
+    expect(cleanPopupData({ text: 'x', item: { name: 'x', iconLink: 'https://evil.example/a.png' } })?.item?.iconLink).toBeNull()
+    expect(cleanPopupData({ text: 'x', map: { mapKey: '../../etc', points: [{ x: 1, z: 1 }] } })?.map).toBeUndefined()
     expect(cleanPopupData({ text: '' })).toBeNull()
     expect(cleanPopupData('nope')).toBeNull()
   })

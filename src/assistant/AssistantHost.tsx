@@ -38,6 +38,7 @@ import { listenOnce, type ListenState } from './listen'
 import { ALL_PLACES, type Place } from './places'
 import { addressed } from './humanize'
 import type { PopupData } from '../shared/desktop-api'
+import { STATUS_LABEL } from '../lib/taskStatus'
 
 /**
  * In a hands-free conversation: does it sound like something asked of the assistant? A question
@@ -58,7 +59,8 @@ import { GOOD_ANSWER, kindWords, parseAddress, TELL_MORE, TOO_LONG } from './mem
 import { applyWords, askKind, asksAboutOwn, findNote, FORGET_ALL, FORGET_LAST, greetingText, isLearnedChatter, NOT_FOR_YOU, parseMeant, parseRemember, parseStyle, parseTeach, subjectOf, WAS_FOR_YOU, WHAT_YOU_KNOW } from './memory'
 import { greetingFacts, habitsFromLogs, knowReply, noteReply, RECOMMEND, recommendReply, resolveName } from './memoryAnswers'
 import { compact, words } from './text'
-import { buildSoundNames, snapToNames, type SoundName } from './phonetic'
+import { buildSoundNames, isEverydayWord, snapToNames, type SoundName } from './phonetic'
+import { applyHeard } from './pronunciation'
 import { acronymize, voiceVocabulary } from './spoken'
 import { startWakeListening, type WakeListener } from './wake'
 import { withWalk } from './withWalk'
@@ -369,6 +371,48 @@ export function AssistantHost() {
   const lastPopup = useRef<PopupData | null>(null)
   const lastReply = useRef<{ reply: Reply; kind: string } | null>(null)
 
+  /** What the pop-up shows besides the text: the item's or quest's card, else a mini-map of the answer's spots. */
+  const popupExtras = (reply: Reply): Pick<PopupData, 'item' | 'quest' | 'map'> => {
+    const data = gameData.data
+    if (!data) return {}
+    if (reply.about?.itemId) {
+      const items = queryClient.getQueryData<{ items: ItemsById }>(itemKeys.mode(gameMode))?.items
+      const it = items?.[reply.about.itemId]
+      if (it) {
+        const banned = it.types.includes('noFlea')
+        const sell = [...it.sellToTrader].sort((a, b) => b.priceRUB - a.priceRUB)[0]
+        const ctx = context(data, items)
+        const need = ctx.needFor?.(it.id)
+        const have = need ? (ctx.collected?.[need.itemId] ?? 0) : 0
+        return {
+          item: {
+            name: it.name,
+            iconLink: it.iconLink,
+            flea: banned ? null : it.avg24hPrice,
+            trader: sell ? { name: data.traders.find((t) => t.id === sell.traderId)?.name ?? 'Trader', price: sell.priceRUB } : null,
+            fleaLevel: it.fleaLevel ?? null,
+            banned,
+            needed: need ? Math.max(0, need.total - have) : 0,
+            fir: (need?.fir ?? 0) > 0,
+          },
+        }
+      }
+    }
+    if (reply.about?.questId) {
+      const t = tasks.find((x) => x.id === reply.about!.questId)
+      if (t) return { quest: { trader: t.trader.name, map: t.map?.name ?? null, status: STATUS_LABEL[statuses[t.id] ?? 'locked'], level: t.minPlayerLevel, objectives: t.objectives.filter((o) => !o.optional).map((o) => o.description).slice(0, 6) } }
+    }
+    if (reply.map) {
+      const m = reply.map
+      return { map: { mapKey: m.map.normalizedName, mapName: m.map.name, points: m.points.slice(0, 40).map((p) => ({ ...p.position, label: p.label, kind: p.kind })), path: m.path ?? m.route ?? undefined } }
+    }
+    return {}
+  }
+  const popupExtrasRef = useRef(popupExtras)
+  useEffect(() => {
+    popupExtrasRef.current = popupExtras
+  })
+
   const present = useCallback(
     (id: number, given: Reply) => {
       // How the player wants to be called ("sir", their name, nothing).
@@ -389,9 +433,12 @@ export function AssistantHost() {
       chat().set({ card: reply.map ?? null })
       // Desktop: answers with details also go in the pop-up over the game (closed by "close that").
       const details = (reply.lines ?? []).filter((l) => !l.startsWith('I took that as'))
-      if (window.desktop && useAssistantStore.getState().popup && !reply.quiet && (details.length > 0 || reply.map || reply.text.length > 90)) {
+      if (window.desktop && useAssistantStore.getState().popup && !reply.quiet && (details.length > 0 || reply.map || reply.about || reply.text.length > 90)) {
         const { popupSeconds } = useAssistantStore.getState()
-        const data = { title: currentQuestion.current, text: reply.text, lines: details.slice(0, 8), hint: popupSeconds ? `Closes in ${popupSeconds} s, or say "close".` : 'Say "close" to hide this.', autoCloseSeconds: popupSeconds }
+        // An item or quest gets its card, a place or route a mini-map; the lines the card already shows are left out.
+        const extras = popupExtrasRef.current(reply)
+        const lines = extras.item ? details.filter((l) => !/^(Flea|No flea|Best trader|Sold by|Still needed|Cannot be sold|Traders sell)/.test(l)).slice(0, 3) : extras.quest ? details.filter((l) => !extras.quest!.objectives.includes(l)).slice(0, 3) : details.slice(0, extras.map ? 4 : 8)
+        const data: PopupData = { title: currentQuestion.current, text: reply.text, lines, hint: popupSeconds ? `Closes in ${popupSeconds} s, or say "close".` : 'Say "close" to hide this.', autoCloseSeconds: popupSeconds, ...extras }
         lastPopup.current = data
         void window.desktop.showPopup(data)
       }
@@ -801,16 +848,47 @@ export function AssistantHost() {
     const list = soundNamesFor(items)
     // Spelled-out abbreviations ("gee pee you", "see pee you") back to the game's short names.
     const acronyms = acronymsFor(items)
-    const text = acronymize(said, acronyms)
+    const raw = acronymize(said, acronyms)
     const alt = saidAlt && acronymize(saidAlt, acronyms)
     // Teaching a nickname: keep the nickname as it was heard (it is not a game name yet).
-    if (parseTeach(text)) return text
-    const main = snapToNames(text, list).text
+    if (parseTeach(raw)) return raw
+    // How this player's words come out of the speech model, learned in the background (pronunciation.ts).
+    const mem = useAssistantMemory.getState()
+    const known = knownWordsFor(list)
+    const text = applyHeard(raw, mem.heard, (w) => known.has(w) || isEverydayWord(w)).text
+    const snapped = snapToNames(text, list)
+    const main = snapped.text
+    // A name fixed by sound, in a question that was then understood: remember how it was said.
+    const learn = (fixed: { heard: string; name: string }[]) => {
+      for (const f of fixed) mem.heardAs(f.heard, f.name)
+    }
     // Memory commands ("remember that …") are kept as Moonshine heard them: Vosk only knows game words.
-    if (!alt || alt === main || /^(remember|note to self|forget|no i meant|i meant|when i say|keep it short|more detail|what do you know)/.test(words(main).join(' ')) || parseTeach(main)) return main
-    if (understood(main)) return main
-    const second = snapToNames(alt, list).text
-    return understood(second) ? second : main
+    if (!alt || alt === main || /^(remember|note to self|forget|no i meant|i meant|when i say|keep it short|more detail|what do you know)/.test(words(main).join(' ')) || parseTeach(main)) {
+      if (snapped.fixed.length && understood(main)) learn(snapped.fixed)
+      return main
+    }
+    if (understood(main)) {
+      learn(snapped.fixed)
+      return main
+    }
+    const second = snapToNames(alt, list)
+    if (!understood(second.text)) return main
+    learn(second.fixed)
+    // Moonshine's words that Vosk heard as a name: remember those too when the sentence lines up.
+    const mw = words(main)
+    const aw = words(second.text)
+    if (mw.length === aw.length) for (let i = 0; i < mw.length; i++) if (mw[i] !== aw[i] && !isEverydayWord(mw[i]) && known.has(aw[i])) mem.heardAs(mw[i], aw[i])
+    return second.text
+  }
+  /** Every word of every game name, for the learned letter swaps (built once per name list). */
+  const knownCache = useRef<{ list: SoundName[]; set: Set<string> } | null>(null)
+  const knownWordsFor = (list: SoundName[]): Set<string> => {
+    const c = knownCache.current
+    if (c && c.list === list) return c.set
+    const set = new Set<string>()
+    for (const n of list) for (const w of words(n.name)) set.add(w)
+    knownCache.current = { list, set }
+    return set
   }
   const heardRef = useRef(heard)
   useEffect(() => {

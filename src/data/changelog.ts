@@ -18,6 +18,8 @@ export const UNRELEASED: string[] = [
   "Assistant: \"zoom in on Debut\" (or \"show Debut on the map\") opens its map on the Maps tab, ticks it and zooms to its objectives; this one also works without \"Hey Ranger\". \"Draw the route from Crossroads to Dorms on the map\" puts the walking route straight on the Maps tab.",
   "Flea Market search works like the game: type any words of a name in any order (\"314 dorm\", \"ps 5.45\") and a list of every matching item drops down; click one (or use the arrow keys and Enter) to show just that item with its price chart, and \"Show all matches\" to go back. By voice: \"search the flea for ps 5.45\" fills in the words and lists every match.",
   "Keys: the key card's \"Open in Keys\" button opens that key's details straight away.",
+  "Assistant: learns how you say things, quietly in the background. When it only understood a name by its sound (\"ledi\" for LEDX), it remembers; the same mishearing twice and it is fixed at once from then on. Letters the speech recognition keeps getting wrong for your voice (an \"f\" heard for \"th\", say) are tried on words it does not know. All on this PC; \"forget everything\" clears it with the rest of its memory.",
+  "Desktop pop-up shows what fits the question: an item gets a card with its picture, flea price, best trader price, the player level needed to sell it on the flea and how many you still need (found in raid or not); a quest gets its trader, map, status and objectives; places, extracts, bosses and routes get a mini-map with the spots marked.",
 ]
 
 export const RELEASES: ChangelogEntry[] = [

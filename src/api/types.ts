@@ -354,6 +354,8 @@ export interface RawItem {
   wikiLink?: string | null
   basePrice: number
   avg24hPrice: number | null
+  /** Player level needed to sell it on the flea (0 = the market's own level). */
+  minLevelForFlea?: number | null
   lastLowPrice?: number | null
   low24hPrice?: number | null
   high24hPrice?: number | null
@@ -524,6 +526,8 @@ export interface Item {
   iconLink: string | null
   wikiLink: string | null
   avg24hPrice: number | null
+  /** Player level needed to sell it on the flea, when the data has one above the market's own. */
+  fleaLevel?: number | null
   lastLowPrice: number | null
   low24hPrice: number | null
   high24hPrice: number | null

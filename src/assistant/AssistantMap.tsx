@@ -27,7 +27,7 @@ function Fit({ points, layer }: { points: Position[]; layer: BaseLayerConfig }) 
 }
 
 /** The small map under the chat: the spots of an answer and a straight line between them. */
-export function AssistantMap({ card }: { card: MapCard }) {
+export function AssistantMap({ card, className = 'h-72 rounded border border-line' }: { card: MapCard; className?: string }) {
   const cfg = findMapConfig(card.map.normalizedName)
   const preferred = useUiStore((s) => (cfg ? s.baseLayerByMap[cfg.key] : undefined))
   const points = useMemo(() => [...card.points.map((p) => p.position), ...(card.path ?? [])], [card])
@@ -36,7 +36,7 @@ export function AssistantMap({ card }: { card: MapCard }) {
   const floor = floorForPosition(layer, card.points[0].position)
   const few = card.points.length <= 4
   return (
-    <div className="h-72 overflow-hidden rounded border border-line">
+    <div className={`overflow-hidden ${className}`}>
       <MapViewer mapKey={`assistant:${cfg.key}:${card.points.map((p) => p.id).join(',')}`} layer={layer} floorName={floor}>
         <Fit points={points} layer={layer} />
         {card.path ? (

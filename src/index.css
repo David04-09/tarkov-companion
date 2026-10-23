@@ -366,3 +366,10 @@ select option {
 .leaflet-marker-icon > :first-child {
   scale: var(--tc-marker-scale, 1);
 }
+
+/* The pop-up over the game cannot be clicked: no map buttons there. */
+.tc-popup-map .leaflet-control-container,
+.tc-popup-map .leaflet-control,
+.tc-popup-map a[title='Fullscreen'] {
+  display: none !important;
+}

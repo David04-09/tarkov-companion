@@ -55,6 +55,8 @@ export interface Reply {
   actions?: AssistantAction[]
   /** A key: the page looks up on the wiki whether its room is worth it and adds that before answering. */
   keyCheck?: { wikiLink: string; questNames: string[] }
+  /** The item or quest the answer is about (the pop-up over the game shows its card). */
+  about?: { itemId?: string; questId?: string }
 }
 
 export type AssistantAction =
@@ -308,7 +310,7 @@ export function answer(question: string, ctx: AssistantContext): Reply {
       const r = howMany ? needAnswer(hit, ctx) : collectAnswer(hit, using ? -count : count, ctx)
       // "Am I lost" / "I got it": no number and a loose verb is a guess, not a clear "add 2 wires".
       const loose = !howMany && at < 0 && !/\b(collected|picked up|looted|add|added|used|sold|handed in|turned in|removed|remove)\b/.test(said)
-      return loose ? { ...r, weak: true } : r
+      return { ...r, about: { itemId: hit.item.id }, ...(loose ? { weak: true } : {}) }
     }
     if (!howMany) return { text: 'Which item? Say its name, like "collected 5 wires".', quiet: true }
   }
@@ -329,7 +331,8 @@ export function answer(question: string, ctx: AssistantContext): Reply {
       const hit = findItem(expandNicknames(q.filter((_, i) => !mapWords.has(i))), ctx.items, undefined, (it) => (neededIds.has(it.id) ? 1 : 0))
       if (hit) {
         const kind = itemQuestionKind(said)
-        return kind === 'where' ? whereAnswer(hit, ctx) : kind === 'price' ? priceAnswer(hit, ctx) : kind === 'card' ? cardAnswer(hit, ctx) : infoAnswer(hit, ctx)
+        const r = kind === 'where' ? whereAnswer(hit, ctx) : kind === 'price' ? priceAnswer(hit, ctx) : kind === 'card' ? cardAnswer(hit, ctx) : infoAnswer(hit, ctx)
+        return { ...r, about: { itemId: hit.item.id } }
       }
     }
   }
@@ -418,16 +421,16 @@ export function answer(question: string, ctx: AssistantContext): Reply {
     }
   }
 
-  if (questHit && questHit.len >= 5) return questInfo(questHit.value, ctx)
+  if (questHit && questHit.len >= 5) return { ...questInfo(questHit.value, ctx), about: { questId: questHit.value.id } }
 
   // 8. An item named on its own ("LEDX", "dorm 303 key").
   if (ctx.items) {
     const hit = findItem(expandNicknames(q.filter((_, i) => !mapWords.has(i))), ctx.items)
     // Only the name was said ("LEDX", "the moonshine"): the short card; with other words around it, a guess.
-    if (hit) return { ...cardAnswer(hit, ctx), weak: !onlyItemName(q, hit.item) }
+    if (hit) return { ...cardAnswer(hit, ctx), weak: !onlyItemName(q, hit.item), about: { itemId: hit.item.id } }
     // Not a map said on its own ("and on Woods" is not the Woods map item).
     const itemHit = index.items ? findNames(q, index.items, 6).filter((h) => h.len >= 3 && ![...mapWords].some((i) => i >= h.start && i <= h.end))[0] : undefined
-    if (itemHit) return { ...cardAnswer({ item: itemHit.value, others: [] }, ctx), weak: !onlyItemName(q, itemHit.value) }
+    if (itemHit) return { ...cardAnswer({ item: itemHit.value, others: [] }, ctx), weak: !onlyItemName(q, itemHit.value), about: { itemId: itemHit.value.id } }
   } else if (/\b(item|open|opens)\b/.test(said)) {
     return { text: 'Loading the item list…', needsItems: true }
   }
