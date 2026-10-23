@@ -1,5 +1,8 @@
 import { lazy, StrictMode, Suspense } from 'react'
 import { createRoot } from 'react-dom/client'
+// Leaflet's own stylesheet first: the app's dark map styles in index.css must come after it (when it
+// loaded later with the lazy map, its white pop-ups and buttons won in the search bar).
+import 'leaflet/dist/leaflet.css'
 import './index.css'
 import { startAppearance } from './lib/appearance'
 

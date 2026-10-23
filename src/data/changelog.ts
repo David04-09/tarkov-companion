@@ -12,7 +12,9 @@ export interface ChangelogEntry {
 }
 
 /** Committed, waiting for the next update. */
-export const UNRELEASED: string[] = []
+export const UNRELEASED: string[] = [
+  "Search bar maps: the pop-ups you get when clicking a quest marker or a map spot, the hover labels and the zoom buttons are dark again (they came out white and hard to read).",
+]
 
 export const RELEASES: ChangelogEntry[] = [
   {
