@@ -367,6 +367,15 @@ select option {
   scale: var(--tc-marker-scale, 1);
 }
 
+/* A1–F6 grid labels on the assistant's maps. */
+.tc-grid-label {
+  color: #fff;
+  font: 600 11px/14px system-ui, sans-serif;
+  text-align: center;
+  text-shadow: 0 0 3px #000, 0 0 2px #000;
+  pointer-events: none;
+}
+
 /* The pop-up over the game cannot be clicked: no map buttons there. */
 .tc-popup-map .leaflet-control-container,
 .tc-popup-map .leaflet-control,

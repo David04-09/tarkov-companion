@@ -28,14 +28,15 @@ export const useAssistantStore = create<AssistantState>()(
       commands: true,
       briefing: true,
       popup: true,
-      popupSeconds: 15,
+      popupSeconds: 10,
       set: (patch) => set(patch),
     }),
     {
       name: 'tarkov-companion-assistant',
       partialize: (s) => ({ wakeWord: s.wakeWord, wakeName: s.wakeName, commands: s.commands, briefing: s.briefing, popup: s.popup, popupSeconds: s.popupSeconds }),
       // v2 (every voice removed, 2026-10-23): the old voice fields are simply not read any more.
-      version: 2,
+      // v3: the pop-up closes after 10 s by default (was 15).
+      version: 3,
       ...guarded<AssistantState>({
         wakeWord: 'boolean',
         wakeName: (v) => (['ranger', 'atlas', 'nova', 'echo', 'raven'].includes(v as string) ? v : undefined),
@@ -44,6 +45,7 @@ export const useAssistantStore = create<AssistantState>()(
         popup: 'boolean',
         popupSeconds: (v) => (typeof v === 'number' && v >= 0 && v <= POPUP_SECONDS_MAX ? Math.round(v) : undefined),
       }),
+      migrate: (persisted, version) => (version < 3 && persisted && typeof persisted === 'object' && (persisted as { popupSeconds?: unknown }).popupSeconds === 15 ? { ...persisted, popupSeconds: 10 } : persisted) as AssistantState,
     },
   ),
 )

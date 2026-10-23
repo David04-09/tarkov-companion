@@ -13,6 +13,7 @@ export function PopupMap({ map, onReady }: { map: PopupMapData; onReady: () => v
       points: map.points.map((p, i) => ({ id: `p${i}`, position: { x: p.x, y: p.y, z: p.z }, label: p.label, kind: p.kind })),
       route: null,
       path: map.path,
+      view: map.focus || map.zoomDelta ? { focus: map.focus, zoomDelta: map.zoomDelta } : undefined,
     }),
     [map],
   )

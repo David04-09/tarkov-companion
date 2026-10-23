@@ -6,6 +6,8 @@
  * The speech model itself is not changed (that would need training data and a GPU); this is a
  * small correction layer in front of it. Pure; kept in the assistant memory store.
  */
+import { similarity } from '../maps/overlay/questListMatch'
+import { soundKey } from './phonetic'
 import { words } from './text'
 
 export interface HeardFix {
@@ -117,6 +119,33 @@ export function applyHeard(text: string, p: Pronunciation, known: (word: string)
     }
   }
   return { text: used.length ? out.join(' ') : text, used }
+}
+
+/** How long after a question it did not understand a repeat still counts as the same question. */
+export const REPEAT_WINDOW_MS = 30_000
+
+/**
+ * The player said it again because it was not understood: the words that changed between the two
+ * tries are what the first try meant ("how much is the leddy" … "how much is the ledx" → "leddy"
+ * means "ledx"). Only a sound-alike change counts, so a different question is never learned.
+ */
+export function repeatFix(before: string, after: string): { heard: string; meant: string } | null {
+  const a = words(before)
+  const b = words(after)
+  let p = 0
+  while (p < a.length && p < b.length && a[p] === b[p]) p++
+  let q = 0
+  while (q < a.length - p && q < b.length - p && a[a.length - 1 - q] === b[b.length - 1 - q]) q++
+  const heard = a.slice(p, a.length - q)
+  const meant = b.slice(p, b.length - q)
+  if (!heard.length || !meant.length || heard.length > 4 || meant.length > 4) return null
+  // Mostly the same sentence (or a short one said again), with a part that sounds alike.
+  const same = p + q
+  if (same < Math.min(a.length, b.length) / 2 && Math.max(a.length, b.length) > 3) return null
+  const h = heard.join('')
+  const m = meant.join('')
+  if (similarity(h, m) < 0.4 && similarity(soundKey(h), soundKey(m)) < 0.45) return null
+  return { heard: heard.join(' '), meant: meant.join(' ') }
 }
 
 export function isPronunciation(v: unknown): v is Pronunciation {

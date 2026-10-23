@@ -225,6 +225,10 @@ export interface PopupData {
   map?: PopupMap
   item?: PopupItem
   quest?: PopupQuest
+  /** The countdown was stopped ("pause"): it stays until "close". */
+  paused?: boolean
+  /** Quest guide pictures from the wiki, shown under the map. */
+  images?: { thumb: string; caption: string }[]
 }
 
 export interface PopupMap {
@@ -233,6 +237,9 @@ export interface PopupMap {
   points: { x: number; y: number; z: number; label: string; kind: 'you' | 'quest' | 'place' | 'extract' | 'loot' }[]
   /** A walking route or straight line through the points. */
   path?: { x: number; y: number; z: number }[]
+  /** Asked to look at a part of the map ("zoom in on D3"): its corners, and zoom steps on top. */
+  focus?: { x: number; y: number; z: number }[]
+  zoomDelta?: number
 }
 
 export interface PopupItem {

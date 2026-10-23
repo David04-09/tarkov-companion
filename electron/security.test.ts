@@ -120,6 +120,15 @@ describe('cleanPopupData', () => {
     expect(card?.map?.points).toHaveLength(1)
     expect(cleanPopupData({ text: 'x', item: { name: 'x', iconLink: 'https://evil.example/a.png' } })?.item?.iconLink).toBeNull()
     expect(cleanPopupData({ text: 'x', map: { mapKey: '../../etc', points: [{ x: 1, z: 1 }] } })?.map).toBeUndefined()
+    const more = cleanPopupData({
+      text: 'x',
+      paused: true,
+      images: [{ thumb: 'https://static.wikia.nocookie.net/escapefromtarkov_gamepedia/images/a/ab/Debut.png', caption: 'Spot' }, { thumb: 'https://evil.example/x.png' }],
+      map: { mapKey: 'customs', points: [], focus: [{ x: 1, z: 2 }], zoomDelta: 9 },
+    })
+    expect(more?.paused).toBe(true)
+    expect(more?.images).toHaveLength(1)
+    expect(more?.map).toMatchObject({ focus: [{ x: 1, y: 0, z: 2 }], zoomDelta: 4 })
     expect(cleanPopupData({ text: '' })).toBeNull()
     expect(cleanPopupData('nope')).toBeNull()
   })

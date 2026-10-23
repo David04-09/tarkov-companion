@@ -27,6 +27,8 @@ export interface MapCard {
   route: Position[] | null
   /** Walking route over the terrain, filled in by the page (see route/walk.ts). */
   path?: Position[]
+  /** Asked to look at a part of the map ("zoom in on D3"): its corners, then zoom steps. */
+  view?: { focus?: Position[]; zoomDelta?: number }
 }
 
 export interface Reply {

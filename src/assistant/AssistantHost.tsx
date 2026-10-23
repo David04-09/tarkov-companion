@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { itemKeys, useGameData, useHideout } from '../api/hooks'
 import { fetchItems } from '../api/queries'
-import type { GameData, GameMap, ItemsById } from '../api/types'
+import type { GameData, GameMap, ItemsById, Position } from '../api/types'
 import { computeNeeds, type ItemNeed } from '../lib/needs'
 import { computeTaskStatus, computeTaskStatuses, isFactionEligible } from '../lib/taskStatus'
 import { findMapConfig, resolveBaseLayer } from '../maps/mapConfig'
@@ -22,7 +22,7 @@ import { useMapOverlayStore } from '../store/mapOverlay'
 import { useProfile, useProgressStore } from '../store/progress'
 import { useRaidBriefingStore } from '../store/raidBriefing'
 import { useUiStore } from '../store/ui'
-import { answer, nameSlots, type AssistantAction, type AssistantContext, type Reply } from './engine'
+import { answer, nameSlots, type AssistantAction, type AssistantContext, type MapCard, type MapPoint, type Reply } from './engine'
 import { nluLoaded, understandQuestion, warmNlu } from './nlu'
 import { followUp, type Slotted } from './followUp'
 import { headingOnMap } from './heading'
@@ -39,6 +39,8 @@ import { ALL_PLACES, type Place } from './places'
 import { addressed } from './humanize'
 import type { PopupData } from '../shared/desktop-api'
 import { STATUS_LABEL } from '../lib/taskStatus'
+import { areaCorners, cellCorners, cellOf, parseMapView, type MapView } from '../maps/grid'
+import { fetchWikiGuide, wikiTitle as guideTitle } from '../api/wikiGuide'
 
 /**
  * In a hands-free conversation: does it sound like something asked of the assistant? A question
@@ -54,13 +56,18 @@ const DRAW_ON_MAP = /\b(draw|on the map|on my map|to the map|show it on|put it o
 
 /** Phrases that close the pop-up over the game, and that show it again. */
 const CLOSE_POPUP = /^(?:ok |okay |thanks )?(?:close|close it|close that|close this|close the window|close the pop up|close the popup|hide|hide it|hide that|hide this|hide the window|get rid of (?:it|that)|dismiss|dismiss that|clear (?:it|that|the screen)|go away|thats enough|got it close it)$/
+/** Extra words the always-on listener needs for the pop-up: close, pause, and the map grid. */
+const POPUP_WORDS = ['close', 'hide', 'pause', 'timer', 'keep', 'open', 'zoom', 'in', 'out', 'top', 'bottom', 'left', 'right', 'corner', 'middle', 'whole', 'map', 'a', 'b', 'c', 'd', 'e', 'f', 'one', 'two', 'three', 'four', 'five', 'six', 'square']
+
+/** "Pause": the pop-up's countdown stops; it stays until "close". */
+const PAUSE_POPUP = /^(?:ok |okay )?(?:pause|pause it|pause that|pause the timer|pause timer|stop the timer|stop the countdown|keep it open|keep that open|keep it up|hold on|hold it|wait)$/
 const SHOW_POPUP_AGAIN = /^(?:show (?:that|it) again|show me again|open (?:that|it) again|bring (?:that|it) back|pop (?:that|it) up again)$/
 import { GOOD_ANSWER, kindWords, parseAddress, TELL_MORE, TOO_LONG } from './memory'
 import { applyWords, askKind, asksAboutOwn, findNote, FORGET_ALL, FORGET_LAST, greetingText, isLearnedChatter, NOT_FOR_YOU, parseMeant, parseRemember, parseStyle, parseTeach, subjectOf, WAS_FOR_YOU, WHAT_YOU_KNOW } from './memory'
 import { greetingFacts, habitsFromLogs, knowReply, noteReply, RECOMMEND, recommendReply, resolveName } from './memoryAnswers'
 import { compact, words } from './text'
 import { buildSoundNames, isEverydayWord, snapToNames, type SoundName } from './phonetic'
-import { applyHeard } from './pronunciation'
+import { applyHeard, REPEAT_WINDOW_MS, repeatFix } from './pronunciation'
 import { acronymize, voiceVocabulary } from './spoken'
 import { startWakeListening, type WakeListener } from './wake'
 import { withWalk } from './withWalk'
@@ -275,9 +282,14 @@ export function AssistantHost() {
       }
     }
   }
-  const commandRef = useRef({ context: commandContext, run: runCommand, changes: changeContext, apply: applyChange })
+  /** "close", "pause", "zoom in on D3" … while a pop-up (or map card) is up: these work without the name too. */
+  const popupControl = (t: string) => {
+    const w = words(t).join(' ')
+    return (popupOpen() && (CLOSE_POPUP.test(w) || PAUSE_POPUP.test(w))) || (!!viewBase.current && (popupOpen() || !!chat().card) && parseMapView(w) !== null)
+  }
+  const commandRef = useRef({ context: commandContext, run: runCommand, changes: changeContext, apply: applyChange, popupControl })
   useEffect(() => {
-    commandRef.current = { context: commandContext, run: runCommand, changes: changeContext, apply: applyChange }
+    commandRef.current = { context: commandContext, run: runCommand, changes: changeContext, apply: applyChange, popupControl }
   })
   const statuses = useMemo(() => computeTaskStatuses(tasks, profile), [tasks, profile])
   const faction = profile.faction
@@ -371,46 +383,128 @@ export function AssistantHost() {
   const lastPopup = useRef<PopupData | null>(null)
   const lastReply = useRef<{ reply: Reply; kind: string } | null>(null)
 
-  /** What the pop-up shows besides the text: the item's or quest's card, else a mini-map of the answer's spots. */
+  /** What the pop-up shows besides the text: the item's or quest's card and a mini-map of the answer's spots. */
   const popupExtras = (reply: Reply): Pick<PopupData, 'item' | 'quest' | 'map'> => {
     const data = gameData.data
     if (!data) return {}
+    const out: Pick<PopupData, 'item' | 'quest' | 'map'> = {}
     if (reply.about?.itemId) {
       const items = queryClient.getQueryData<{ items: ItemsById }>(itemKeys.mode(gameMode))?.items
       const it = items?.[reply.about.itemId]
       if (it) {
         const banned = it.types.includes('noFlea')
-        const sell = [...it.sellToTrader].sort((a, b) => b.priceRUB - a.priceRUB)[0]
+        const sell = [...it.sellToTrader].sort((x, y) => y.priceRUB - x.priceRUB)[0]
         const ctx = context(data, items)
         const need = ctx.needFor?.(it.id)
         const have = need ? (ctx.collected?.[need.itemId] ?? 0) : 0
-        return {
-          item: {
-            name: it.name,
-            iconLink: it.iconLink,
-            flea: banned ? null : it.avg24hPrice,
-            trader: sell ? { name: data.traders.find((t) => t.id === sell.traderId)?.name ?? 'Trader', price: sell.priceRUB } : null,
-            fleaLevel: it.fleaLevel ?? null,
-            banned,
-            needed: need ? Math.max(0, need.total - have) : 0,
-            fir: (need?.fir ?? 0) > 0,
-          },
+        out.item = {
+          name: it.name,
+          iconLink: it.iconLink,
+          flea: banned ? null : it.avg24hPrice,
+          trader: sell ? { name: data.traders.find((t) => t.id === sell.traderId)?.name ?? 'Trader', price: sell.priceRUB } : null,
+          fleaLevel: it.fleaLevel ?? null,
+          banned,
+          needed: need ? Math.max(0, need.total - have) : 0,
+          fir: (need?.fir ?? 0) > 0,
         }
       }
     }
     if (reply.about?.questId) {
       const t = tasks.find((x) => x.id === reply.about!.questId)
-      if (t) return { quest: { trader: t.trader.name, map: t.map?.name ?? null, status: STATUS_LABEL[statuses[t.id] ?? 'locked'], level: t.minPlayerLevel, objectives: t.objectives.filter((o) => !o.optional).map((o) => o.description).slice(0, 6) } }
+      if (t) out.quest = { trader: t.trader.name, map: t.map?.name ?? null, status: STATUS_LABEL[statuses[t.id] ?? 'locked'], level: t.minPlayerLevel, objectives: t.objectives.filter((o) => !o.optional).map((o) => o.description).slice(0, 6) }
     }
     if (reply.map) {
       const m = reply.map
-      return { map: { mapKey: m.map.normalizedName, mapName: m.map.name, points: m.points.slice(0, 40).map((p) => ({ ...p.position, label: p.label, kind: p.kind })), path: m.path ?? m.route ?? undefined } }
+      out.map = {
+        mapKey: m.map.normalizedName,
+        mapName: m.map.name,
+        points: m.points.slice(0, 40).map((p) => ({ ...p.position, label: p.label, kind: p.kind })),
+        path: m.path ?? m.route ?? undefined,
+        ...(m.view?.focus ? { focus: m.view.focus } : {}),
+        ...(m.view?.zoomDelta ? { zoomDelta: m.view.zoomDelta } : {}),
+      }
     }
-    return {}
+    return out
   }
-  const popupExtrasRef = useRef(popupExtras)
+
+  /** The pop-up over the game: until when it shows (Infinity = until "close"), and what it last showed. */
+  const popupUntil = useRef(0)
+  const popupOpen = () => popupUntil.current > Date.now()
+  const showPopupData = (data: PopupData) => {
+    lastPopup.current = data
+    popupUntil.current = data.autoCloseSeconds ? Date.now() + data.autoCloseSeconds * 1000 : Infinity
+    void window.desktop?.showPopup(data)
+  }
+  /** A quest's guide pictures from the wiki, added under the pop-up's map once they have loaded. */
+  const addQuestPictures = (data: PopupData, questId: string) => {
+    const t = tasks.find((x) => x.id === questId)
+    const title = guideTitle(t?.wikiLink)
+    if (!title) return
+    void queryClient
+      .fetchQuery({ queryKey: ['wikiGuide', title] as const, queryFn: ({ signal }) => fetchWikiGuide(title, signal), staleTime: 7 * 24 * 3_600_000 })
+      .then((g) => {
+        const images = g.images.slice(0, 3).map((im) => ({ thumb: im.thumb, caption: im.caption }))
+        // Still the same pop-up, still open: add the pictures, keeping the time it had left.
+        if (!images.length || lastPopup.current !== data || !popupOpen()) return
+        const left = popupUntil.current === Infinity ? 0 : Math.max(1, Math.ceil((popupUntil.current - Date.now()) / 1000))
+        showPopupData({ ...data, images, autoCloseSeconds: data.paused ? 0 : left })
+      })
+      .catch(() => undefined)
+  }
+
+  /** The map the player is looking at ("zoom in on D3" works on it): the answer's own card, and the view on it. */
+  const viewBase = useRef<MapCard | null>(null)
+  const viewState = useRef<{ focus?: Position[]; zoomDelta: number; extra?: MapPoint[] }>({ zoomDelta: 0 })
+  const mapViewReply = (view: MapView): Reply | null => {
+    const base = viewBase.current
+    const data = gameData.data
+    const cfg = base && findMapConfig(base.map.normalizedName)
+    if (!base || !data || !cfg) return null
+    const layer = resolveBaseLayer(cfg, useUiStore.getState().baseLayerByMap[cfg.key])
+    const st = viewState.current
+    let text: string
+    let lines: string[] | undefined
+    let extra: MapPoint[] = []
+    if (view.kind === 'all') {
+      viewState.current = { zoomDelta: 0 }
+      text = `The whole of ${base.map.name}.`
+    } else if (view.kind === 'zoom') {
+      viewState.current = { focus: st.focus, extra: st.extra, zoomDelta: Math.max(-3, Math.min(4, st.zoomDelta + view.delta)) }
+      extra = st.extra ?? []
+      text = view.delta > 0 ? 'Zoomed in.' : 'Zoomed out.'
+    } else if (view.kind === 'area') {
+      viewState.current = { focus: areaCorners(layer.affine, layer.bounds, view.fx0, view.fy0, view.fx1, view.fy1).map((p) => ({ x: p.x, y: 0, z: p.z })), zoomDelta: 0 }
+      text = `Zoomed in on ${view.label} of ${base.map.name}.`
+    } else {
+      const corners = cellCorners(layer.affine, layer.bounds, view.cell)
+      if (!corners) return null
+      viewState.current = { focus: corners.map((p) => ({ x: p.x, y: 0, z: p.z })), zoomDelta: 0 }
+      // Quests with something to do in that square.
+      const map = data.maps.find((m) => m.normalizedName === base.map.normalizedName)
+      const here = map
+        ? buildMapTasks(data, map.id, layer)
+            .filter((mt) => statuses[mt.task.id] === 'available' && isFactionEligible(mt.task, faction))
+            .map((mt) => ({ task: mt.task, spots: mt.placements.filter((p) => cellOf(layer.affine, layer.bounds, p.position) === view.cell) }))
+            .filter((x) => x.spots.length)
+        : []
+      extra = here.flatMap((x) => x.spots.slice(0, 3).map((p, i) => ({ id: `cq-${x.task.id}-${i}`, position: p.position, label: x.task.name, kind: 'quest' as const }))).slice(0, 15)
+      viewState.current.extra = extra
+      text = `Zoomed in on ${view.cell}.`
+      lines = here.length ? [`Quests here: ${here.slice(0, 5).map((x) => x.task.name).join(', ')}${here.length > 5 ? ` +${here.length - 5}` : ''}`, 'Say a quest name for its details and pictures.'] : ['No quests you can do have anything in this square.']
+    }
+    const v = viewState.current
+    return { text, lines, map: { ...base, points: [...base.points, ...extra], view: { focus: v.focus, zoomDelta: v.zoomDelta } }, mapId: base.map.id }
+  }
+
+    const popupExtrasRef = useRef(popupExtras)
+  const popupShowRef = useRef(showPopupData)
+  const popupOpenRef = useRef(popupOpen)
+  const popupPicturesRef = useRef(addQuestPictures)
   useEffect(() => {
     popupExtrasRef.current = popupExtras
+    popupShowRef.current = showPopupData
+    popupOpenRef.current = popupOpen
+    popupPicturesRef.current = addQuestPictures
   })
 
   const present = useCallback(
@@ -431,6 +525,11 @@ export function AssistantHost() {
       // "Add 1 GPU": asked first; kept until the next message ("yes" applies it).
       pendingConfirm.current = reply.confirm ?? null
       chat().set({ card: reply.map ?? null })
+      // A new map answer is the one "zoom in on D3" works on (view changes keep it).
+      if (reply.map && !reply.map.view) {
+        viewBase.current = reply.map
+        viewState.current = { zoomDelta: 0 }
+      }
       // Desktop: answers with details also go in the pop-up over the game (closed by "close that").
       const details = (reply.lines ?? []).filter((l) => !l.startsWith('I took that as'))
       if (window.desktop && useAssistantStore.getState().popup && !reply.quiet && (details.length > 0 || reply.map || reply.about || reply.text.length > 90)) {
@@ -438,9 +537,11 @@ export function AssistantHost() {
         // An item or quest gets its card, a place or route a mini-map; the lines the card already shows are left out.
         const extras = popupExtrasRef.current(reply)
         const lines = extras.item ? details.filter((l) => !/^(Flea|No flea|Best trader|Sold by|Still needed|Cannot be sold|Traders sell)/.test(l)).slice(0, 3) : extras.quest ? details.filter((l) => !extras.quest!.objectives.includes(l)).slice(0, 3) : details.slice(0, extras.map ? 4 : 8)
-        const data: PopupData = { title: currentQuestion.current, text: reply.text, lines, hint: popupSeconds ? `Closes in ${popupSeconds} s, or say "close".` : 'Say "close" to hide this.', autoCloseSeconds: popupSeconds, ...extras }
-        lastPopup.current = data
-        void window.desktop.showPopup(data)
+        // With a countdown the pop-up shows the time left and "say pause"; without one, how to close it.
+        const stayPaused = !!reply.map?.view && !!lastPopup.current?.paused && popupOpenRef.current()
+        const data: PopupData = { title: currentQuestion.current, text: reply.text, lines, hint: popupSeconds ? '' : 'Say "close" to hide this.', autoCloseSeconds: stayPaused ? 0 : popupSeconds, ...(stayPaused ? { paused: true } : {}), ...extras }
+        popupShowRef.current(data)
+        if (reply.about?.questId) popupPicturesRef.current(data, reply.about.questId)
       }
     },
     [],
@@ -536,13 +637,28 @@ export function AssistantHost() {
       show(id, applyChange(change))
       return
     }
+    if (PAUSE_POPUP.test(plain)) {
+      if (window.desktop && lastPopup.current && popupOpen()) {
+        showPopupData({ ...lastPopup.current, autoCloseSeconds: 0, paused: true })
+        show(id, { text: 'Paused. Say "close" when you are done.', quiet: true })
+      } else show(id, { text: 'There is nothing to pause.', quiet: true })
+      return
+    }
+    // "Zoom in on D3", "bottom left corner", "zoom out", "whole map": on the map just shown.
+    const view = viewBase.current && (popupOpen() || chat().card) ? parseMapView(text) : null
+    const viewReply = view ? mapViewReply(view) : null
+    if (viewReply) {
+      show(id, viewReply)
+      return
+    }
     if (CLOSE_POPUP.test(plain)) {
+      popupUntil.current = 0
       void window.desktop?.hidePopup()
       show(id, { text: 'Closed.', quiet: true })
       return
     }
     if (SHOW_POPUP_AGAIN.test(plain) && lastPopup.current && window.desktop) {
-      void window.desktop.showPopup(lastPopup.current)
+      showPopupData(lastPopup.current)
       show(id, { text: 'Here it is again.', quiet: true })
       return
     }
@@ -864,21 +980,39 @@ export function AssistantHost() {
     }
     // Memory commands ("remember that …") are kept as Moonshine heard them: Vosk only knows game words.
     if (!alt || alt === main || /^(remember|note to self|forget|no i meant|i meant|when i say|keep it short|more detail|what do you know)/.test(words(main).join(' ')) || parseTeach(main)) {
-      if (snapped.fixed.length && understood(main)) learn(snapped.fixed)
+      if (understood(main)) {
+        learn(snapped.fixed)
+        fromRepeat(main)
+      } else lastHeard.current = { raw, at: Date.now() }
       return main
     }
     if (understood(main)) {
       learn(snapped.fixed)
+      fromRepeat(main)
       return main
     }
     const second = snapToNames(alt, list)
-    if (!understood(second.text)) return main
+    if (!understood(second.text)) {
+      lastHeard.current = { raw, at: Date.now() }
+      return main
+    }
     learn(second.fixed)
     // Moonshine's words that Vosk heard as a name: remember those too when the sentence lines up.
     const mw = words(main)
     const aw = words(second.text)
     if (mw.length === aw.length) for (let i = 0; i < mw.length; i++) if (mw[i] !== aw[i] && !isEverydayWord(mw[i]) && known.has(aw[i])) mem.heardAs(mw[i], aw[i])
+    fromRepeat(second.text)
     return second.text
+  }
+  /** The last spoken question it did not understand, for learning from the player saying it again. */
+  const lastHeard = useRef<{ raw: string; at: number } | null>(null)
+  /** Said again and understood this time: what changed is what the first try meant (used from now on). */
+  const fromRepeat = (understoodText: string) => {
+    const prev = lastHeard.current
+    lastHeard.current = null
+    if (!prev || Date.now() - prev.at > REPEAT_WINDOW_MS) return
+    const fix = repeatFix(prev.raw, understoodText)
+    if (fix) useAssistantMemory.getState().heardAs(fix.heard, fix.meant, 2)
   }
   /** Every word of every game name, for the learned letter swaps (built once per name list). */
   const knownCache = useRef<{ list: SoundName[]; set: Set<string> } | null>(null)
@@ -969,14 +1103,18 @@ export function AssistantHost() {
         commands:
           commandsOn && data
             ? {
-                words: commandWords(commandRef.current.context(data)),
-                isCommand: (t) => parseCommand(t, commandRef.current.context(data)) !== null,
+                words: [...commandWords(commandRef.current.context(data)), ...POPUP_WORDS],
+                isCommand: (t) => parseCommand(t, commandRef.current.context(data)) !== null || commandRef.current.popupControl(t),
                 needsTranscribing: (t) => NEEDS_TRANSCRIBING.test(t),
                 run: (text, alt) => {
                   const said = heardRef.current(text, alt)
                   const ctx = commandRef.current.context(data)
                   const cmd = parseCommand(said, ctx) ?? parseCommand(alt, ctx)
                   const at = Date.now()
+                  if (!cmd && commandRef.current.popupControl(said)) {
+                    askRef.current(said)
+                    return
+                  }
                   if (!cmd) {
                     // "Zoom to Debut" also works without the name (it only moves the map).
                     const change = parseChange(said, commandRef.current.changes(data))

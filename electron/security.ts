@@ -173,7 +173,9 @@ export function cleanPopupData(v: unknown): PopupData | null {
       return at ? [{ ...at, label: str(obj(p)?.label, 60), kind: KINDS.includes(kind as (typeof KINDS)[number]) ? (kind as (typeof KINDS)[number]) : 'place' }] : []
     })
     const path = Array.isArray(m.path) ? m.path.slice(0, 600).flatMap((p) => { const at = pos(p); return at ? [at] : [] }) : undefined
-    if (points.length) out.map = { mapKey: m.mapKey, mapName: str(m.mapName, 40), points, ...(path?.length ? { path } : {}) }
+    const focus = Array.isArray(m.focus) ? m.focus.slice(0, 4).flatMap((p) => { const at = pos(p); return at ? [at] : [] }) : []
+    const zoomDelta = Math.max(-4, Math.min(4, Math.round(num(m.zoomDelta) ?? 0)))
+    if (points.length || focus.length) out.map = { mapKey: m.mapKey, mapName: str(m.mapName, 40), points, ...(path?.length ? { path } : {}), ...(focus.length ? { focus } : {}), ...(zoomDelta ? { zoomDelta } : {}) }
   }
   const it = obj(o.item)
   if (it && typeof it.name === 'string') {
@@ -189,6 +191,14 @@ export function cleanPopupData(v: unknown): PopupData | null {
       needed: Math.max(0, Math.min(9999, num(it.needed) ?? 0)),
       fir: it.fir === true,
     }
+  }
+  if (o.paused === true) out.paused = true
+  if (Array.isArray(o.images)) {
+    const images = o.images.slice(0, 3).flatMap((x) => {
+      const im = obj(x)
+      return im && typeof im.thumb === 'string' && /^https:\/\/static\.wikia\.nocookie\.net\/[^\s"'<>]+$/.test(im.thumb) ? [{ thumb: im.thumb, caption: str(im.caption, 120) }] : []
+    })
+    if (images.length) out.images = images
   }
   const q = obj(o.quest)
   if (q && typeof q.trader === 'string') {

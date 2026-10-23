@@ -98,7 +98,7 @@ export function parseWikiGuide(html: string, pageUrl: string): WikiGuide {
 
 export const WIKI_API = API
 
-async function fetchWikiGuide(title: string, signal?: AbortSignal): Promise<WikiGuide> {
+export async function fetchWikiGuide(title: string, signal?: AbortSignal): Promise<WikiGuide> {
   const url = `${API}?action=parse&page=${encodeURIComponent(title)}&prop=text&redirects=1&format=json&formatversion=2&origin=*`
   const res = await fetch(url, { signal })
   if (!res.ok) throw new Error(`Wiki responded ${res.status}`)

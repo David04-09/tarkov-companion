@@ -1,8 +1,21 @@
 import { describe, expect, it } from 'vitest'
-import { applyHeard, emptyPronunciation, learnHeard, letterSwap } from './pronunciation'
+import { applyHeard, emptyPronunciation, learnHeard, letterSwap, repeatFix } from './pronunciation'
 
 const known = new Set(['chalets', 'thing', 'three', 'thermite', 'ledx', 'where', 'is', 'the', 'how', 'much'])
 const isKnown = (w: string) => known.has(w)
+
+describe('learning from a repeated question', () => {
+  it('takes what changed when the player said it again', () => {
+    expect(repeatFix('how much is the leddy', 'how much is the ledx')).toEqual({ heard: 'leddy', meant: 'ledx' })
+    expect(repeatFix('where is shell ace', 'where is chalets')).toEqual({ heard: 'shell ace', meant: 'chalets' })
+    expect(repeatFix('leddy', 'ledx')).toEqual({ heard: 'leddy', meant: 'ledx' })
+  })
+  it('does not learn a different question', () => {
+    expect(repeatFix('how much is the gpu', 'where are the extracts on woods')).toBeNull()
+    expect(repeatFix('price of the moonshine', 'price of the ledx')).toBeNull()
+    expect(repeatFix('same thing', 'same thing')).toBeNull()
+  })
+})
 
 describe('learning how the player says things', () => {
   it('finds the letters that differ', () => {
