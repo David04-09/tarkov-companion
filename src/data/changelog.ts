@@ -12,17 +12,23 @@ export interface ChangelogEntry {
 }
 
 /** Committed, waiting for the next update. */
-export const UNRELEASED: string[] = [
-  "Removed the Weapon builder, Crafts and Money makers tabs to keep the app lighter. Favourite crafts no longer count towards the Item Collection (they could not be changed any more), and the Dashboard's top crafts card is gone with them.",
-  "Desktop: the assistant shows its answers in a pop-up over the game. A small see-through card in the top left of the screen your mouse is on, with the answer and its details. It never takes the mouse or keyboard from the game (clicks go straight through). Say \"close that\" (or \"hide it\") to close it and \"show that again\" to bring it back. Switch it off under Voice on the Neural network tab. Shows over the game in borderless or windowed mode, not in exclusive full screen.",
-  "Assistant: just say an item's name. \"Dorms marked key\" shows where its lock is, what it goes for and whether the room is worth it (from the wiki's \"Behind the lock\" list); \"LEDX\" or \"GPU\" shows the price, where it lies around and which of your quests need it. Three or four short lines, so the pop-up stays small.",
-  "Assistant: follow-up questions. After the west 306 key, \"how much is it worth?\" and \"where can I find it?\" are about that key; after the LEDX price, \"what about the GPU?\" gives the GPU's price; after Customs' extracts, \"and on Woods?\" gives Woods'. Keys and items named in part (\"west 306\") count too.",
-  "Assistant: faster. A question ends after 1.3 seconds of quiet (was 1.8), and the plain-English helper gets ready as soon as you say its name.",
-  "Assistant: fewer false answers while you talk to friends. After \"Hey Ranger\" only questions, requests and item names are answered; chatter like \"push left\" or \"nice one\" is not even looked at, and the plain-English helper has to be surer before it answers.",
-  "Assistant: the natural voice is gone. Answers are shown (in the app and in the pop-up) instead of read out, which saves a 57 MB download, memory and CPU while you play. \"Read answers out loud\" still works with the Windows voices if you switch it on. The old voice download is cleaned up after the update.",
-]
+export const UNRELEASED: string[] = []
 
 export const RELEASES: ChangelogEntry[] = [
+  {
+    version: '2.5.0',
+    date: '2026-10-23',
+    title: 'A lighter app and a quicker assistant: item cards, follow-ups and a pop-up over the game',
+    changes: [
+      "Removed the Weapon builder, Crafts and Money makers tabs to keep the app lighter. Favourite crafts no longer count towards the Item Collection (they could not be changed any more), and the Dashboard's top crafts card is gone with them.",
+      "Desktop: the assistant shows its answers in a pop-up over the game. A small see-through card in the top left of the screen your mouse is on, with the answer and its details. It never takes the mouse or keyboard from the game (clicks go straight through). Say \"close that\" (or \"hide it\") to close it and \"show that again\" to bring it back. Switch it off under Voice on the Neural network tab. Shows over the game in borderless or windowed mode, not in exclusive full screen.",
+      "Assistant: just say an item's name. \"Dorms marked key\" shows where its lock is, what it goes for and whether the room is worth it (from the wiki's \"Behind the lock\" list); \"LEDX\" or \"GPU\" shows the price, where it lies around and which of your quests need it. Three or four short lines, so the pop-up stays small.",
+      "Assistant: follow-up questions. After the west 306 key, \"how much is it worth?\" and \"where can I find it?\" are about that key; after the LEDX price, \"what about the GPU?\" gives the GPU's price; after Customs' extracts, \"and on Woods?\" gives Woods'. Keys and items named in part (\"west 306\") count too.",
+      "Assistant: faster. A question ends after 1.3 seconds of quiet (was 1.8), and the plain-English helper gets ready as soon as you say its name.",
+      "Assistant: fewer false answers while you talk to friends. After \"Hey Ranger\" only questions, requests and item names are answered; chatter like \"push left\" or \"nice one\" is not even looked at, and the plain-English helper has to be surer before it answers.",
+      "Assistant: the natural voice is gone. Answers are shown (in the app and in the pop-up) instead of read out, which saves a 57 MB download, memory and CPU while you play. \"Read answers out loud\" still works with the Windows voices if you switch it on. The old voice download is cleaned up after the update.",
+    ],
+  },
   {
     version: '2.4.0',
     date: '2026-10-21',
