@@ -12,18 +12,24 @@ export interface ChangelogEntry {
 }
 
 /** Committed, waiting for the next update. */
-export const UNRELEASED: string[] = [
-  "Search bar: much lighter. At rest it is only the magnifying glass (about 2 MB of memory); everything else loads on the first click, and after 3 minutes with nothing open it lets the game data go again.",
-  "Search bar: drag the magnifying glass (or the grip on the left of the bar) to put it anywhere on any screen; it remembers the spot. Near a screen edge it opens towards the room it has. \"Back to the top-left corner\" is under the sliders button.",
-  "Search bar: two see-through sliders (at rest, and with a map or side panels open). It is always fully visible while the mouse is over it.",
-  "Search bar: the empty parts of its window no longer block clicks; they go straight to the game.",
-  "Search bar: side panels. Open a quest, item or key beside the search (the panel button on a result, the i next to a quest in the map list, or any name inside a card). Up to 3 at once, each with its own close button.",
-  "Search bar quest details: keys needed, items to hand in or place (with found-in-raid), quests before it and what it unlocks, XP, Kappa/Lightkeeper, and the wiki's guide and location pictures (click one to see it large in its own panel).",
-  "Search bar item details: price per slot, best trader to sell to, cheapest trader to buy from, what needs it, and the maps where it lies around. Keys also get the quests that need them and \"Worth it?\" with the wiki's lock and loot pictures.",
-  "Search bar maps: the list beside the map has Quests, Extracts (PMC, Scav, both, and transits) and Bosses (chance and where) tabs; click any of them to zoom there. A button makes the map bigger.",
-]
+export const UNRELEASED: string[] = []
 
 export const RELEASES: ChangelogEntry[] = [
+  {
+    version: '2.10.0',
+    date: '2026-10-24',
+    title: 'Search bar: lighter, drag anywhere, see-through sliders, side panels with quest and key details',
+    changes: [
+      "Search bar: much lighter. At rest it is only the magnifying glass (about 2 MB of memory); everything else loads on the first click, and after 3 minutes with nothing open it lets the game data go again.",
+      "Search bar: drag the magnifying glass (or the grip on the left of the bar) to put it anywhere on any screen; it remembers the spot. Near a screen edge it opens towards the room it has. \"Back to the top-left corner\" is under the sliders button.",
+      "Search bar: two see-through sliders (at rest, and with a map or side panels open). It is always fully visible while the mouse is over it.",
+      "Search bar: the empty parts of its window no longer block clicks; they go straight to the game.",
+      "Search bar: side panels. Open a quest, item or key beside the search (the panel button on a result, the i next to a quest in the map list, or any name inside a card). Up to 3 at once, each with its own close button.",
+      "Search bar quest details: keys needed, items to hand in or place (with found-in-raid), quests before it and what it unlocks, XP, Kappa/Lightkeeper, and the wiki's guide and location pictures (click one to see it large in its own panel).",
+      "Search bar item details: price per slot, best trader to sell to, cheapest trader to buy from, what needs it, and the maps where it lies around. Keys also get the quests that need them and \"Worth it?\" with the wiki's lock and loot pictures.",
+      "Search bar maps: the list beside the map has Quests, Extracts (PMC, Scav, both, and transits) and Bosses (chance and where) tabs; click any of them to zoom there. A button makes the map bigger.",
+    ],
+  },
   {
     version: '2.9.0',
     date: '2026-10-24',
