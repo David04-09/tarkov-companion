@@ -256,15 +256,48 @@ function createWindow(show: boolean) {
 // The search bar over the game
 // ---------------------------------------------------------------------------
 
-const SEARCH_WIDTH = 48
-const SEARCH_MAX_WIDTH = 640
+/** The magnifying glass with its margin: the window's size when nothing is open. */
+const SEARCH_GLASS = 48
+const SEARCH_MAX_WIDTH = 1000
 const SEARCH_MARGIN = 16
 
+/** Top-left corner of the glass on screen; the window grows right/down from it, or left/up near a screen edge. */
+let searchAnchor = { x: 0, y: 0 }
+let searchSize = { width: SEARCH_GLASS, height: SEARCH_GLASS }
+let searchFlip = { left: false, up: false }
+
+/** Keeps the glass on a screen (a monitor may have been unplugged since it was dragged there). */
+function clampAnchor(p: { x: number; y: number }) {
+  const area = screen.getDisplayNearestPoint({ x: Math.round(p.x), y: Math.round(p.y) }).workArea
+  return {
+    x: Math.round(Math.min(Math.max(p.x, area.x), area.x + area.width - SEARCH_GLASS)),
+    y: Math.round(Math.min(Math.max(p.y, area.y), area.y + area.height - SEARCH_GLASS)),
+  }
+}
+
+/** Puts the window around the glass at its current size, flipping towards the room on the screen. */
+function placeSearchBar() {
+  if (!searchBar || searchBar.isDestroyed()) return
+  const area = screen.getDisplayNearestPoint(searchAnchor).workArea
+  const w = Math.max(40, Math.min(Math.round(searchSize.width), SEARCH_MAX_WIDTH, area.width))
+  const h = Math.max(40, Math.min(Math.round(searchSize.height), Math.round(area.height * 0.9)))
+  const left = searchAnchor.x + w > area.x + area.width
+  const up = searchAnchor.y + h > area.y + area.height
+  const x = left ? Math.max(area.x, searchAnchor.x + SEARCH_GLASS - w) : searchAnchor.x
+  const y = up ? Math.max(area.y, searchAnchor.y + SEARCH_GLASS - h) : searchAnchor.y
+  const b = searchBar.getBounds()
+  if (b.x !== x || b.y !== y || b.width !== w || b.height !== h) searchBar.setBounds({ x, y, width: w, height: h })
+  if (left !== searchFlip.left || up !== searchFlip.up) {
+    searchFlip = { left, up }
+    searchBar.webContents.send('searchbar:layout', searchFlip)
+  }
+}
+
 /**
- * A small search box in the top-left corner of the main screen, above the game (borderless or
- * windowed). It shows only the app's own page: type an item, key or quest and its price or
- * details drop down. It never takes focus by itself; clicking into it does, like any window.
- * Nothing about the game is read or touched.
+ * A small magnifying glass above the game (borderless or windowed), top left of the main screen
+ * or wherever it was dragged. It shows only the app's own page: click it and type an item, key,
+ * quest or map. It never takes focus by itself; clicking into it does, like any window. The empty
+ * parts of the window let clicks through to the game. Nothing about the game is read or touched.
  */
 function applySearchBar() {
   const on = settings.get().searchBar
@@ -275,11 +308,14 @@ function applySearchBar() {
   }
   if (searchBar && !searchBar.isDestroyed()) return
   const area = screen.getPrimaryDisplay().workArea
+  searchAnchor = clampAnchor(settings.get().searchBarPos ?? { x: area.x + SEARCH_MARGIN, y: area.y + SEARCH_MARGIN })
+  searchSize = { width: SEARCH_GLASS, height: SEARCH_GLASS }
+  searchFlip = { left: false, up: false }
   const w = new BrowserWindow({
-    x: area.x + SEARCH_MARGIN,
-    y: area.y + SEARCH_MARGIN,
-    width: SEARCH_WIDTH,
-    height: 48,
+    x: searchAnchor.x,
+    y: searchAnchor.y,
+    width: SEARCH_GLASS,
+    height: SEARCH_GLASS,
     show: false,
     frame: false,
     transparent: true,
@@ -301,6 +337,7 @@ function applySearchBar() {
       allowRunningInsecureContent: false,
       webviewTag: false,
       devTools: !app.isPackaged,
+      spellcheck: false,
       additionalArguments: ['--tc-window=searchbar', `--tc-version=${app.getVersion()}`],
     },
   })
@@ -308,7 +345,10 @@ function applySearchBar() {
   w.setAlwaysOnTop(true, 'screen-saver')
   w.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
   lockNavigation(w)
-  w.webContents.once('did-finish-load', () => w.showInactive())
+  w.webContents.once('did-finish-load', () => {
+    w.showInactive()
+    w.webContents.send('searchbar:layout', searchFlip)
+  })
   load(w, '/searchbar')
   w.on('closed', () => {
     if (searchBar === w) searchBar = null
@@ -316,14 +356,16 @@ function applySearchBar() {
   searchBar = w
 }
 
-/** The window follows the search bar: a small glass, the bar, or a map with its list (never past 70% of the screen). */
+/** The window follows the search bar: the glass, the bar, a card, a map, side panels. */
 function sizeSearchBar(width: number, height: number) {
-  if (!searchBar || searchBar.isDestroyed()) return
-  const area = screen.getDisplayMatching(searchBar.getBounds()).workArea
-  const w = Math.max(40, Math.min(Math.round(width), SEARCH_MAX_WIDTH, area.width))
-  const h = Math.max(40, Math.min(Math.round(height), Math.round(area.height * 0.7)))
-  const b = searchBar.getBounds()
-  if (b.height !== h || b.width !== w) searchBar.setBounds({ x: b.x, y: b.y, width: w, height: h })
+  searchSize = { width, height }
+  placeSearchBar()
+}
+
+/** Dragging the glass: moves it by the pointer's movement (saved when the drag ends). */
+function moveSearchBar(dx: number, dy: number) {
+  searchAnchor = clampAnchor({ x: searchAnchor.x + dx, y: searchAnchor.y + dy })
+  placeSearchBar()
 }
 
 let lastCleanup: CleanupResult | null = null
@@ -468,6 +510,25 @@ function registerIpc() {
     if (!searchBar || searchBar.isDestroyed() || e.sender !== searchBar.webContents) return
     if (typeof width !== 'number' || typeof height !== 'number' || !Number.isFinite(width) || !Number.isFinite(height)) return
     sizeSearchBar(width, height)
+  })
+  const fromSearchBar = (e: IpcMainInvokeEvent) => Boolean(searchBar && !searchBar.isDestroyed() && e.sender === searchBar.webContents)
+  const isDelta = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) < 10000
+  handle('searchbar:move', (e, dx: unknown, dy: unknown) => {
+    if (fromSearchBar(e) && isDelta(dx) && isDelta(dy)) moveSearchBar(dx, dy)
+  })
+  handle('searchbar:moved', (e) => {
+    if (fromSearchBar(e)) settings.update({ searchBarPos: { ...searchAnchor } })
+  })
+  handle('searchbar:home', (e) => {
+    if (!fromSearchBar(e)) return
+    const area = screen.getPrimaryDisplay().workArea
+    searchAnchor = { x: area.x + SEARCH_MARGIN, y: area.y + SEARCH_MARGIN }
+    settings.update({ searchBarPos: null })
+    placeSearchBar()
+  })
+  handle('searchbar:passthrough', (e, on: unknown) => {
+    // Clicks on the see-through parts go to the game; mouse moves still arrive so the bar knows when to take them back.
+    if (fromSearchBar(e) && typeof on === 'boolean') searchBar!.setIgnoreMouseEvents(on, { forward: true })
   })
   handle('searchbar:open', (e, to: unknown) => {
     // "Open in the app" from a search result: only the app's own tab pages.

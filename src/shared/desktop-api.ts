@@ -218,6 +218,15 @@ export interface DesktopApi {
   windowKind: 'main' | 'searchbar'
   /** Search bar only: its size once drawn (the window follows it). */
   setSearchBarSize: (width: number, height: number) => Promise<void>
+  /** Search bar only: drag the glass by this many pixels; `searchBarMoved` saves where it ended. */
+  moveSearchBar: (dx: number, dy: number) => Promise<void>
+  searchBarMoved: () => Promise<void>
+  /** Search bar only: back to the top left of the main screen. */
+  searchBarHome: () => Promise<void>
+  /** Search bar only: true = clicks go through the window to the game (the see-through parts). */
+  setSearchBarPassthrough: (on: boolean) => Promise<void>
+  /** Search bar only: which way the window grows from the glass (it flips near a screen edge). */
+  onSearchBarLayout: (cb: (flip: { left: boolean; up: boolean }) => void) => () => void
   /** Search bar only: show the app window on this page. */
   openInApp: (to: string) => Promise<void>
   /** Makes sure a content pack is downloaded and installed (no-op in development). */

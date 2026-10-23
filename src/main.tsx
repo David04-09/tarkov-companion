@@ -1,12 +1,12 @@
-import { StrictMode } from 'react'
+import { lazy, StrictMode, Suspense } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
-import App from './App.tsx'
-import { SearchBarApp } from './searchbar/SearchBarApp'
 import { startAppearance } from './lib/appearance'
 
 // The search bar over the game (desktop) is its own small window: only the bar, no app, no game log.
 const isSearchBar = window.desktop?.windowKind === 'searchbar'
+// Each window loads only its own code: the search bar never loads the app's pages, stores and game-log bridge.
+const Root = isSearchBar ? lazy(() => import('./searchbar/SearchBarApp').then((m) => ({ default: m.SearchBarApp }))) : lazy(() => import('./App.tsx'))
 
 // The assistant was removed in 2.8.0: drop what it kept on this PC (settings, memory, the cached
 // speech model), once.
@@ -25,4 +25,10 @@ if (!isSearchBar) {
 // Theme and text size before the first paint (no flash of the default theme).
 if (!isSearchBar) startAppearance()
 
-createRoot(document.getElementById('root')!).render(<StrictMode>{isSearchBar ? <SearchBarApp /> : <App />}</StrictMode>)
+createRoot(document.getElementById('root')!).render(
+  <StrictMode>
+    <Suspense fallback={null}>
+      <Root />
+    </Suspense>
+  </StrictMode>,
+)

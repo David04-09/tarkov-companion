@@ -16,6 +16,8 @@ export interface StoredSettings extends DesktopSettings {
   lastCleanedVersion: string | null
   /** The one-time "still running in the tray" balloon was shown. */
   trayNoticeShown: boolean
+  /** Where the search bar's magnifying glass was dragged to (screen point), or null = top left. */
+  searchBarPos: { x: number; y: number } | null
   window: WindowBounds
 }
 
@@ -38,6 +40,7 @@ export const DEFAULT_SETTINGS: StoredSettings = {
   cleanAfterUpdate: true,
   lastCleanedVersion: null,
   trayNoticeShown: false,
+  searchBarPos: null,
   window: { width: 1360, height: 860 },
 }
 
@@ -70,7 +73,7 @@ export class SettingsStore {
 
   /** The renderer-facing subset (no window bounds). */
   getPublic(): DesktopSettings {
-    const { window: _w, trayNoticeShown: _t, lastCleanedVersion: _c, ...rest } = this.data
+    const { window: _w, trayNoticeShown: _t, lastCleanedVersion: _c, searchBarPos: _p, ...rest } = this.data
     return rest
   }
 
