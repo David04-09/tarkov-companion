@@ -1,4 +1,4 @@
-import { Fragment, memo } from 'react'
+import { Fragment, memo, useMemo } from 'react'
 import L from 'leaflet'
 import { Marker, Polygon, Tooltip } from 'react-leaflet'
 import type { GameData, ItemsById, MapDetails, Position } from '../../api/types'
@@ -113,6 +113,26 @@ const Locks = memo(function Locks({
   )
 })
 
+/** Levers, power switches and buttons, mounted guns and BTR stops: exact spots from the data. */
+const Points = memo(function Points({ points, glyph, color, layer, activeFloor }: { points: { key: string; position: Position; label: string }[]; glyph: 'switch' | 'stationary' | 'btr'; color: string; layer: BaseLayerConfig; activeFloor: string | null }) {
+  const hasFloors = layerHasFloorHeights(layer)
+  return (
+    <>
+      {points.map((p) => {
+        const dim = hasFloors && floorForPosition(layer, p.position) !== activeFloor
+        return (
+          <Marker key={p.key} position={ll(p.position)} icon={layerIcon(glyph, color, dim)} zIndexOffset={-250}>
+            <Tooltip direction="top" offset={[0, -10]}>
+              {p.label}
+              {hasFloors ? ` · ${floorForPosition(layer, p.position) ?? 'Ground'}` : ''}
+            </Tooltip>
+          </Marker>
+        )
+      })}
+    </>
+  )
+})
+
 export interface OtherLayersProps {
   data: GameData
   mapId: string
@@ -127,6 +147,9 @@ export interface OtherLayersProps {
 /** Non-quest layers, each memoised separately so a toggle only mounts/unmounts its own layer. */
 export function OtherLayers({ data, mapId, layer, activeFloor, toggles, items, ownedKeyIds }: OtherLayersProps) {
   const details = data.mapDetails[mapId]
+  const switches = useMemo(() => (details?.switches ?? []).map((s) => ({ key: s.id, position: s.position, label: s.name })), [details])
+  const guns = useMemo(() => (details?.stationaryWeapons ?? []).map((w, i) => ({ key: `${w.itemId}:${i}`, position: w.position, label: `Mounted gun: ${items?.[w.itemId]?.name ?? 'stationary weapon'}` })), [details, items])
+  const btr = useMemo(() => (details?.btrStops ?? []).map((b, i) => ({ key: `btr:${i}`, position: b.position, label: `BTR stop: ${b.name}` })), [details])
   if (!details) return null
   return (
     <>
@@ -135,6 +158,15 @@ export function OtherLayers({ data, mapId, layer, activeFloor, toggles, items, o
       )}
       {toggles.transits && <Transits details={details} layer={layer} activeFloor={activeFloor} maps={data.maps} />}
       {toggles.locks && <Locks details={details} layer={layer} activeFloor={activeFloor} items={items} ownedKeyIds={ownedKeyIds} />}
+      {toggles.switches && (details.switches ?? []).length > 0 && (
+        <Points points={switches} glyph="switch" color={LAYER_COLORS.switch} layer={layer} activeFloor={activeFloor} />
+      )}
+      {toggles.stationary && (details.stationaryWeapons ?? []).length > 0 && (
+        <Points points={guns} glyph="stationary" color={LAYER_COLORS.stationary} layer={layer} activeFloor={activeFloor} />
+      )}
+      {toggles.btr && (details.btrStops ?? []).length > 0 && (
+        <Points points={btr} glyph="btr" color={LAYER_COLORS.btr} layer={layer} activeFloor={activeFloor} />
+      )}
     </>
   )
 }

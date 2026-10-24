@@ -323,6 +323,12 @@ export interface RawMap {
   lootLoose?: { position: Position; items: string[] }[]
   locks?: RawLock[]
   hazards?: RawHazard[]
+  /** Levers, power switches, elevator and alarm buttons. */
+  switches?: { id: string; name?: string; switchType?: string; position?: Position; activates?: unknown[] }[]
+  /** Mounted machine guns and grenade launchers (item id of the weapon). */
+  stationaryWeapons?: { stationaryWeapon?: string; position?: Position }[]
+  /** BTR taxi stops (Woods, Streets): a translation key and the spot. */
+  btrStops?: { name?: string; x?: number; y?: number; z?: number }[]
 }
 
 export interface RawMapsData {
@@ -815,6 +821,15 @@ export interface MapHazard {
   outline: Position[]
 }
 
+export interface MapSwitch {
+  id: string
+  /** English name, or one read from the internal name ("Power switch"). */
+  name: string
+  /** "Open"/"Close" in the data. */
+  switchType: string
+  position: Position
+}
+
 export interface MapDetails {
   extracts: MapExtract[]
   transits: MapTransit[]
@@ -824,6 +839,9 @@ export interface MapDetails {
   lootLoose: { position: Position; itemIds: string[] }[]
   locks: MapLock[]
   hazards: MapHazard[]
+  switches: MapSwitch[]
+  stationaryWeapons: { itemId: string; position: Position }[]
+  btrStops: { name: string; position: Position }[]
 }
 
 export type FactionName = 'Any' | 'USEC' | 'BEAR'

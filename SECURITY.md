@@ -6,7 +6,7 @@ If you find a security problem (for example a way for a web page, a map file or 
 
 ## What the app promises
 
-- It never touches Escape from Tarkov: no access to the game process or its memory, no injection, no input sent to the game, no reading of network traffic, nothing written to the game folder, nothing drawn on top of the game. Quest tracking reads the game's own text logs, read-only.
+- It never touches Escape from Tarkov: no access to the game process or its memory, no injection, no input sent to the game, no reading of network traffic, nothing written to the game folder, nothing drawn inside the game. The optional search bar (off by default) is an ordinary always-on-top window of the app's own, like Discord's; its see-through parts pass clicks to the game. Quest tracking reads the game's own text logs, read-only.
 - It only talks to: `json.tarkov.dev` and `assets.tarkov.dev` (game data and pictures), `escapefromtarkov.fandom.com` and `static.wikia.nocookie.net` (wiki guides and pictures), and GitHub (updates). Nothing about you is uploaded anywhere.
 - Your progress stays on your computer (browser storage, or `%APPDATA%\Tarkov Companion` for the desktop app).
 

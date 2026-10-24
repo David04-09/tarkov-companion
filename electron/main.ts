@@ -258,7 +258,6 @@ function createWindow(show: boolean) {
 
 /** The magnifying glass with its margin: the window's size when nothing is open. */
 const SEARCH_GLASS = 48
-const SEARCH_MAX_WIDTH = 1000
 const SEARCH_MARGIN = 16
 
 /** Top-left corner of the glass on screen; the window grows right/down from it, or left/up near a screen edge. */
@@ -279,8 +278,8 @@ function clampAnchor(p: { x: number; y: number }) {
 function placeSearchBar() {
   if (!searchBar || searchBar.isDestroyed()) return
   const area = screen.getDisplayNearestPoint(searchAnchor).workArea
-  const w = Math.max(40, Math.min(Math.round(searchSize.width), SEARCH_MAX_WIDTH, area.width))
-  const h = Math.max(40, Math.min(Math.round(searchSize.height), Math.round(area.height * 0.9)))
+  const w = Math.max(40, Math.min(Math.round(searchSize.width), area.width))
+  const h = Math.max(40, Math.min(Math.round(searchSize.height), area.height))
   const left = searchAnchor.x + w > area.x + area.width
   const up = searchAnchor.y + h > area.y + area.height
   const x = left ? Math.max(area.x, searchAnchor.x + SEARCH_GLASS - w) : searchAnchor.x
@@ -352,8 +351,14 @@ function applySearchBar() {
   load(w, '/searchbar')
   w.on('closed', () => {
     if (searchBar === w) searchBar = null
+    searchLocked = false
+    refreshTrayMenu()
   })
+  // The tray says Show or Hide to match (hotkeys and the first load show it too).
+  w.on('show', refreshTrayMenu)
+  w.on('hide', refreshTrayMenu)
   searchBar = w
+  refreshTrayMenu()
 }
 
 /** The window follows the search bar: the glass, the bar, a card, a map, side panels. */
@@ -365,6 +370,54 @@ function sizeSearchBar(width: number, height: number) {
 /** Dragging the glass: moves it by the pointer's movement (saved when the drag ends). */
 function moveSearchBar(dx: number, dy: number) {
   searchAnchor = clampAnchor({ x: searchAnchor.x + dx, y: searchAnchor.y + dy })
+  placeSearchBar()
+}
+
+/** Locked = the whole bar lets every click through to the game (a map you only look at). */
+let searchLocked = false
+
+function setSearchLocked(on: boolean) {
+  if (!searchBar || searchBar.isDestroyed()) return
+  searchLocked = on
+  searchBar.setIgnoreMouseEvents(on, on ? undefined : { forward: true })
+  searchBar.webContents.send('searchbar:locked', on)
+  refreshTrayMenu()
+}
+
+/** Hotkey / tray: hide the bar completely, or bring it back where it was. */
+function toggleSearchBarVisible() {
+  if (!searchBar || searchBar.isDestroyed()) return
+  if (searchBar.isVisible()) searchBar.hide()
+  else searchBar.showInactive()
+  refreshTrayMenu()
+}
+
+/** Hotkey: show the bar and put the cursor in the search box (this takes focus from the game). */
+function focusSearchBar() {
+  if (!searchBar || searchBar.isDestroyed()) return
+  if (searchLocked) setSearchLocked(false)
+  if (!searchBar.isVisible()) searchBar.showInactive()
+  searchBar.focus()
+  searchBar.webContents.send('searchbar:focus')
+}
+
+/** Hotkey: open or close the map in the bar (the game keeps the keyboard). */
+function toggleSearchMap() {
+  if (!searchBar || searchBar.isDestroyed()) return
+  if (!searchBar.isVisible()) searchBar.showInactive()
+  searchBar.webContents.send('searchbar:map')
+}
+
+/** Snap the glass into a corner of the screen it is on. */
+function cornerSearchBar(corner: 'tl' | 'tr' | 'bl' | 'br') {
+  const area = screen.getDisplayNearestPoint(searchAnchor).workArea
+  const right = corner === 'tr' || corner === 'br'
+  const bottom = corner === 'bl' || corner === 'br'
+  searchAnchor = {
+    x: right ? area.x + area.width - SEARCH_MARGIN - SEARCH_GLASS : area.x + SEARCH_MARGIN,
+    y: bottom ? area.y + area.height - SEARCH_MARGIN - SEARCH_GLASS : area.y + SEARCH_MARGIN,
+  }
+  settings.update({ searchBarPos: { ...searchAnchor } })
   placeSearchBar()
 }
 
@@ -427,7 +480,15 @@ function registerHotkey() {
       // Invalid accelerator: ignore; the Settings screen shows the current value.
     }
   }
-  tryRegister(settings.get().scanHotkey, () => void captureForScan())
+  const s = settings.get()
+  tryRegister(s.scanHotkey, () => void captureForScan())
+  // The search bar's hotkeys only exist while the bar is switched on (they would block those keys elsewhere).
+  if (s.searchBar) {
+    tryRegister(s.searchBarHotkey, toggleSearchBarVisible)
+    tryRegister(s.searchBarSearchHotkey, focusSearchBar)
+    tryRegister(s.searchBarLockHotkey, () => setSearchLocked(!searchLocked))
+    tryRegister(s.searchBarMapHotkey, toggleSearchMap)
+  }
 }
 
 /** Scan hotkey: capture the game screen first, then bring the app up with the scan. */
@@ -460,6 +521,14 @@ function refreshTrayMenu() {
     Menu.buildFromTemplate([
       { label: 'Open Tarkov Companion', click: showWindow },
       { label: paused ? 'Resume log watching' : 'Pause log watching', click: () => updateSettings({ paused: !settings.get().paused }) },
+      ...(searchBar && !searchBar.isDestroyed()
+        ? ([
+            { type: 'separator' },
+            { label: searchBar.isVisible() ? 'Hide the search bar' : 'Show the search bar', click: toggleSearchBarVisible },
+            { label: searchLocked ? 'Unlock the search bar' : 'Lock the search bar (clicks go through)', click: () => setSearchLocked(!searchLocked) },
+            { label: 'Put the search bar back top left', click: () => cornerSearchBar('tl') },
+          ] as Electron.MenuItemConstructorOptions[])
+        : []),
       { type: 'separator' },
       {
         label: 'Quit',
@@ -491,6 +560,7 @@ function updateSettings(patch: Partial<DesktopSettings>): DesktopSettings {
   if (patch.logsPath !== undefined || patch.paused !== undefined) applyWatcherSettings()
   if (patch.scanHotkey !== undefined) registerHotkey()
   if (patch.searchBar !== undefined) applySearchBar()
+  if (patch.searchBar !== undefined || patch.searchBarHotkey !== undefined || patch.searchBarSearchHotkey !== undefined || patch.searchBarLockHotkey !== undefined || patch.searchBarMapHotkey !== undefined) registerHotkey()
   if (patch.updateMode !== undefined) setUpdateMode(after.updateMode)
   if (patch.trackPosition !== undefined) applyPositionTracking()
   broadcast('watcher:state', watcher.getState())
@@ -528,7 +598,21 @@ function registerIpc() {
   })
   handle('searchbar:passthrough', (e, on: unknown) => {
     // Clicks on the see-through parts go to the game; mouse moves still arrive so the bar knows when to take them back.
-    if (fromSearchBar(e) && typeof on === 'boolean') searchBar!.setIgnoreMouseEvents(on, { forward: true })
+    if (fromSearchBar(e) && typeof on === 'boolean' && !searchLocked) searchBar!.setIgnoreMouseEvents(on, { forward: true })
+  })
+  handle('searchbar:lock', (e, on: unknown) => {
+    if (fromSearchBar(e) && typeof on === 'boolean') setSearchLocked(on)
+  })
+  handle('searchbar:locked', (e) => fromSearchBar(e) && searchLocked)
+  handle('searchbar:hide', (e) => {
+    if (fromSearchBar(e)) toggleSearchBarVisible()
+  })
+  handle('searchbar:release', (e) => {
+    // Esc in the bar: hand the keyboard back to the game.
+    if (fromSearchBar(e)) searchBar!.blur()
+  })
+  handle('searchbar:corner', (e, corner: unknown) => {
+    if (fromSearchBar(e) && (corner === 'tl' || corner === 'tr' || corner === 'bl' || corner === 'br')) cornerSearchBar(corner)
   })
   handle('searchbar:open', (e, to: unknown) => {
     // "Open in the app" from a search result: only the app's own tab pages.

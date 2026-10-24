@@ -2,6 +2,8 @@ import L from 'leaflet'
 import { renderToStaticMarkup } from 'react-dom/server'
 import {
   ArrowRightLeft,
+  Bus,
+  ToggleRight,
   Circle,
   Crosshair,
   Flag,
@@ -53,6 +55,9 @@ export const LAYER_GLYPH = {
   transit: ArrowRightLeft,
   lock: Key,
   boss: Skull,
+  switch: ToggleRight,
+  stationary: Crosshair,
+  btr: Bus,
 }
 
 const svgCache = new Map<string, string>()

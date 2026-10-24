@@ -62,8 +62,11 @@ export const TaskLayer = memo(function TaskLayer({ mapTask, color, activeFloor, 
           return (
             <Fragment key={p.id}>
               {p.outline && (
+                // The zone is only drawn: its info opens from the centre icon. Clicking or hovering
+                // anywhere in the area while moving around the map used to pop it up.
                 <Polygon
                   positions={toLatLngs(p.outline)}
+                  interactive={false}
                   pathOptions={{
                     color,
                     weight: 1.5,
@@ -71,12 +74,7 @@ export const TaskLayer = memo(function TaskLayer({ mapTask, color, activeFloor, 
                     fillColor: color,
                     fillOpacity: (dim ? 0.05 : 0.2) * fade,
                   }}
-                  bubblingMouseEvents={false}
-                  eventHandlers={onDouble}
-                >
-                  {popup}
-                  <Tooltip sticky>{mapTask.task.name}</Tooltip>
-                </Polygon>
+                />
               )}
               {canvas ? (
                 <CircleMarker

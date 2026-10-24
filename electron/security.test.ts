@@ -91,6 +91,7 @@ describe('search bar links', () => {
     expect(isAppPath('/quests?q=Debut&t=1')).toBe(true)
     expect(isAppPath('/keys?key=5780cf7f2459777de4559322')).toBe(true)
     expect(isAppPath('/')).toBe(true)
+    expect(isAppPath('/story')).toBe(true)
     expect(isAppPath('https://evil.example')).toBe(false)
     expect(isAppPath('//evil.example')).toBe(false)
     expect(isAppPath('/settings')).toBe(false)

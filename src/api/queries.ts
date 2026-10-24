@@ -1,3 +1,4 @@
+import { friendlySwitchName } from './switchNames'
 import { assertCatalogSupports, getEndpointCatalog } from './catalog'
 import { fetchJson, type GameMode } from './client'
 import { fetchTranslated, type Translator } from './translate'
@@ -136,6 +137,13 @@ function adaptMapDetails(m: RawMap, t: Translator, mobs: MobLookup): MapDetails 
       position: h.position,
       outline: h.outline ?? [],
     })),
+    switches: (m.switches ?? [])
+      .filter((s) => s && s.id && s.position)
+      .map((s) => ({ id: s.id, name: t(s.name, friendlySwitchName(s.name ?? '')), switchType: s.switchType ?? '', position: s.position! })),
+    stationaryWeapons: (m.stationaryWeapons ?? []).filter((w) => w && w.stationaryWeapon && w.position).map((w) => ({ itemId: w.stationaryWeapon!, position: w.position! })),
+    btrStops: (m.btrStops ?? [])
+      .filter((b) => b && typeof b.x === 'number' && typeof b.z === 'number')
+      .map((b) => ({ name: t(b.name, 'BTR stop'), position: { x: b.x!, y: b.y ?? 0, z: b.z! } })),
   }
 }
 

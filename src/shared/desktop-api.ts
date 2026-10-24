@@ -92,6 +92,12 @@ export interface DesktopSettings {
   scanHotkey: string
   /** A small search bar over the game, top left of the main screen. */
   searchBar: boolean
+  /** Search bar hotkeys: show/hide it, open the search box (takes focus), lock it so clicks go through. '' = off. */
+  searchBarHotkey: string
+  searchBarSearchHotkey: string
+  searchBarLockHotkey: string
+  /** Opens (or closes) the raid's map in the bar without taking the keyboard from the game. */
+  searchBarMapHotkey: string
   /** Last profile id / game version seen in the logs, for wipe detection. */
   knownProfileId: string | null
   knownGameVersion: string | null
@@ -225,6 +231,18 @@ export interface DesktopApi {
   searchBarHome: () => Promise<void>
   /** Search bar only: true = clicks go through the window to the game (the see-through parts). */
   setSearchBarPassthrough: (on: boolean) => Promise<void>
+  /** Search bar only: lock (every click goes through to the game) or unlock; hide; hand the keyboard back. */
+  setSearchBarLocked: (on: boolean) => Promise<void>
+  isSearchBarLocked: () => Promise<boolean>
+  onSearchBarLocked: (cb: (on: boolean) => void) => () => void
+  hideSearchBar: () => Promise<void>
+  releaseSearchBar: () => Promise<void>
+  /** Search bar only: the map hotkey was pressed. */
+  onSearchBarMap: (cb: () => void) => () => void
+  /** Search bar only: the search hotkey was pressed (open the box and type). */
+  onSearchBarFocus: (cb: () => void) => () => void
+  /** Search bar only: snap the glass into a screen corner. */
+  searchBarCorner: (corner: 'tl' | 'tr' | 'bl' | 'br') => Promise<void>
   /** Search bar only: which way the window grows from the glass (it flips near a screen edge). */
   onSearchBarLayout: (cb: (flip: { left: boolean; up: boolean }) => void) => () => void
   /** Search bar only: show the app window on this page. */

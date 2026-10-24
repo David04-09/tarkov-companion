@@ -1,34 +1,72 @@
 import { createContext, useContext } from 'react'
-import type { GameData, Item, ItemsById, Task } from '../api/types'
+import type { GameData, HideoutStation, Item, ItemsById, Position, Task } from '../api/types'
 import type { GuideImage } from '../api/wikiGuide'
 import type { ItemNeed } from '../lib/needs'
 import type { TaskStatus } from '../lib/taskStatus'
 import type { MapOption } from '../maps/useMapOptions'
+import type { GameMode } from '../api/client'
+import type { OverlayLayer, Ref } from './overlayPrefs'
 import type { MapPin } from './SearchBarMap'
 
-/** A side panel next to the main card. */
-export type Panel = { kind: 'quest'; id: string } | { kind: 'item'; id: string } | { kind: 'picture'; image: GuideImage; title: string }
+/** Something a card or a side panel shows. */
+export type View =
+  | { kind: 'quest'; id: string }
+  | { kind: 'item'; id: string }
+  | { kind: 'picture'; image: GuideImage; title: string }
+  | { kind: 'questline'; id: string }
+  | { kind: 'trader'; id: string }
+  | { kind: 'traders' }
+  | { kind: 'boss'; id: string }
+  | { kind: 'station'; id: string }
+  | { kind: 'hideout' }
+  | { kind: 'ammo'; id: string }
+  | { kind: 'kappa' }
+  | { kind: 'lightkeeper' }
+  | { kind: 'story'; id: string | null }
+  | { kind: 'settings' }
+  | { kind: 'help' }
 
-export const panelKey = (p: Panel) => (p.kind === 'picture' ? `picture:${p.image.full}` : `${p.kind}:${p.id}`)
+/** Side panels show the same things. */
+export type Panel = View
+
+export const panelKey = (p: View) => (p.kind === 'picture' ? `picture:${p.image.full}` : 'id' in p ? `${p.kind}:${p.id}` : p.kind)
 
 export interface KeyMap {
   option: MapOption
   pins: MapPin[]
 }
 
+/** How a map card opens: zoomed to a quest, with pins, a ringed spot, or some layers switched on. */
+export interface MapRequest {
+  focus?: string
+  pins?: MapPin[]
+  title?: string
+  spot?: { points: Position[]; label: string }
+  layers?: OverlayLayer[]
+}
+
 /** What the details need from the search bar (data, progress, and what clicks do). */
 export interface DetailsCtx {
   data: GameData
   items: ItemsById | undefined
+  stations: HideoutStation[]
   statuses: Record<string, TaskStatus>
   completed: ReadonlySet<string>
   needs: Map<string, ItemNeed>
   collected: Record<string, number>
+  ownedKeyIds: ReadonlySet<string>
+  stationLevels: Record<string, number>
+  traderLevels: Record<string, number>
+  mode: GameMode
   onMap: string[]
   tickQuest: (task: Task, on: boolean) => void
   keyMaps: (item: Item) => KeyMap[]
   showKey: (item: Item, k: KeyMap) => void
-  open: (p: Panel) => void
+  /** Opens a map card (by API map id). */
+  openMap: (mapId: string, req?: MapRequest) => void
+  open: (p: View) => void
+  star: (r: Ref) => void
+  starred: (kind: Ref['kind'], id: string) => boolean
   traderName: (id: string) => string
 }
 

@@ -13,6 +13,8 @@ import { isDesktop, useDesktopStore } from '../desktop/useDesktop'
 import { useProgressStore } from '../store/progress'
 import { useMapOverlayStore } from '../store/mapOverlay'
 import { followOtherWindows } from '../lib/crossWindow'
+import { useStoryStore } from '../store/story'
+import { useInventoryStore } from '../store/inventory'
 import { WipeBanner } from '../desktop/WipeBanner'
 import { ItemLookup } from './ItemLookup'
 import { StoryTimerWatcher } from '../story/StoryTimerWatcher'
@@ -52,8 +54,9 @@ export function Layout() {
   }, [landingPage, hiddenTabs, pathname, navigate])
   // Desktop scan hotkey: the main process captured the game screen; open the scanner with it.
   useEffect(() => window.desktop?.onScanCapture((png) => useScanStore.getState().openWith(new Blob([png as BlobPart], { type: 'image/png' }))), [])
-  // Desktop search bar over the game: quests ticked "On map" there show on the Maps tab at once.
-  useEffect(() => (isDesktop() ? followOtherWindows([useMapOverlayStore]) : undefined), [])
+  // Desktop search bar over the game: what is ticked or counted there (quests "On map", quests done,
+  // items, keys, hideout levels, story steps) shows in the app at once.
+  useEffect(() => (isDesktop() ? followOtherWindows([useMapOverlayStore, useProgressStore, useInventoryStore, useStoryStore]) : undefined), [])
   // Desktop search bar over the game: "Open in the app" on one of its results.
   useEffect(() => window.desktop?.onOpenInApp((to) => to.startsWith('/') && navigate(to)), [navigate])
   const settings = useDesktopStore((s) => s.settings)

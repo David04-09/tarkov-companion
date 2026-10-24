@@ -1,54 +1,9 @@
-import { useRef, type KeyboardEvent, type PointerEvent } from 'react'
+import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
 
 /** Which way the window grows from the glass (main flips it near a screen edge). */
 export interface Flip {
   left: boolean
   up: boolean
-}
-
-/** How see-through the search bar is when the mouse is not over it (percent). */
-export interface Look {
-  idle: number
-  map: number
-}
-
-export const DEFAULT_LOOK: Look = { idle: 45, map: 80 }
-const LOOK_KEY = 'tc-searchbar-look'
-
-export function readLook(): Look {
-  try {
-    const v = JSON.parse(localStorage.getItem(LOOK_KEY) ?? 'null') as Partial<Look> | null
-    const pct = (n: unknown, d: number) => (typeof n === 'number' && Number.isFinite(n) ? Math.min(100, Math.max(10, Math.round(n))) : d)
-    return { idle: pct(v?.idle, DEFAULT_LOOK.idle), map: pct(v?.map, DEFAULT_LOOK.map) }
-  } catch {
-    return DEFAULT_LOOK
-  }
-}
-
-export function saveLook(look: Look) {
-  try {
-    localStorage.setItem(LOOK_KEY, JSON.stringify(look))
-  } catch {
-    // only a convenience
-  }
-}
-
-/** A remembered yes/no (sidebar shown, bigger map, …). */
-export function readFlag(key: string, fallback: boolean): boolean {
-  try {
-    const v = localStorage.getItem(key)
-    return v === null ? fallback : v === '1'
-  } catch {
-    return fallback
-  }
-}
-
-export function saveFlag(key: string, on: boolean) {
-  try {
-    localStorage.setItem(key, on ? '1' : '0')
-  } catch {
-    // only a convenience
-  }
 }
 
 /** The column holding the glass/bar and the card under (or, flipped, above) it. */
@@ -113,4 +68,15 @@ export function useDrag(onClick?: () => void): DragProps {
       onClick?.()
     },
   }
+}
+
+/** A clock that ticks only while something on screen needs it (null = stopped). */
+export function useNow(everyMs: number | null): number {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (!everyMs) return
+    const t = window.setInterval(() => setNow(Date.now()), everyMs)
+    return () => window.clearInterval(t)
+  }, [everyMs])
+  return now
 }

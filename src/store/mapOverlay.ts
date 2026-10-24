@@ -2,13 +2,16 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { TASK_PALETTE } from '../maps/overlay/palette'
 
-export type OverlayLayerId = 'extractsPmc' | 'extractsScav' | 'transits' | 'locks'
+export type OverlayLayerId = 'extractsPmc' | 'extractsScav' | 'transits' | 'locks' | 'switches' | 'stationary' | 'btr'
 
 export const OVERLAY_LAYERS: { id: OverlayLayerId; label: string; hint?: string }[] = [
   { id: 'extractsPmc', label: 'PMC extracts', hint: 'PMC and shared extracts' },
   { id: 'extractsScav', label: 'Scav extracts' },
   { id: 'transits', label: 'Transits' },
   { id: 'locks', label: 'Locked doors & trunks', hint: 'Green = you own the key' },
+  { id: 'switches', label: 'Switches & levers', hint: 'Power switches, extract levers, elevator and alarm buttons' },
+  { id: 'stationary', label: 'Mounted guns', hint: 'Stationary machine guns and grenade launchers' },
+  { id: 'btr', label: 'BTR stops', hint: 'Where the BTR taxi stops (Woods, Streets)' },
 ]
 
 const DEFAULT_LAYERS: Record<OverlayLayerId, boolean> = {
@@ -16,6 +19,9 @@ const DEFAULT_LAYERS: Record<OverlayLayerId, boolean> = {
   extractsScav: false,
   transits: true,
   locks: false,
+  switches: false,
+  stationary: false,
+  btr: false,
 }
 
 /**

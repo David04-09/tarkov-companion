@@ -516,7 +516,7 @@ function ScannerSection() {
 }
 
 /** Records a key combination for a global hotkey (Electron accelerator format). */
-function HotkeyRecorder({ setting = 'scanHotkey' }: { setting?: 'scanHotkey' }) {
+function HotkeyRecorder({ setting = 'scanHotkey' }: { setting?: 'scanHotkey' | 'searchBarHotkey' | 'searchBarSearchHotkey' | 'searchBarLockHotkey' | 'searchBarMapHotkey' }) {
   const current = useDesktopStore((s) => s.settings?.[setting]) ?? ''
   const [recording, setRecording] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -594,9 +594,25 @@ function DesktopAppSection() {
       <Row label="Stash scanner hotkey" hint="Captures the screen the game is on and opens the scanner with it.">
         <HotkeyRecorder />
       </Row>
-      <Row label="Search bar over the game" hint="A small search box in the top left corner of your main screen, on top of the game (borderless or windowed mode). It stays faint until you move the mouse over it. Type an item, key or quest to see its price, where it is needed or what to do.">
+      <Row label="Search bar over the game" hint="A small magnifying glass on top of the game (borderless or windowed mode); drag it anywhere. Click it to search maps, items, keys, quests, traders, bosses, extracts and hideout stations; maps show quests, bosses, spawns, locked doors and loot. Its own settings are behind the sliders button in the bar.">
         <Switch checked={searchBar} onChange={setSearchBar} label="Search bar over the game" />
       </Row>
+      {searchBar && (
+        <>
+          <Row label="Show / hide the search bar" hint="Hides it completely (or brings it back) while the game has focus.">
+            <HotkeyRecorder setting="searchBarHotkey" />
+          </Row>
+          <Row label="Open the search box" hint="Shows the bar and puts the cursor in the search box, so you can type at once. This takes the keyboard from the game; press Esc to give it back.">
+            <HotkeyRecorder setting="searchBarSearchHotkey" />
+          </Row>
+          <Row label="Lock the search bar" hint="Locked, every click goes through it to the game (for a map you only look at). Press the hotkey again, or use the tray icon, to unlock.">
+            <HotkeyRecorder setting="searchBarLockHotkey" />
+          </Row>
+          <Row label="Open / close the raid's map" hint="Opens the map of the raid you are in (from the game log), else the last map, without taking the keyboard from the game.">
+            <HotkeyRecorder setting="searchBarMapHotkey" />
+          </Row>
+        </>
+      )}
       <Row label="Switch PvP / PvE with the game" hint="Follows the mode you play in, read from the game log.">
         <Switch checked={autoSwitch} onChange={setAutoSwitch} label="Switch game mode" />
       </Row>

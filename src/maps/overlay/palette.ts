@@ -27,4 +27,7 @@ export const LAYER_COLORS = {
   boss: '#f94144',
   cache: '#c7a66b',
   container: '#9a9385',
+  switch: '#a78bfa',
+  stationary: '#fb923c',
+  btr: '#60a5fa',
 }

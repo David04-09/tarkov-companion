@@ -59,6 +59,10 @@ const CHECKS: { [K in keyof DesktopSettings]?: (v: unknown) => boolean } = {
   initialBackfillDone: (v) => typeof v === 'boolean',
   scanHotkey: isAccelerator,
   searchBar: (v) => typeof v === 'boolean',
+  searchBarHotkey: isAccelerator,
+  searchBarSearchHotkey: isAccelerator,
+  searchBarLockHotkey: isAccelerator,
+  searchBarMapHotkey: isAccelerator,
   updateMode: (v) => v === 'auto' || v === 'notify' || v === 'off',
   trackPosition: (v) => typeof v === 'boolean',
   backupKeep: (v) => typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= 60,
@@ -137,5 +141,5 @@ export function isSameFileUrl(url: string, filePath: string): boolean {
  * ("/flea", "/quests?q=Debut", "/keys?key=<id>"). Anything else is refused.
  */
 export function isAppPath(to: unknown): to is string {
-  return typeof to === 'string' && to.length <= 300 && /^\/(?:flea|keys|quests|items|ammo|hideout|maps)?(?:\?[\w%=&.+-]*)?$/.test(to)
+  return typeof to === 'string' && to.length <= 300 && /^\/(?:flea|keys|quests|items|ammo|hideout|maps|story)?(?:\?[\w%=&.+-]*)?$/.test(to)
 }
