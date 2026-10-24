@@ -18,6 +18,7 @@ import { findMapConfig, resolveBaseLayer } from '../maps/mapConfig'
 import { buildMapTasks, type MapTask } from '../maps/overlay/mapTasks'
 import { buildBringList } from '../maps/overlay/bringList'
 import { buildSpawnModel } from '../maps/overlay/spawns'
+import { requiredClosure } from '../quests/questGraph'
 import { useMapOverlayStore } from '../store/mapOverlay'
 import { MAX_LEVEL, MIN_LEVEL, useProfile, useProgressStore, type Faction } from '../store/progress'
 import { useUiStore } from '../store/ui'
@@ -123,7 +124,12 @@ export function DashboardPage() {
     const counts = countStatuses(statuses)
     const nextUp = eligible.filter((t) => statuses[t.id] === 'available').sort((a, b) => a.minPlayerLevel - b.minPlayerLevel || a.name.localeCompare(b.name)).slice(0, 10)
     const kappa = eligible.filter((t) => t.kappaRequired)
-    const lk = eligible.filter((t) => t.lightkeeperRequired)
+    // Lightkeeper: no quest is flagged "needed for Lightkeeper" any more (0 in PvP and PvE since
+    // 2026-10), so the chain is his own quests plus everything that has to be done before them,
+    // the same path the Quests tab draws.
+    const eligibleIds = new Set(eligible.map((t) => t.id))
+    const lkTargets = eligible.filter((t) => t.lightkeeperRequired || t.trader.normalizedName === 'lightkeeper').map((t) => t.id)
+    const lk = [...requiredClosure(lkTargets, query.data.tasksById, new Set(), (t) => eligibleIds.has(t.id))].map((id) => query.data.tasksById[id]).filter((t): t is Task => Boolean(t))
     return {
       counts,
       nextUp,

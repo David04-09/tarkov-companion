@@ -91,7 +91,7 @@ export function QuestTreeView() {
           />
         )}
         {data && mode !== 'tree' && (
-          <PathList data={data} profile={profile} statuses={statuses} target={mode} onOpen={openInTree} />
+          <PathList data={data} profile={profile} completed={progress?.completed ?? profile.completedTaskIds} statuses={statuses} target={mode} onOpen={openInTree} />
         )}
       </div>
     </div>
@@ -576,12 +576,15 @@ function PanelList({
 function PathList({
   data,
   profile,
+  completed,
   statuses,
   target,
   onOpen,
 }: {
   data: GameData
   profile: Profile
+  /** Done: ticked or by deduction. */
+  completed: ReadonlySet<string>
   statuses: Record<string, TaskStatus>
   target: 'kappa' | 'lightkeeper'
   onOpen: (task: Task) => void
@@ -601,7 +604,7 @@ function PathList({
     const closure = requiredClosure(
       targets.map((t) => t.id),
       data.tasksById,
-      profile.completedTaskIds,
+      completed,
       (t) => isFactionEligible(t as Task, profile.faction),
     )
     const ordered = topoOrder(closure, data.tasksById)
@@ -610,7 +613,7 @@ function PathList({
     return { order: ordered, flagged: targets.length }
     // isTarget only depends on target
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, target, profile.faction, profile.completedTaskIds])
+  }, [data, target, profile.faction, completed])
 
   const step = new Map(order.map((t, i) => [t.id, i + 1]))
   const nowCount = order.filter((t) => statuses[t.id] === 'available').length

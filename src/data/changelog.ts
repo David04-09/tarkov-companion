@@ -12,7 +12,9 @@ export interface ChangelogEntry {
 }
 
 /** Committed, waiting for the next update. */
-export const UNRELEASED: string[] = []
+export const UNRELEASED: string[] = [
+  "Dashboard: \"Lightkeeper chain\" showed 0 / 0 because the game data no longer marks any quest as needed for Lightkeeper. It now counts his own quests plus every quest that has to be done before them (the same path the Quests tab shows), and quests done by deduction count there too.",
+]
 
 export const RELEASES: ChangelogEntry[] = [
   {
