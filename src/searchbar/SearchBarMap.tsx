@@ -60,7 +60,7 @@ export function SearchBarMap({
   option: MapOption
   pins?: MapPin[]
   focus?: string
-  spot?: { points: Position[]; label: string }
+  spot?: { points: Position[]; label: string; fit?: Position[] }
   flip: Flip
   position: PlayerPosition | null
 }) {
@@ -189,8 +189,8 @@ export function SearchBarMap({
 
   const openPanel = ctx?.open
   const openItem = useCallback((id: string) => openPanel?.({ kind: 'item', id }), [openPanel])
-  const zoomTo = (points: Position[], label: string) => {
-    if (points.length) setSpot({ points, label, nonce: ++spotCount.current })
+  const zoomTo = (points: Position[], label: string, fit?: Position[]) => {
+    if (points.length || fit?.length) setSpot({ points, label, fit, nonce: ++spotCount.current })
   }
   const focus = (taskId: string) => {
     setChecked(taskId, true)
@@ -390,9 +390,11 @@ export function SearchBarMap({
                 {spawnModel.goonsHere && <li className="px-2 py-1 text-[11px] text-amber-300">The Goons were last reported on this map.</li>}
                 {spawnModel.bosses.length === 0 && <li className="px-2 py-1.5 text-[11px] text-white/55">No bosses in the data for this map.</li>}
                 {spawnModel.bosses.map((b) => {
-                  // Zoom to where players report it plus the listed points; spots in the order bossSpots ranks them.
+                  // Ring only its spots (where the portraits are) and zoom to the areas around them too: a ring
+                  // on every corner of every area used to clutter the map.
                   const shownSpots = b.spots.filter((s) => s.kind !== 'data')
-                  const points = [...b.areas.flatMap((a) => a.polygon.map(([x, z]) => ({ x, y: 0, z }))), ...shownSpots.flatMap((s) => (s.points.length ? s.points : [s.centre]))]
+                  const points = shownSpots.map((s) => s.centre)
+                  const fit = [...b.areas.flatMap((a) => a.polygon.map(([x, z]) => ({ x, y: 0, z }))), ...shownSpots.flatMap((s) => s.points)]
                   const dataOnly = b.spots.filter((s) => s.kind === 'data').reduce((n, s) => n + s.points.length, 0)
                   const places = shownSpots.map((s) => `${s.kind === 'reported' ? '◌ ' : ''}${s.name}${s.share > 0 ? ` ${Math.round(s.share * 100)}%` : ''}`)
                   return (
@@ -402,7 +404,7 @@ export function SearchBarMap({
                         disabled={!points.length}
                         onClick={() => {
                           p.toggleLayer('bosses', true)
-                          zoomTo(points, b.name)
+                          zoomTo(points, b.name, fit)
                         }}
                         title={points.length ? 'Show where it spawns (◌ = players report it there, EFT Wiki map)' : 'No spawn spots in the data'}
                         className="flex w-full items-start gap-1.5 px-2 py-0.5 text-left hover:bg-white/5 hover:text-white disabled:cursor-default"

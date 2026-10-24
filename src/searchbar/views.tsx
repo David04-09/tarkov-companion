@@ -194,14 +194,15 @@ export function BossView({ id }: { id: string }) {
           const spots = m.entry?.spots ?? []
           const shown = spots.filter((s) => s.kind !== 'data')
           const dataOnly = spots.filter((s) => s.kind === 'data').reduce((n, s) => n + s.points.length, 0)
-          const pts = [...(m.entry?.areas.flatMap((a) => a.polygon.map(([x, z]) => ({ x, y: 0, z }))) ?? []), ...shown.flatMap((s) => (s.points.length ? s.points : [s.centre]))]
+          const pts = shown.map((s) => s.centre)
+          const fit = [...(m.entry?.areas.flatMap((a) => a.polygon.map(([x, z]) => ({ x, y: 0, z }))) ?? []), ...shown.flatMap((s) => s.points)]
           return (
             <li key={m.mapId} className="text-xs">
               <div className="flex items-center gap-2">
                 <span className="w-10 shrink-0 tabular-nums text-white/70">{Math.round(m.chance * 100)}%</span>
                 <span className="min-w-0 flex-1 truncate">{mapName(m.mapId)}</span>
                 {pts.length > 0 ? (
-                  <ActionButton onClick={() => c.openMap(m.mapId, { layers: ['bosses'], spot: { points: pts, label: boss.name }, title: `${boss.name} on ${mapName(m.mapId)}` })}>
+                  <ActionButton onClick={() => c.openMap(m.mapId, { layers: ['bosses'], spot: { points: pts, label: boss.name, fit }, title: `${boss.name} on ${mapName(m.mapId)}` })}>
                     <MapIcon className="h-3 w-3" /> Spawns
                   </ActionButton>
                 ) : (

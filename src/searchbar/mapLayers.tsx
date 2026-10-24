@@ -75,20 +75,28 @@ export function QuestFocus({ mapTasks, maxZoom, initial }: { mapTasks: MapTask[]
 export interface Spot {
   points: Position[]
   label: string
+  /** Zoomed to as well, but not ringed (a boss's reported areas: the boss layer draws those itself). */
+  fit?: Position[]
   nonce: number
 }
 
 const SPOT_STYLE: L.CircleMarkerOptions = { color: '#facc15', weight: 2.5, dashArray: '4 3', fillColor: '#facc15', fillOpacity: 0.15 }
+/** The rings only show where something is, then get out of the way (a click on the map clears them sooner). */
+const SPOT_SHOW_MS = 6000
 
 export function SpotLayer({ spot, maxZoom }: { spot: Spot | null; maxZoom: number }) {
   const map = useMap()
+  const [hidden, setHidden] = useState(0)
+  useMapEvents({ click: () => spot && setHidden(spot.nonce) })
   useEffect(() => {
-    if (!spot?.points.length) return
-    const pts = spot.points.map(ll)
+    if (!spot) return
+    const pts = [...spot.points, ...(spot.fit ?? [])].map(ll)
     if (pts.length === 1) map.setView(pts[0], Math.max(map.getZoom(), maxZoom - 1), { animate: false })
-    else map.fitBounds(L.latLngBounds(pts).pad(0.35), { maxZoom: maxZoom - 0.5, animate: false })
+    else if (pts.length) map.fitBounds(L.latLngBounds(pts).pad(0.35), { maxZoom: maxZoom - 0.5, animate: false })
+    const t = setTimeout(() => setHidden(spot.nonce), SPOT_SHOW_MS)
+    return () => clearTimeout(t)
   }, [map, spot, maxZoom])
-  if (!spot) return null
+  if (!spot || hidden === spot.nonce) return null
   return (
     <>
       {spot.points.slice(0, 300).map((p, i) => (

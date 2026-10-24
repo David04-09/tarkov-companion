@@ -42,7 +42,7 @@ export interface MapRequest {
   focus?: string
   pins?: MapPin[]
   title?: string
-  spot?: { points: Position[]; label: string }
+  spot?: { points: Position[]; label: string; fit?: Position[] }
   layers?: OverlayLayer[]
 }
 

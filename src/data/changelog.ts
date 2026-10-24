@@ -12,7 +12,9 @@ export interface ChangelogEntry {
 }
 
 /** Committed, waiting for the next update. */
-export const UNRELEASED: string[] = []
+export const UNRELEASED: string[] = [
+  "Search bar maps: the yellow rings that show where something is (a boss, an extract, a lock, an item's spots) now clear by themselves after a few seconds, or at once when you click the map. For bosses only their spots get a ring, no longer every corner of their areas.",
+]
 
 export const RELEASES: ChangelogEntry[] = [
   {
