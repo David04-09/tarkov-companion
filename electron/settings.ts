@@ -40,6 +40,7 @@ export const DEFAULT_SETTINGS: StoredSettings = {
   setupDone: false,
   updateMode: 'auto',
   trackPosition: true,
+  clearPositionShots: false,
   backupKeep: 7,
   cleanAfterUpdate: true,
   lastCleanedVersion: null,

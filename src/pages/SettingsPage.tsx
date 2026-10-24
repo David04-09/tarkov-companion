@@ -565,6 +565,7 @@ function DesktopAppSection() {
   const [startMin, setStartMin] = useDesktopSetting('startMinimized', false)
   const [updates, setUpdates] = useDesktopSetting('updateMode', 'auto' as UpdateMode)
   const [track, setTrack] = useDesktopSetting('trackPosition', true)
+  const [clearShots, setClearShots] = useDesktopSetting('clearPositionShots', false)
   const [cleanAfter, setCleanAfter] = useDesktopSetting('cleanAfterUpdate', true)
   const [searchBar, setSearchBar] = useDesktopSetting('searchBar', false)
   const [autoSwitch, setAutoSwitch] = usePref('autoSwitchGameMode')
@@ -572,7 +573,7 @@ function DesktopAppSection() {
   const scavMinutes = useTimersStore((s) => s.scavCooldownMinutes)
   const setScavMinutes = useTimersStore((s) => s.setScavCooldownMinutes)
   return (
-    <Section id="desktop" title="Desktop app" icon={Monitor} desktopOnly keywords="windows start tray minimize close hotkey shortcut search bar overlay update clean cleanup installer leftover delete space disk logs game log watching folder pvp pve switch tick quests where am i position screenshot scav cooldown timer">
+    <Section id="desktop" title="Desktop app" icon={Monitor} desktopOnly keywords="windows start tray minimize close hotkey shortcut search bar overlay update clean cleanup installer leftover delete space disk logs game log watching folder pvp pve switch tick quests where am i position screenshot recycle bin clear delete scav cooldown timer">
       <Row label="Close to tray" hint="The X button hides the window and keeps quest tracking running. Use the tray icon to reopen or quit.">
         <Switch checked={tray} onChange={setTray} label="Close to tray" />
       </Row>
@@ -622,6 +623,11 @@ function DesktopAppSection() {
       <Row label="'Where am I' from screenshots" hint="Reads your position from the names of new in-game screenshots (press Print Screen in raid). Only file names are read.">
         <Switch checked={track} onChange={setTrack} label="Where am I" />
       </Row>
+      {track && (
+        <Row label="Clear those screenshots after reading" hint="Moves each screenshot you take during a raid to the Recycle Bin a few seconds after its position is read, so the folder does not fill up (if Windows refuses the Recycle Bin, into a 'Read by Tarkov Companion' folder inside the Screenshots folder instead). Screenshots taken outside a raid (stash shots for the scanner) are kept. Nothing is deleted outright.">
+          <Switch checked={clearShots} onChange={setClearShots} label="Clear position screenshots" />
+        </Row>
+      )}
       <Row label="Scav cooldown" hint="Length of the scav timer on the Dashboard.">
         <div className="flex items-center gap-1.5 text-sm">
           <input type="number" min={1} max={90} value={scavMinutes} onChange={(e) => setScavMinutes(e.target.valueAsNumber)} className="w-16 rounded border border-line bg-surface px-1.5 py-1 text-sm" aria-label="Scav cooldown minutes" /> min

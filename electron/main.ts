@@ -10,19 +10,20 @@ import { BrowserWindow, Menu, Tray, app, dialog, globalShortcut, ipcMain, native
 import type { IpcMainInvokeEvent } from 'electron'
 import fs from 'node:fs'
 import path from 'node:path'
-import type { DesktopSettings, GameEvent, LogStatsData, WipeEvent } from '../src/shared/desktop-api'
+import type { DesktopSettings, GameEvent, LogStatsData, PlayerPosition, WipeEvent } from '../src/shared/desktop-api'
 import { detectLogsFolder } from './logs/locator'
 import { LogWatcher } from './logs/watcher'
 import { SettingsStore } from './settings'
-import { latestPosition, watchScreenshots } from './position'
+import { latestPosition, parseScreenshotName, watchScreenshots } from './position'
+import { createRaidClock, trashWhenWritten } from './positionShots'
 import { backupDir, listBackups, readBackup, writeBackup } from './backups'
-import { captureScreenUnderCursor, listGameScreenshots, readAppResource, readGameScreenshot, resourceResponse } from './capture'
+import { captureScreenUnderCursor, gameScreenshotsDir, listGameScreenshots, readAppResource, readGameScreenshot, resourceResponse } from './capture'
 
 // Read-only access to the app's own bundled scanner/OCR files (the page is a local file and
 // Chromium cannot fetch() file:// URLs). Must be registered before the app is ready.
 protocol.registerSchemesAsPrivileged([{ scheme: 'tcres', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } }])
 import { checkForUpdates, getUpdateOutcome, getUpdateStatus, installUpdate, runInstallerManually, setUpdateMode, setupUpdater } from './updater'
-import { cleanSettingsPatch, isAppPath, isSafeDirectory, isSameFileUrl, isTrustedSender, isWebUrl, lockPermissions } from './security'
+import { cleanSettingsPatch, isAppPath, isSafeDirectory, isSameFileUrl, isScreenshotName, isTrustedSender, isWebUrl, lockPermissions } from './security'
 import { PACK_NAMES, currentPackDirNames, ensurePack, packsEnabled } from './packs'
 import { cleanLeftovers, sizeOf } from './cleanup'
 import type { CleanupResult } from '../src/shared/desktop-api'
@@ -41,6 +42,10 @@ let searchBar: BrowserWindow | null = null
 let settings: SettingsStore
 const watcher = new LogWatcher()
 let stopScreenshots: (() => void) | null = null
+/** Raid in progress, from the live game log (for clearing position screenshots). */
+const raidClock = createRaidClock()
+/** The last screenshot position: still known after its file went to the Recycle Bin. */
+let lastPosition: PlayerPosition | null = null
 
 if (!app.requestSingleInstanceLock()) {
   app.quit()
@@ -90,6 +95,7 @@ function bootstrap() {
   watcher.on('event', (e: GameEvent) => {
     broadcast('watcher:event', e)
     detectWipe(e)
+    raidClock.onEvent(e, Date.now())
   })
   watcher.on('state', (s) => broadcast('watcher:state', s))
   applyPositionTracking()
@@ -118,11 +124,53 @@ function bootstrap() {
 /** "Where am I": positions from the names of new in-game screenshots (read-only), if switched on. */
 function applyPositionTracking() {
   const on = settings.get().trackPosition
-  if (on && !stopScreenshots) stopScreenshots = watchScreenshots((p) => broadcast('position:new', p))
+  if (on && !stopScreenshots) {
+    stopScreenshots = watchScreenshots((p) => {
+      lastPosition = p
+      broadcast('position:new', p)
+      if (settings.get().clearPositionShots && raidClock.inRaid(Date.now())) void clearPositionShot(p.file)
+    })
+  }
   if (!on && stopScreenshots) {
     stopScreenshots()
     stopScreenshots = null
   }
+}
+
+/**
+ * Moves a read position screenshot to the Recycle Bin (opt-in). Only plain screenshot names that
+ * carry a position, only in the game's Screenshots folder, and only after the game has finished
+ * writing the file. Nothing is deleted outright: the Recycle Bin keeps it.
+ */
+async function clearPositionShot(name: string) {
+  if (!isScreenshotName(name) || !parseScreenshotName(name, 0)) return
+  const file = path.join(gameScreenshotsDir(), name)
+  try {
+    await trashWhenWritten(file, {
+      size: (f) => {
+        try {
+          return fs.statSync(f).size
+        } catch {
+          return null
+        }
+      },
+      // Some setups refuse the Recycle Bin ("Failed to perform delete operation"): then the file
+      // goes into a folder next to the others instead, so it is still out of the way and never lost.
+      trash: (f) => shell.trashItem(f).catch(() => moveAside(f)),
+      wait: (ms) => new Promise((r) => setTimeout(r, ms)),
+    })
+  } catch {
+    // Locked or already gone: leave it.
+  }
+}
+
+/** The Recycle Bin's stand-in: a folder inside the Screenshots folder (an existing name is never overwritten). */
+const READ_SHOTS_FOLDER = 'Read by Tarkov Companion'
+function moveAside(file: string) {
+  const dir = path.join(path.dirname(file), READ_SHOTS_FOLDER)
+  const target = path.join(dir, path.basename(file))
+  fs.mkdirSync(dir, { recursive: true })
+  if (!fs.existsSync(target)) fs.renameSync(file, target)
 }
 
 // ---------------------------------------------------------------------------
@@ -687,7 +735,7 @@ function registerIpc() {
   handle('update:check', () => checkForUpdates())
   handle('update:install', () => installUpdate())
   handle('update:outcome', () => getUpdateOutcome())
-  handle('position:latest', () => latestPosition())
+  handle('position:latest', () => latestPosition() ?? (lastPosition && Date.now() - lastPosition.at <= 30 * 60_000 ? lastPosition : null))
   handle('backup:write', (_e, json: unknown) => {
     if (typeof json !== 'string') throw new Error('Not a backup')
     return writeBackup(app.getPath('userData'), json, new Date(), settings.get().backupKeep)

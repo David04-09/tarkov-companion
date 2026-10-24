@@ -107,6 +107,8 @@ export interface DesktopSettings {
   updateMode: UpdateMode
   /** "Where am I": read positions from the names of new in-game screenshots. */
   trackPosition: boolean
+  /** Move those screenshots to the Recycle Bin once read (raid screenshots only; off by default). */
+  clearPositionShots: boolean
   /** Daily progress backups kept in userData\backups. */
   backupKeep: number
   /** After an update, remove what older versions left behind (old installers, packs, crash reports). */

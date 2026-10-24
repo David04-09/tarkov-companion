@@ -65,6 +65,7 @@ const CHECKS: { [K in keyof DesktopSettings]?: (v: unknown) => boolean } = {
   searchBarMapHotkey: isAccelerator,
   updateMode: (v) => v === 'auto' || v === 'notify' || v === 'off',
   trackPosition: (v) => typeof v === 'boolean',
+  clearPositionShots: (v) => typeof v === 'boolean',
   backupKeep: (v) => typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= 60,
   cleanAfterUpdate: (v) => typeof v === 'boolean',
 }

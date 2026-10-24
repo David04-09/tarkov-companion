@@ -26,7 +26,8 @@ export async function captureScreenUnderCursor(): Promise<Uint8Array> {
 
 /** Where the game saves its own screenshots (Print Screen in game). */
 export function gameScreenshotsDir(): string {
-  return path.join(app.getPath('documents'), 'Escape from Tarkov', 'Screenshots')
+  // TC_SCREENSHOTS_DIR is for testing (a throwaway folder instead of the player's real screenshots).
+  return process.env.TC_SCREENSHOTS_DIR || path.join(app.getPath('documents'), 'Escape from Tarkov', 'Screenshots')
 }
 
 export interface GameScreenshot {
