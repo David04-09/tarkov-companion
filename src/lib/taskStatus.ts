@@ -1,5 +1,6 @@
-import type { Task, TaskRequirement } from '../api/types'
+import type { Task } from '../api/types'
 import type { Faction, Profile } from '../store/progress'
+import { isRequirementMet, lockReasons, type ProgressContext } from './progression'
 
 export type TaskStatus = 'available' | 'locked' | 'completed'
 
@@ -14,28 +15,38 @@ export function isFactionEligible(task: Task, faction: Faction): boolean {
   return task.factionName === 'Any' || task.factionName === faction
 }
 
-/**
- * We only track completion. A requirement whose allowed states include
- * "complete" is satisfied once that task is marked complete. Requirements that
- * only ask for "active" or "failed" cannot be checked and are treated as met.
- */
-export function isRequirementMet(req: TaskRequirement, completed: ReadonlySet<string>): boolean {
-  if (!req.status.includes('complete')) return true
-  return completed.has(req.taskId)
-}
-
-export function computeTaskStatus(task: Task, profile: Profile): TaskStatus {
-  if (profile.completedTaskIds.has(task.id)) return 'completed'
-  if (task.minPlayerLevel > profile.playerLevel) return 'locked'
-  for (const req of task.taskRequirements) {
-    if (!isRequirementMet(req, profile.completedTaskIds)) return 'locked'
+/** Without the full picture (no trader levels, no deduction): only what the profile says. */
+function plainContext(profile: Profile): ProgressContext {
+  return {
+    completed: profile.completedTaskIds,
+    inferred: new Set(),
+    active: profile.activeTaskIds,
+    failed: profile.failedTaskIds,
+    level: profile.playerLevel,
+    reputation: {},
+    calculatedTraderLevel: {},
+    traderLevel: {},
   }
-  return 'available'
 }
 
-export function computeTaskStatuses(tasks: Task[], profile: Profile): Record<string, TaskStatus> {
+/**
+ * Completed (ticked, or done by deduction when a context is given) → completed. Started in game
+ * or marked "I have this quest" → available, whatever the rules say (the game gave it to you).
+ * Otherwise available when the level, the quests before it and the trader loyalty level are met
+ * (see progression.ts); story counters and trader talks cannot be tracked and never lock.
+ */
+export function computeTaskStatus(task: Task, profile: Profile, ctx: ProgressContext = plainContext(profile)): TaskStatus {
+  if (ctx.completed.has(task.id)) return 'completed'
+  if (ctx.active.has(task.id)) return 'available'
+  if (task.minPlayerLevel > ctx.level) return 'locked'
+  for (const r of task.taskRequirements) if (!isRequirementMet(r.status, r.taskId, ctx)) return 'locked'
+  return lockReasons(task, ctx).length ? 'locked' : 'available'
+}
+
+export function computeTaskStatuses(tasks: Task[], profile: Profile, ctx?: ProgressContext): Record<string, TaskStatus> {
+  const c = ctx ?? plainContext(profile)
   const out: Record<string, TaskStatus> = {}
-  for (const t of tasks) out[t.id] = computeTaskStatus(t, profile)
+  for (const t of tasks) out[t.id] = computeTaskStatus(t, profile, c)
   return out
 }
 

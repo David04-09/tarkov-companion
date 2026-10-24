@@ -8,8 +8,10 @@ import {
   ChevronDown,
   ChevronRight,
   ExternalLink,
+  KeyRound,
   Lock,
   Search,
+  Unlock,
 } from 'lucide-react'
 import { useGameData, useItems } from '../api/hooks'
 import type { GameData, ItemsById, Task, TaskObjective } from '../api/types'
@@ -23,9 +25,11 @@ import {
   computeTaskStatuses,
   countStatuses,
   isFactionEligible,
-  isRequirementMet,
   type TaskStatus,
 } from '../lib/taskStatus'
+import { isRequirementMet, lockReasons, type ProgressContext } from '../lib/progression'
+import { useProgressContext } from '../hooks/useProgressContext'
+import { requiredClosure } from '../quests/questGraph'
 import { useProfile, useProgressStore } from '../store/progress'
 import { SegmentButton } from '../components/SegmentButton'
 import { QuestTreeView } from '../quests/QuestTree'
@@ -142,11 +146,121 @@ function ObjectiveList({
                 </span>
               )}
               <ObjectiveItems objective={o} items={items} itemsLoading={itemsLoading} />
+              <ObjectiveNeeds objective={o} items={items} />
             </div>
           </div>
         </li>
       ))}
     </ol>
+  )
+}
+
+/** Keys, gear to wear, weapons to use and markers an objective asks for (from the quest data). */
+function ObjectiveNeeds({ objective: o, items }: { objective: TaskObjective; items: ItemsById | undefined }) {
+  const name = (id: string) => items?.[id]?.name ?? 'item'
+  const chip = 'inline-flex items-center gap-1 rounded bg-surface px-1.5 py-0.5 text-xs'
+  return (
+    <>
+      {o.requiredKeys.map((group, i) => (
+        <span key={`k${i}`} className={chip} title="Key needed for this objective">
+          <KeyRound className="h-3 w-3 text-warning" />
+          {group.map(name).join(' or ')}
+        </span>
+      ))}
+      {o.markerItemId && (
+        <span className={chip} title="Bring this to mark the spot">
+          Bring: {name(o.markerItemId)}
+        </span>
+      )}
+      {o.wearingIds.length > 0 && (
+        <span className={chip} title={o.wearingIds.map((outfit) => outfit.map(name).join(' + ')).join('\nor ')}>
+          Wear: {o.wearingIds[0].map(name).join(' + ')}
+          {o.wearingIds.length > 1 ? ` (or ${o.wearingIds.length - 1} other outfit${o.wearingIds.length > 2 ? 's' : ''})` : ''}
+        </span>
+      )}
+      {o.usingWeaponIds.length > 0 && (
+        <span className={chip} title={o.usingWeaponIds.map(name).join('\n')}>
+          Use: {o.usingWeaponIds.slice(0, 3).map(name).join(', ')}
+          {o.usingWeaponIds.length > 3 ? ` or ${o.usingWeaponIds.length - 3} more` : ''}
+        </span>
+      )}
+    </>
+  )
+}
+
+/** ✓ when met, a lock when not. */
+function Mark({ ok }: { ok: boolean }) {
+  return ok ? <Check className="h-4 w-4 shrink-0 text-success" aria-label="Met" /> : <Lock className="h-4 w-4 shrink-0 text-ink-dim" aria-label="Not met" />
+}
+
+/** Everything a quest needs before you can take it, each with whether you meet it. */
+function RequirementList({ task, data, ctx }: { task: Task; data: GameData; ctx: ProgressContext | null }) {
+  const profile = useProfile()
+  const completed = ctx?.completed ?? profile.completedTaskIds
+  const level = ctx?.level ?? profile.playerLevel
+  const traderName = (id: string) => data.traders.find((t) => t.id === id)?.name ?? 'Trader'
+  const story = task.otherRequirements.filter((r) => !/loyalty level|reputation/i.test(r))
+  return (
+    <ul className="space-y-1">
+      {task.minPlayerLevel > 0 && (
+        <li className="flex items-center gap-2">
+          <Mark ok={level >= task.minPlayerLevel} />
+          <span>
+            Level {task.minPlayerLevel}
+            <span className="text-ink-dim"> (you: {level}{level > profile.playerLevel ? ', from your quest XP' : ''})</span>
+          </span>
+        </li>
+      )}
+      {task.taskRequirements.map((req) => {
+        const prereq = data.tasksById[req.taskId]
+        const met = ctx ? isRequirementMet(req.status, req.taskId, ctx) : completed.has(req.taskId)
+        const how = req.status.includes('active') && !req.status.includes('complete') ? 'started' : req.status.includes('failed') && !req.status.includes('complete') ? 'failed' : req.status.includes('failed') ? 'done or failed' : 'done'
+        return (
+          <li key={req.taskId} className="flex items-center gap-2">
+            <Mark ok={met} />
+            <span className={met ? '' : 'text-ink-muted'}>
+              {prereq?.name ?? req.taskId}
+              <span className="text-ink-dim"> {how}</span>
+              {ctx?.inferred.has(req.taskId) && <span className="text-ink-dim" title="A later quest is done or started, so this one must be done"> · done by deduction</span>}
+            </span>
+          </li>
+        )
+      })}
+      {task.traderRequirements.map((r, i) => {
+        if (r.type === 'level') {
+          const have = ctx?.traderLevel[r.traderId] ?? 1
+          return (
+            <li key={`t${i}`} className="flex items-center gap-2">
+              <Mark ok={have >= r.value} />
+              <span>
+                {traderName(r.traderId)} loyalty level {r.value}
+                <span className="text-ink-dim"> (you: {have})</span>
+              </span>
+            </li>
+          )
+        }
+        const rep = ctx?.reputation[r.traderId]
+        return (
+          <li key={`t${i}`} className="flex items-center gap-2 text-ink-muted">
+            <span className="w-4 shrink-0 text-center text-ink-dim">?</span>
+            <span>
+              {traderName(r.traderId)} reputation {r.compare} {r.value}
+              <span className="text-ink-dim"> ({rep !== undefined ? `${rep.toFixed(2)} from quests; ` : ''}check in game)</span>
+            </span>
+          </li>
+        )
+      })}
+      {story.map((r, i) => (
+        <li key={`o${i}`} className="flex items-center gap-2 text-ink-muted">
+          <span className="w-4 shrink-0 text-center text-ink-dim">?</span>
+          <span>
+            {r}
+            <span className="text-ink-dim"> (not tracked; never locks it here)</span>
+          </span>
+        </li>
+      ))}
+      {task.minPlayerLevel <= 0 && task.taskRequirements.length === 0 && task.traderRequirements.length === 0 && story.length === 0 && <li className="text-ink-muted">Nothing: it can be taken from the start.</li>}
+    </ul>
   )
 }
 
@@ -168,7 +282,16 @@ function TaskDetail({
   itemsLoading: boolean
 }) {
   const profile = useProfile()
+  const ctx = useProgressContext()
+  const mode = useProgressStore((s) => s.gameMode)
   const setTaskCompleted = useProgressStore((s) => s.setTaskCompleted)
+  const setTaskActive = useProgressStore((s) => s.setTaskActiveFor)
+  const addCompleted = useProgressStore((s) => s.addCompletedFor)
+  const active = profile.activeTaskIds.has(task.id)
+  const reasons = ctx && status === 'locked' ? lockReasons(task, ctx, (id) => data.tasksById[id]?.name ?? 'an earlier quest', (id) => data.traders.find((t) => t.id === id)?.name ?? 'the trader') : []
+  // Everything before it that is not done yet (not this quest itself).
+  const before = ctx ? [...requiredClosure([task.id], data.tasksById, ctx.completed)].filter((id) => id !== task.id) : []
+  const keyMaps = task.neededKeys.filter((k) => k.keyIds.length > 0)
 
   return (
     <div className="grid gap-6 border-t border-line bg-surface px-4 py-4 md:grid-cols-[1fr_280px]">
@@ -198,58 +321,59 @@ function TaskDetail({
           )}
         </dl>
 
-        <div>
-          <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink-muted">Prerequisites</h3>
-          {task.taskRequirements.length === 0 ? (
-            <p className="text-ink-muted">None</p>
-          ) : (
-            <ul className="space-y-1">
-              {task.taskRequirements.map((req) => {
-                const prereq = data.tasksById[req.taskId]
-                const met = isRequirementMet(req, profile.completedTaskIds)
-                return (
-                  <li key={req.taskId} className="flex items-center gap-2">
-                    {met ? (
-                      <Check className="h-4 w-4 shrink-0 text-success" aria-label="Met" />
-                    ) : (
-                      <Lock className="h-4 w-4 shrink-0 text-ink-dim" aria-label="Not met" />
-                    )}
-                    <span className={met ? '' : 'text-ink-muted'}>
-                      {prereq?.name ?? req.taskId}
-                      {!req.status.includes('complete') && (
-                        <span className="text-ink-dim"> ({req.status.join('/')})</span>
-                      )}
-                    </span>
-                  </li>
-                )
-              })}
-            </ul>
-          )}
-        </div>
-
-        {task.otherRequirements.length > 0 && (
-          <div>
-            <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink-muted">
-              Also requires
-            </h3>
-            <ul className="space-y-0.5 text-ink-muted">
-              {task.otherRequirements.map((r, i) => (
-                <li key={i}>{r}</li>
+        {reasons.length > 0 && (
+          <div className="rounded border border-warning/40 bg-warning/10 px-3 py-2">
+            <div className="text-xs font-semibold uppercase tracking-wide text-warning">Locked because</div>
+            <ul className="mt-1 list-disc pl-4 text-ink-muted">
+              {reasons.map((r, i) => (
+                <li key={i}>{r.text}</li>
               ))}
             </ul>
-            <p className="mt-1 text-xs text-ink-dim">Not tracked by this app; shown for reference.</p>
+            <p className="mt-1 text-xs text-ink-dim">Have it in game anyway? Use "I have this quest" below: it counts as open, and everything before it as done.</p>
+          </div>
+        )}
+        {ctx?.inferred.has(task.id) && <p className="text-xs text-ink-muted">Done by deduction: a later quest is done or started, so this one must be finished. Tick it to make it official.</p>}
+
+        <div>
+          <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink-muted">What it needs</h3>
+          <RequirementList task={task} data={data} ctx={ctx} />
+        </div>
+
+        {keyMaps.length > 0 && (
+          <div>
+            <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink-muted">Keys</h3>
+            <ul className="space-y-0.5">
+              {keyMaps.map((k) => (
+                <li key={k.mapId}>
+                  <span className="text-ink-muted">{data.maps.find((m) => m.id === k.mapId)?.name ?? 'Map'}: </span>
+                  {k.keyIds.map((id) => items?.[id]?.name ?? (itemsLoading ? 'Loading…' : 'Key')).join(', ')}
+                </li>
+              ))}
+            </ul>
           </div>
         )}
 
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            onClick={() => setTaskCompleted(task.id, status !== 'completed')}
+            onClick={() => setTaskCompleted(task.id, status !== 'completed' || Boolean(ctx?.inferred.has(task.id)))}
             className="btn"
           >
             <Check className="h-4 w-4" />
-            {status === 'completed' ? 'Mark incomplete' : 'Mark complete'}
+            {status === 'completed' && !ctx?.inferred.has(task.id) ? 'Mark incomplete' : 'Mark complete'}
           </button>
+          {status !== 'completed' && (
+            <button type="button" onClick={() => setTaskActive(mode, task.id, !active)} className={`btn ${active ? '!border-success/60 !text-success' : ''}`} title="The game gave you this quest: it counts as open here, and everything before it as done">
+              <Unlock className="h-4 w-4" />
+              {active ? 'I have this quest ✓' : 'I have this quest'}
+            </button>
+          )}
+          {status !== 'completed' && before.length > 0 && (
+            <button type="button" onClick={() => addCompleted(mode, before)} className="btn" title={before.map((id) => data.tasksById[id]?.name).filter(Boolean).join('\n')}>
+              <Check className="h-4 w-4" />
+              Mark the {before.length} before it done
+            </button>
+          )}
           {task.wikiLink && (
             <a href={task.wikiLink} target="_blank" rel="noreferrer" className="btn">
               <ExternalLink className="h-4 w-4" /> Wiki
@@ -315,6 +439,7 @@ function QuestTable({
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const setTaskCompleted = useProgressStore((s) => s.setTaskCompleted)
   const gameMode = useProgressStore((s) => s.gameMode)
+  const progress = useProgressContext()
 
   return (
     <div className="overflow-hidden rounded-lg border border-line bg-surface-2">
@@ -353,7 +478,7 @@ function QuestTable({
                       <input
                         type="checkbox"
                         checked={status === 'completed'}
-                        onChange={(e) => setTaskCompleted(task.id, e.target.checked)}
+                        onChange={(e) => setTaskCompleted(task.id, e.target.checked || Boolean(progress?.inferred.has(task.id)))}
                         aria-label={`Mark ${task.name} complete`}
                         className="h-4 w-4 align-middle"
                       />
@@ -366,6 +491,8 @@ function QuestTable({
                         {task.kappaRequired && <KappaBadge />}
                         {task.lightkeeperRequired && <LightkeeperBadge />}
                         {status === 'completed' && <AutoTickBadge mode={gameMode} taskId={task.id} />}
+                        {progress?.inferred.has(task.id) && <span className="rounded border border-line px-1 text-[10px] text-ink-dim" title="A later quest is done or started, so this one must be finished">by deduction</span>}
+                        {status !== 'completed' && progress?.active.has(task.id) && <span className="rounded border border-success/50 px-1 text-[10px] text-success" title="Started in game (from the log) or marked I have this quest">started</span>}
                       </div>
                     </td>
                     <td className="px-3 py-2 whitespace-nowrap">{task.trader.name}</td>
@@ -455,6 +582,9 @@ export function QuestsPage() {
 
 function QuestList() {
   const profile = useProfile()
+  const progress = useProgressContext()
+  const mode = useProgressStore((s) => s.gameMode)
+  const addCompleted = useProgressStore((s) => s.addCompletedFor)
   const query = useGameData()
   // Items are only needed for objective names/icons, so load them in the background.
   const itemsQuery = useItems()
@@ -480,7 +610,7 @@ function QuestList() {
   const derived = useMemo(() => {
     if (!query.data) return null
     const eligible = query.data.tasks.filter((t) => isFactionEligible(t, profile.faction))
-    const statuses = computeTaskStatuses(eligible, profile)
+    const statuses = computeTaskStatuses(eligible, profile, progress ?? undefined)
     const counts = countStatuses(statuses)
 
     const needle = search.trim().toLowerCase()
@@ -519,7 +649,7 @@ function QuestList() {
     })
 
     return { statuses, counts, filtered, total: eligible.length }
-  }, [query.data, profile, search, trader, map, statusFilter, sort])
+  }, [query.data, profile, progress, search, trader, map, statusFilter, sort])
 
   return (
     <div>
@@ -529,7 +659,16 @@ function QuestList() {
           {derived && (
             <p className="text-sm text-ink-muted">
               Showing {derived.filtered.length} of {derived.total} quests for {profile.faction} · level{' '}
-              {profile.playerLevel}
+              {progress?.level ?? profile.playerLevel}
+              {progress && progress.level > profile.playerLevel ? ' (from your quest XP)' : ''}
+            </p>
+          )}
+          {progress && progress.inferred.size > 0 && (
+            <p className="mt-1 text-sm text-ink-muted">
+              {progress.inferred.size} earlier quest{progress.inferred.size === 1 ? ' counts' : 's count'} as done because a later one is done or started.{' '}
+              <button type="button" onClick={() => addCompleted(mode, [...progress.inferred])} className="text-accent underline">
+                Tick {progress.inferred.size === 1 ? 'it' : 'them'}
+              </button>
             </p>
           )}
         </div>

@@ -25,6 +25,7 @@ import { layerHasFloorHeights } from '../maps/overlay/floors'
 import { buildMapTasks, type MapTask } from '../maps/overlay/mapTasks'
 import { useMapOptions } from '../maps/useMapOptions'
 import { computeTaskStatuses, isFactionEligible } from '../lib/taskStatus'
+import { useProgressContext } from '../hooks/useProgressContext'
 import { drawingsKey } from '../store/drawings'
 import { useModeInventory } from '../store/inventory'
 import { taskColor, useMapOverlayStore } from '../store/mapOverlay'
@@ -76,7 +77,8 @@ export function MapsPage() {
     return buildMapTasks(gameData.data, mapId, layer).filter((m) => isFactionEligible(m.task, profile.faction))
   }, [gameData.data, mapId, layer, profile.faction])
 
-  const statuses = useMemo(() => computeTaskStatuses(mapTasks.map((m) => m.task), profile), [mapTasks, profile])
+  const progress = useProgressContext()
+  const statuses = useMemo(() => computeTaskStatuses(mapTasks.map((m) => m.task), profile, progress ?? undefined), [mapTasks, profile, progress])
   const factionTasks = useMemo(() => (gameData.data?.tasks ?? []).filter((t) => isFactionEligible(t, profile.faction)), [gameData.data, profile.faction])
 
   const shown = useMemo(() => {

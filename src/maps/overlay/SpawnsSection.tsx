@@ -2,6 +2,7 @@ import { Skull } from 'lucide-react'
 import { formatTimeAgo } from '../../lib/format'
 import { useMapOverlayStore } from '../../store/mapOverlay'
 import { type BossEntry, type SpawnModel, spawnKey, toggleKeyFor } from './spawns'
+import { MAP_NOTES } from './bossAreas'
 
 const pct = (p: number) => `${Math.round(p * 100)}%`
 
@@ -10,6 +11,31 @@ function Portrait({ e }: { e: BossEntry }) {
     <img src={e.portrait} alt="" className="h-6 w-6 shrink-0 rounded-full border border-[#e63946] object-cover" />
   ) : (
     <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-[#e63946] bg-surface text-ink-muted"><Skull className="h-3.5 w-3.5" /></span>
+  )
+}
+
+/** Where the boss shows up on this map: reported spots with their share, then what only the data lists. */
+function SpotLines({ e, indent = 'ml-11' }: { e: BossEntry; indent?: string }) {
+  const shown = e.spots.filter((s) => s.kind !== 'data')
+  const dataOnly = e.spots.filter((s) => s.kind === 'data').reduce((n, s) => n + s.points.length, 0)
+  if (!shown.length && !dataOnly && !MAP_NOTES[e.key]) return <p className={`${indent} text-[11px] text-ink-dim`}>Roams: no fixed spawn spot in the data.</p>
+  return (
+    <div className={`${indent} text-[11px] text-ink-dim`}>
+      {shown.length > 0 && (
+        <p>
+          {shown.map((s, i) => (
+            <span key={s.key} title={s.kind === 'reported' ? 'Players report it here (EFT Wiki map)' : 'Game-data spawn points'}>
+              {i > 0 && ' · '}
+              {s.kind === 'reported' ? '◌ ' : ''}
+              {s.name}
+              {s.share > 0 ? ` ${pct(s.share)}` : ''}
+            </span>
+          ))}
+        </p>
+      )}
+      {dataOnly > 0 && <p>{dataOnly} more point{dataOnly === 1 ? '' : 's'} only in the game data (faded on the map).</p>}
+      {MAP_NOTES[e.key] && <p className="text-amber-300/80">{MAP_NOTES[e.key]}</p>}
+    </div>
   )
 }
 
@@ -53,7 +79,6 @@ export function SpawnsSection({ model }: { model: SpawnModel }) {
         {bosses.map((e) => {
           const on = Boolean(toggles[spawnKey.boss(e.key)])
           const guardCount = e.escorts.reduce((n, g) => n + (g.counts[g.counts.length - 1] ?? 0), 0)
-          const noPositions = e.spawns.every((s) => s.locations.every((l) => l.positions.length === 0))
           return (
             <li key={e.key}>
               <Row checked={on} onChange={(v) => setSpawnToggle(spawnKey.boss(e.key), v)} hint={e.conditions.join(' · ') || undefined}>
@@ -61,7 +86,7 @@ export function SpawnsSection({ model }: { model: SpawnModel }) {
                 <span className="min-w-0 flex-1 truncate">{e.name}</span>
                 <span className="tabular-nums text-ink-muted">{pct(e.spawnChance)}</span>
               </Row>
-              {noPositions && <p className="ml-11 text-[11px] text-ink-dim">Roams: no fixed spawn spot in the data.</p>}
+              <SpotLines e={e} />
               {e.conditions.length > 0 && <p className="ml-11 text-[11px] text-ink-dim">{e.conditions.join(' · ')}</p>}
               {e.escorts.length > 0 && (
                 <div className="ml-11">
@@ -83,6 +108,7 @@ export function SpawnsSection({ model }: { model: SpawnModel }) {
               <span className="min-w-0 flex-1 truncate">The Goons</span>
               <span className="tabular-nums text-ink-muted">{pct(groupChance(goons))}</span>
             </Row>
+            {goons.map((e) => <SpotLines key={e.key} e={e} indent="ml-6" />)}
             <p className="ml-6 text-[11px] text-ink-dim">
               {model.goonsHere
                 ? `Currently here per player reports${model.goonReportAt ? ` (${formatTimeAgo(model.goonReportAt)})` : ''}.`
@@ -98,6 +124,7 @@ export function SpawnsSection({ model }: { model: SpawnModel }) {
               <span className="min-w-0 flex-1 truncate">Cultists</span>
               <span className="tabular-nums text-ink-muted">{pct(groupChance(cultists))}</span>
             </Row>
+            {cultists.map((e) => <SpotLines key={e.key} e={e} indent="ml-6" />)}
             <p className="ml-6 text-[11px] text-ink-dim">Night raids only.</p>
           </li>
         )}
@@ -120,6 +147,7 @@ export function SpawnsSection({ model }: { model: SpawnModel }) {
               <span className="min-w-0 flex-1 truncate">Rogues</span>
               <span className="tabular-nums text-ink-muted">{pct(groupChance(rogues))}</span>
             </Row>
+            {rogues.map((e) => <SpotLines key={e.key} e={e} indent="ml-6" />)}
           </li>
         )}
 
@@ -147,7 +175,7 @@ export function SpawnsSection({ model }: { model: SpawnModel }) {
           </Row>
         </li>
       </ul>
-      <p className="mt-1 text-ink-dim">Chances are tarkov.dev's current values. Boss zones are drawn around the listed spawn points; the game has no exact zone outlines.</p>
+      <p className="mt-1 text-ink-dim">Chances and spawn points are tarkov.dev's game data. Dashed outlines (◌) are where players report the boss, traced from the EFT Wiki's maps (±7–18 m); faded dots are points only the game data lists, away from those areas.</p>
     </section>
   )
 }

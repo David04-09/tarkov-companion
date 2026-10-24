@@ -8,6 +8,8 @@ import { useInventoryStore, useModeInventory } from '../store/inventory'
 import { useProgressStore } from '../store/progress'
 import { usePrefs } from '../store/prefs'
 import { askNotificationPermission, notify } from '../lib/notify'
+import { useProgressContext } from '../hooks/useProgressContext'
+import { nextLoyalty } from '../lib/progression'
 
 function countdown(ms: number): string {
   if (ms <= 0) return 'due now'
@@ -23,6 +25,7 @@ export function TradersPanel() {
   const gameMode = useProgressStore((s) => s.gameMode)
   const inventory = useModeInventory()
   const setTraderLevel = useInventoryStore((s) => s.setTraderLevel)
+  const progress = useProgressContext()
   const notifyIds = useFleaStore((s) => s.notifyTraderIds)
   const setNotify = useFleaStore((s) => s.setNotifyTrader)
   const collapsed = useFleaStore((s) => s.tradersCollapsed)
@@ -72,7 +75,7 @@ export function TradersPanel() {
     <section className="rounded-lg border border-line bg-surface-2">
       <div className="flex items-center gap-2 px-3 py-1.5">
         <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Traders</h2>
-        <span className="text-[11px] text-ink-dim">{anyReset ? 'Loyalty level is yours to set · countdown = next restock' : 'No restock times in the data right now'}</span>
+        <span className="text-[11px] text-ink-dim">{anyReset ? 'Loyalty: Auto = from your quests\' reputation and level (set one by hand if dailies raised it) · countdown = next restock' : 'No restock times in the data right now'}</span>
         <button type="button" onClick={() => setCollapsed(!collapsed)} className="ml-auto text-ink-dim hover:text-ink" aria-label={collapsed ? 'Expand traders' : 'Collapse traders'}>
           {collapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
         </button>
@@ -80,7 +83,12 @@ export function TradersPanel() {
       {!collapsed && (
         <ul className="grid grid-cols-2 gap-1.5 border-t border-line px-3 py-2 sm:grid-cols-4 lg:grid-cols-8">
           {traders.map((t) => {
-            const level = inventory.traderLevels[t.id] ?? 1
+            const manual = inventory.traderLevels[t.id] ?? 0
+            const calc = progress?.calculatedTraderLevel[t.id] ?? 1
+            const rep = progress?.reputation[t.id] ?? 0
+            const effective = Math.max(calc, manual)
+            const next = progress && t.levels.length ? nextLoyalty(t, effective, progress.level, rep) : null
+            const why = `Reputation ${rep.toFixed(2)} from finished quests${progress && progress.level ? `, level ${progress.level}` : ''} → LL${calc}.${next ? ` LL${next.level} needs level ${next.playerLevel} and reputation ${next.reputation}${next.needLevel || next.needReputation ? ` (${[next.needLevel ? `${next.needLevel} more levels` : '', next.needReputation ? `${next.needReputation.toFixed(2)} more reputation` : ''].filter(Boolean).join(', ')})` : ''}.` : ''} Daily quests and other reputation are not counted.`
             const left = t.resetTime != null ? t.resetTime - now : null
             const on = notifyIds.includes(t.id)
             return (
@@ -88,12 +96,23 @@ export function TradersPanel() {
                 {t.imageLink ? <img src={t.imageLink} alt="" className="h-8 w-8 rounded object-cover" loading="lazy" /> : <span className="h-8 w-8 rounded bg-surface-3" />}
                 <div className="min-w-0 flex-1">
                   <div className="truncate font-medium">{t.name}</div>
+                  {t.maxLevel > 1 && (
+                    <div className="truncate text-[10px] text-ink-dim" title={why}>
+                      rep {rep.toFixed(2)}
+                      {next ? ` · LL${next.level}: ${next.needLevel ? `lvl ${next.playerLevel}` : ''}${next.needLevel && next.needReputation ? ', ' : ''}${next.needReputation ? `+${next.needReputation.toFixed(2)}` : ''}${!next.needLevel && !next.needReputation ? 'ready' : ''}` : effective > 1 ? ' · max' : ''}
+                    </div>
+                  )}
                   <div className="flex items-center gap-1 text-ink-muted">
                     {t.maxLevel > 1 ? (
-                      <select value={level} onChange={(e) => setTraderLevel(gameMode, t.id, Number(e.target.value))} aria-label={`${t.name} loyalty level`} className="rounded border border-line bg-surface-2 px-1 py-px text-[11px] text-ink">
-                        {Array.from({ length: t.maxLevel }, (_, i) => i + 1).map((l) => (
-                          <option key={l} value={l}>LL{l}</option>
-                        ))}
+                      <select value={manual > calc ? manual : 0} onChange={(e) => setTraderLevel(gameMode, t.id, Number(e.target.value))} aria-label={`${t.name} loyalty level`} title={why} className="rounded border border-line bg-surface-2 px-1 py-px text-[11px] text-ink">
+                        <option value={0}>Auto · LL{calc}</option>
+                        {Array.from({ length: t.maxLevel }, (_, i) => i + 1)
+                          .filter((l) => l > calc)
+                          .map((l) => (
+                            <option key={l} value={l}>
+                              LL{l} (set)
+                            </option>
+                          ))}
                       </select>
                     ) : (
                       <span className="text-ink-dim">—</span>

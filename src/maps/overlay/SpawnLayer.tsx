@@ -1,8 +1,10 @@
 import { Fragment, memo, useMemo, useState } from 'react'
 import L from 'leaflet'
-import { CircleMarker, Marker, Popup, Tooltip, useMap, useMapEvents } from 'react-leaflet'
+import { CircleMarker, Marker, Polygon, Popup, Tooltip, useMap, useMapEvents } from 'react-leaflet'
 import type { Position } from '../../api/types'
 import { type BossEntry, type SpawnModel, spawnKey, toggleKeyFor } from './spawns'
+import { MAP_NOTES, wikiPageUrl } from './bossAreas'
+import { spotSource, type BossSpot } from './bossSpots'
 
 /** Red/orange family, deliberately away from the quest palette's blues/greens. */
 const BOSS_COLOR = '#e63946'
@@ -49,41 +51,36 @@ function bossIcon(e: BossEntry): L.DivIcon {
   return icon
 }
 
-/** The listed point closest to the group's centre: where the portrait goes. */
-function medoid(points: Position[]): Position {
-  const cx = points.reduce((a, p) => a + p.x, 0) / points.length
-  const cz = points.reduce((a, p) => a + p.z, 0) / points.length
-  let best = points[0]
-  let bestD = Infinity
-  for (const p of points) {
-    const d = (p.x - cx) ** 2 + (p.z - cz) ** 2
-    if (d < bestD) {
-      bestD = d
-      best = p
-    }
-  }
-  return best
+function openLink(url: string) {
+  if (window.desktop?.openExternal) void window.desktop.openExternal(url)
+  else window.open(url, '_blank', 'noopener,noreferrer')
 }
 
-function BossPopup({ e, locationName, locationChance }: { e: BossEntry; locationName: string; locationChance: number }) {
+function BossPopup({ e, spot }: { e: BossEntry; spot: BossSpot }) {
   return (
-    <div className="min-w-[200px] text-xs">
+    <div className="min-w-[220px] max-w-[300px] text-xs">
       <div className="flex items-center gap-2">
         {e.portrait && <img src={e.portrait} alt="" className="h-8 w-8 rounded-full object-cover" />}
         <div>
           <div className="font-semibold text-ink">{e.name}</div>
-          <div className="text-ink-muted">Spawn chance {Math.round(e.spawnChance * 100)}%</div>
+          <div className="text-ink-muted">Spawn chance {Math.round(e.spawnChance * 100)}% per raid</div>
         </div>
       </div>
-      <div className="mt-1.5 text-ink">
-        {locationName}: {Math.round(locationChance * 100)}% of spawns here
+      <div className="mt-1.5 font-medium text-ink">
+        {spot.name}
+        {spot.share > 0 && <span className="font-normal text-ink-muted"> · {Math.round(spot.share * 100)}% of its spawns on this map</span>}
       </div>
-      {e.escorts.length > 0 && (
-        <div className="mt-1 text-ink-muted">Escorts: {e.escorts.map((x) => `${x.name} ×${x.counts.join('/') || '?'}`).join(', ')}</div>
-      )}
+      <p className="mt-0.5 text-ink-muted">{spotSource(spot, e.name)}</p>
+      {e.escorts.length > 0 && <div className="mt-1 text-ink-muted">Escorts: {e.escorts.map((x) => `${x.name} ×${x.counts.join('/') || '?'}`).join(', ')}</div>}
       {e.conditions.map((c) => (
         <div key={c} className="mt-1 text-ink-dim">{c}</div>
       ))}
+      {MAP_NOTES[e.key] && <div className="mt-1 text-amber-300">{MAP_NOTES[e.key]}</div>}
+      {spot.area && (
+        <button type="button" onClick={() => openLink(wikiPageUrl(spot.area!.page))} className="mt-1 text-[11px] text-accent underline">
+          {spot.area.page} on the EFT Wiki
+        </button>
+      )}
     </div>
   )
 }
@@ -91,45 +88,52 @@ function BossPopup({ e, locationName, locationChance }: { e: BossEntry; location
 const BossMarkers = memo(function BossMarkers({ entry, guards }: { entry: BossEntry; guards: boolean }) {
   const color = colorFor(entry)
   const guardCount = entry.escorts.reduce((n, g) => n + (g.counts[g.counts.length - 1] ?? 1), 0)
+  const areaStyle = useMemo(() => ({ color, weight: 1.5, opacity: 0.9, dashArray: '6 5', fillColor: color, fillOpacity: 0.08 }), [color])
+  const pointStyle = useMemo(() => ({ color, weight: 1, opacity: 0.85, fillColor: color, fillOpacity: 0.3 }), [color])
+  const dataStyle = useMemo(() => ({ color, weight: 1, opacity: 0.45, dashArray: '2 3', fillColor: color, fillOpacity: 0.1 }), [color])
   return (
     <>
-      {entry.spawns.map((spawn, si) =>
-        spawn.locations.map((loc, li) => {
-          if (loc.positions.length === 0) return null
-          const centre = medoid(loc.positions)
-          const title = `${entry.name} · ${loc.name} · ${Math.round(loc.chance * 100)}% of spawns`
-          return (
-            <Fragment key={`${si}:${li}`}>
-              {loc.positions.map((p, pi) => (
-                <CircleMarker key={pi} center={ll(p)} radius={p === centre ? 26 : 9} pathOptions={{ color, weight: p === centre ? 1.5 : 1, opacity: 0.85, fillColor: color, fillOpacity: p === centre ? 0.12 : 0.3 }}>
-                  <Tooltip sticky>{`${title} · spawn point ${pi + 1}/${loc.positions.length}`}</Tooltip>
-                </CircleMarker>
-              ))}
-              <Marker position={ll(centre)} icon={bossIcon(entry)} zIndexOffset={200}>
-                <Tooltip direction="top" offset={[0, -17]}>{`${entry.name} · ${Math.round(entry.spawnChance * 100)}%`}</Tooltip>
-                <Popup maxWidth={320}>
-                  <BossPopup e={entry} locationName={loc.name} locationChance={loc.chance} />
-                </Popup>
-              </Marker>
-              {guards &&
-                guardCount > 0 &&
-                Array.from({ length: Math.min(guardCount, 8) }, (_, gi) => {
-                  const ang = (gi / Math.min(guardCount, 8)) * Math.PI * 2
-                  const r = 6
-                  return (
-                    <CircleMarker
-                      key={gi}
-                      center={ll({ x: centre.x + Math.cos(ang) * r, y: 0, z: centre.z + Math.sin(ang) * r })}
-                      radius={4}
-                      pathOptions={{ color: '#111', weight: 1, fillColor: GUARD_COLOR, fillOpacity: 0.95 }}
-                    >
-                      <Tooltip direction="top" offset={[0, -4]}>{`${entry.name} guard (${entry.escorts.map((x) => `${x.name} ×${x.counts.join('/')}`).join(', ')})`}</Tooltip>
-                    </CircleMarker>
-                  )
-                })}
-            </Fragment>
-          )
-        }),
+      {entry.areas.map((a) => (
+        <Polygon key={a.name} positions={a.polygon.map(([x, z]) => L.latLng(z, x))} pathOptions={areaStyle} interactive={false} />
+      ))}
+      {entry.spots.map((spot) =>
+        spot.kind === 'data' ? (
+          spot.points.map((p, pi) => (
+            <CircleMarker key={`${spot.key}:${pi}`} center={ll(p)} radius={4.5} pathOptions={dataStyle}>
+              <Tooltip sticky>{`${entry.name} · ${spot.name} · only the game data lists this spot; players report ${entry.name} elsewhere here`}</Tooltip>
+            </CircleMarker>
+          ))
+        ) : (
+          <Fragment key={spot.key}>
+            {spot.points.map((p, pi) => (
+              <CircleMarker key={pi} center={ll(p)} radius={7} pathOptions={pointStyle}>
+                <Tooltip sticky>{`${entry.name} · ${spot.name} · game-data spawn point ${pi + 1}/${spot.points.length}`}</Tooltip>
+              </CircleMarker>
+            ))}
+            <Marker position={ll(spot.centre)} icon={bossIcon(entry)} zIndexOffset={200}>
+              <Tooltip direction="top" offset={[0, -17]}>{`${entry.name} · ${spot.name}${spot.share > 0 ? ` · ${Math.round(spot.share * 100)}% of spawns` : ''}`}</Tooltip>
+              <Popup maxWidth={320}>
+                <BossPopup e={entry} spot={spot} />
+              </Popup>
+            </Marker>
+            {guards &&
+              guardCount > 0 &&
+              Array.from({ length: Math.min(guardCount, 8) }, (_, gi) => {
+                const ang = (gi / Math.min(guardCount, 8)) * Math.PI * 2
+                const r = 6
+                return (
+                  <CircleMarker
+                    key={gi}
+                    center={ll({ x: spot.centre.x + Math.cos(ang) * r, y: 0, z: spot.centre.z + Math.sin(ang) * r })}
+                    radius={4}
+                    pathOptions={{ color: '#111', weight: 1, fillColor: GUARD_COLOR, fillOpacity: 0.95 }}
+                  >
+                    <Tooltip direction="top" offset={[0, -4]}>{`${entry.name} guard (${entry.escorts.map((x) => `${x.name} ×${x.counts.join('/')}`).join(', ')})`}</Tooltip>
+                  </CircleMarker>
+                )
+              })}
+          </Fragment>
+        ),
       )}
     </>
   )

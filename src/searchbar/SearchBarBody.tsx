@@ -7,6 +7,7 @@ import { queryClient } from '../api/queryClient'
 import type { StoryData } from '../api/storyWiki'
 import type { Item, Task } from '../api/types'
 import { useNeeds } from '../hooks/useNeeds'
+import { useProgressContext } from '../hooks/useProgressContext'
 import { followOtherWindows } from '../lib/crossWindow'
 import { caliberLabel } from '../lib/ammo'
 import { formatRoubles } from '../lib/format'
@@ -142,7 +143,8 @@ function Body({ flip, expanded, setExpanded, glass, strip, grip, onState, raid, 
   }, [data])
 
   const tasks = useMemo(() => (data?.tasks ?? []).filter((t) => isFactionEligible(t, profile.faction)), [data, profile.faction])
-  const statuses = useMemo(() => computeTaskStatuses(tasks, profile), [tasks, profile])
+  const progress = useProgressContext()
+  const statuses = useMemo(() => computeTaskStatuses(tasks, profile, progress ?? undefined), [tasks, profile, progress])
   const itemList = useMemo(() => (items.data ? Object.values(items.data.items) : []), [items.data])
   const itemText = useMemo(() => new Map(itemList.map((it) => [it.id, `${it.name}\n${it.shortName}`.toLowerCase()])), [itemList])
   const bosses = useMemo(() => (data ? bossIndex(data) : []), [data])
@@ -330,12 +332,13 @@ function Body({ flip, expanded, setExpanded, glass, strip, grip, onState, raid, 
             items: items.data?.items,
             stations: hideout.data ?? [],
             statuses,
-            completed: profile.completedTaskIds,
+            completed: progress?.completed ?? profile.completedTaskIds,
+            progress,
             needs,
             collected: inventory.collected,
             ownedKeyIds: new Set(inventory.ownedKeyIds),
             stationLevels: inventory.stationLevels,
-            traderLevels: inventory.traderLevels,
+            traderLevels: progress?.traderLevel ?? inventory.traderLevels,
             mode,
             onMap,
             tickQuest,
@@ -348,7 +351,7 @@ function Body({ flip, expanded, setExpanded, glass, strip, grip, onState, raid, 
             traderName,
           }
         : null,
-    [data, items.data, hideout.data, statuses, profile.completedTaskIds, needs, inventory, mode, onMap, tickQuest, keyMaps, showKey, openMap, openPanel, prefs.toggleStar, starred, traderName],
+    [data, items.data, hideout.data, statuses, profile.completedTaskIds, progress, needs, inventory, mode, onMap, tickQuest, keyMaps, showKey, openMap, openPanel, prefs.toggleStar, starred, traderName],
   )
 
   const clear = () => {

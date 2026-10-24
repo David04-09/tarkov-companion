@@ -1,0 +1,180 @@
+{
+ "picture": "Sanitar Map.png",
+ "units": "pixels of the picture scaled to 2000 x 1302",
+ "affine": true,
+ "points": [
+  [
+   147,
+   270,
+   449,
+   -255,
+   "Path to Lighthouse"
+  ],
+  [
+   147,
+   293,
+   417,
+   -214,
+   "Transit lighthouse"
+  ],
+  [
+   210,
+   908,
+   376,
+   319,
+   "Tunnel"
+  ],
+  [
+   219,
+   937,
+   367,
+   333,
+   "Ruined road"
+  ],
+  [
+   936,
+   88,
+   -214,
+   -362,
+   "Climber's trail"
+  ],
+  [
+   1180,
+   47,
+   -391,
+   -386,
+   "Mountain bunker"
+  ],
+  [
+   1368,
+   47,
+   -543,
+   -379,
+   "Road to North V-Ex"
+  ],
+  [
+   1598,
+   198,
+   -729,
+   -255,
+   "Smuggler's path"
+  ],
+  [
+   1003,
+   330,
+   -257,
+   -150,
+   "Admin basement"
+  ],
+  [
+   1056,
+   390,
+   -297,
+   -101,
+   "East wing gym"
+  ],
+  [
+   1776,
+   530,
+   -859,
+   0,
+   "Road to customs"
+  ],
+  [
+   1985,
+   893,
+   -1025,
+   298,
+   "Railway bridge"
+  ],
+  [
+   1079,
+   1175,
+   -316,
+   526,
+   "Transit icebreaker"
+  ],
+  [
+   1118,
+   1233,
+   -336,
+   564,
+   "Pier boat"
+  ],
+  [
+   1268,
+   1217,
+   -458,
+   567,
+   "Lighthouse scav"
+  ]
+ ],
+ "areas": {
+  "cottages": [
+   [
+    441,
+    587
+   ],
+   [
+    583,
+    587
+   ],
+   [
+    583,
+    705
+   ],
+   [
+    441,
+    705
+   ]
+  ],
+  "pier": [
+   [
+    1046,
+    1143
+   ],
+   [
+    1078.5,
+    1110
+   ],
+   [
+    1175.5,
+    1190.6
+   ],
+   [
+    1141.5,
+    1229.4
+   ]
+  ]
+ },
+ "probe": {
+  "sanitar pier": [
+   1087.5,
+   1153.6
+  ],
+  "sanitar cottages": [
+   503,
+   656
+  ],
+  "goons weather": [
+   1298,
+   843
+  ],
+  "cult top": [
+   490,
+   168
+  ],
+  "cult west": [
+   898,
+   441
+  ],
+  "cult east": [
+   1108,
+   441
+  ],
+  "boss resort": [
+   1010,
+   437
+  ]
+ }
+}

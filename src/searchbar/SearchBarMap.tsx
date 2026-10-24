@@ -18,6 +18,7 @@ import type { MapOption } from '../maps/useMapOptions'
 import { formatRoubles } from '../lib/format'
 import { remainingFor } from '../lib/needs'
 import { computeTaskStatuses, isFactionEligible } from '../lib/taskStatus'
+import { useProgressContext } from '../hooks/useProgressContext'
 import type { PlayerPosition } from '../shared/desktop-api'
 import { taskColor, useMapOverlayStore } from '../store/mapOverlay'
 import { useProfile } from '../store/progress'
@@ -100,7 +101,8 @@ export function SearchBarMap({
     () => (data && option.id ? buildMapTasks(data, option.id, layer).filter((m) => isFactionEligible(m.task, profile.faction) && m.placements.length > 0) : []),
     [data, option.id, layer, profile.faction],
   )
-  const statuses = useMemo(() => computeTaskStatuses(mapTasks.map((m) => m.task), profile), [mapTasks, profile])
+  const progress = useProgressContext()
+  const statuses = useMemo(() => computeTaskStatuses(mapTasks.map((m) => m.task), profile, progress ?? undefined), [mapTasks, profile, progress])
   const shown = useMemo(() => {
     if (!layers.quests) return []
     const byId = new Map(mapTasks.map((m) => [m.task.id, m]))
@@ -388,8 +390,11 @@ export function SearchBarMap({
                 {spawnModel.goonsHere && <li className="px-2 py-1 text-[11px] text-amber-300">The Goons were last reported on this map.</li>}
                 {spawnModel.bosses.length === 0 && <li className="px-2 py-1.5 text-[11px] text-white/55">No bosses in the data for this map.</li>}
                 {spawnModel.bosses.map((b) => {
-                  const points = b.spawns.flatMap((s) => s.locations.flatMap((l) => l.positions))
-                  const places = [...new Set(b.spawns.flatMap((s) => s.locations.map((l) => l.name)).filter((n) => n && !/^[a-z]+_?\d*$/i.test(n)))]
+                  // Zoom to where players report it plus the listed points; spots in the order bossSpots ranks them.
+                  const shownSpots = b.spots.filter((s) => s.kind !== 'data')
+                  const points = [...b.areas.flatMap((a) => a.polygon.map(([x, z]) => ({ x, y: 0, z }))), ...shownSpots.flatMap((s) => (s.points.length ? s.points : [s.centre]))]
+                  const dataOnly = b.spots.filter((s) => s.kind === 'data').reduce((n, s) => n + s.points.length, 0)
+                  const places = shownSpots.map((s) => `${s.kind === 'reported' ? '◌ ' : ''}${s.name}${s.share > 0 ? ` ${Math.round(s.share * 100)}%` : ''}`)
                   return (
                     <li key={b.key}>
                       <button
@@ -399,13 +404,14 @@ export function SearchBarMap({
                           p.toggleLayer('bosses', true)
                           zoomTo(points, b.name)
                         }}
-                        title={points.length ? 'Show its spawn points' : 'No spawn spots in the data'}
+                        title={points.length ? 'Show where it spawns (◌ = players report it there, EFT Wiki map)' : 'No spawn spots in the data'}
                         className="flex w-full items-start gap-1.5 px-2 py-0.5 text-left hover:bg-white/5 hover:text-white disabled:cursor-default"
                       >
                         <span className="w-9 shrink-0 tabular-nums text-[11px] text-white/60">{Math.round(b.spawnChance * 100)}%</span>
                         <span className="min-w-0 flex-1">
                           <span className="block truncate">{b.name}</span>
-                          {places.length > 0 && <span className="block truncate text-[10px] text-white/45">{places.join(', ')}</span>}
+                          {places.length > 0 && <span className="block text-[10px] text-white/45">{places.join(' · ')}</span>}
+                          {dataOnly > 0 && <span className="block text-[10px] text-white/30">+{dataOnly} point{dataOnly === 1 ? '' : 's'} only in the game data</span>}
                         </span>
                       </button>
                     </li>

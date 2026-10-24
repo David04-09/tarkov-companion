@@ -187,6 +187,8 @@ export interface RawTask {
   gameMode?: string[]
   /** Prestige id when the task needs a prestige level. */
   requiredPrestige?: string
+  /** Reputation changes when the quest is handed in (and, in the data, none when it fails). */
+  finishRewards?: { traderStanding?: { trader: string; standing: number }[] }
 }
 
 export interface RawQuestItem {
@@ -224,7 +226,7 @@ export interface RawTrader {
   imageLink: string | null
   /** ISO timestamp of the next restock (observed 40 min .. 3 h ahead). */
   resetTime?: string | null
-  levels?: { level: number }[]
+  levels?: { level: number; requiredPlayerLevel?: number; requiredReputation?: number; requiredCommerce?: number }[]
 }
 
 export type RawTradersDoc = TranslatedBaseDoc<Record<string, RawTrader>>
@@ -493,6 +495,8 @@ export interface Trader {
   resetTime: number | null
   /** Number of loyalty levels (1 for the minor traders). */
   maxLevel: number
+  /** Loyalty levels and what each needs (player level, reputation). Money spent is 0 in the data. */
+  levels: { level: number; playerLevel: number; reputation: number }[]
 }
 
 export interface GameMap {
@@ -874,6 +878,10 @@ export interface Task {
   objectives: TaskObjective[]
   /** Keys the task needs, per map id. */
   neededKeys: { mapId: string; keyIds: string[] }[]
+  /** Trader gates: loyalty level or reputation, e.g. Prapor level >= 2. */
+  traderRequirements: { traderId: string; type: string; compare: string; value: number }[]
+  /** Reputation the hand-in gives (negative for some traders). */
+  standing: { traderId: string; standing: number }[]
 }
 
 /** Everything the Quests/Dashboard tabs need, loaded for one game mode. */

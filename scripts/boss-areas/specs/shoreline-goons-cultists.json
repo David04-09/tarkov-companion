@@ -1,0 +1,172 @@
+{
+ "picture": "ShorelineGoonsMap.png and ShorelineCultistMap.png (same frame)",
+ "units": "pixels of the picture scaled to 2000 x 1370",
+ "affine": true,
+ "points": [
+  [
+   1413,
+   752,
+   -859,
+   0,
+   "Road to Customs"
+  ],
+  [
+   168,
+   1055,
+   376,
+   319,
+   "Tunnel"
+  ],
+  [
+   175,
+   1080,
+   367,
+   333,
+   "Ruined Road"
+  ],
+  [
+   887,
+   1313,
+   -336,
+   564,
+   "Pier Boat"
+  ],
+  [
+   1008,
+   1302,
+   -458,
+   567,
+   "Lighthouse scav"
+  ],
+  [
+   745,
+   403,
+   -214,
+   -362,
+   "Climber's Trail"
+  ],
+  [
+   797,
+   597,
+   -257,
+   -150,
+   "Admin basement"
+  ],
+  [
+   840,
+   645,
+   -297,
+   -101,
+   "East wing gym"
+  ],
+  [
+   117,
+   548,
+   449,
+   -255,
+   "Path to Lighthouse"
+  ],
+  [
+   1272,
+   492,
+   -729,
+   -255,
+   "Smugglers path"
+  ],
+  [
+   1088,
+   370,
+   -543,
+   -379,
+   "Road to North V-Ex"
+  ],
+  [
+   1580,
+   1045,
+   -1025,
+   298,
+   "Railway bridge"
+  ],
+  [
+   938,
+   370,
+   -391,
+   -386,
+   "Old bunker"
+  ]
+ ],
+ "areas": {
+  "goonsBox": [
+   [
+    1008,
+    977
+   ],
+   [
+    1080,
+    977
+   ],
+   [
+    1080,
+    1032
+   ],
+   [
+    1008,
+    1032
+   ]
+  ],
+  "cultCircle": [
+   [
+    343,
+    465
+   ],
+   [
+    413,
+    465
+   ],
+   [
+    378,
+    430
+   ],
+   [
+    378,
+    500
+   ]
+  ],
+  "cultResort": [
+   [
+    676,
+    580
+   ],
+   [
+    922,
+    580
+   ],
+   [
+    922,
+    695
+   ],
+   [
+    676,
+    695
+   ]
+  ]
+ },
+ "probe": {
+  "goonsX": [
+   1033,
+   1004
+  ],
+  "blueX pier": [
+   865,
+   1250
+  ],
+  "blueX left": [
+   400,
+   855
+  ],
+  "blueX resort": [
+   803,
+   680
+  ]
+ }
+}

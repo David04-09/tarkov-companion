@@ -4,8 +4,10 @@ import { useQueryClient } from '@tanstack/react-query'
 import { Map as MapIcon, Radio, X } from 'lucide-react'
 import { gameDataKeys, itemKeys } from '../api/hooks'
 import { fetchItems } from '../api/queries'
-import type { GameData, ItemsById } from '../api/types'
+import type { GameData, ItemsById, PlayerLevel } from '../api/types'
 import { computeTaskStatuses, isFactionEligible } from '../lib/taskStatus'
+import { buildProgressContext } from '../lib/progression'
+import { useInventoryStore } from '../store/inventory'
 import { findMapConfig, resolveBaseLayer } from '../maps/mapConfig'
 import { buildMapTasks } from '../maps/overlay/mapTasks'
 import { prefs } from '../store/prefs'
@@ -79,7 +81,15 @@ export function RaidBriefingHost() {
       const briefing = buildBriefing({
         map,
         mapTasks: buildMapTasks(data, map.id, resolveBaseLayer(cfg, undefined)).filter((mt) => eligible.has(mt.task.id)),
-        statuses: computeTaskStatuses(tasks, profile),
+        statuses: computeTaskStatuses(
+          tasks,
+          profile,
+          buildProgressContext(tasks, data.traders, profile, {
+            startingReputation: prefs().startingReputation,
+            manualTraderLevels: useInventoryStore.getState().byMode[gameMode]?.traderLevels ?? {},
+            levelTable: queryClient.getQueryData<{ playerLevels?: PlayerLevel[] }>(itemKeys.mode(gameMode))?.playerLevels ?? null,
+          }),
+        ),
         startedIds: profile.activeTaskIds,
         tickedIds: new Set(overlay.checkedTaskIds),
         itemName: (id) => items?.[id]?.name,

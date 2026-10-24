@@ -13,6 +13,7 @@ import { nextHideoutLevels } from '../lib/hideoutPlan'
 import { estimateLevelFromQuests, type LevelEstimate } from '../lib/levelEstimate'
 import { CURRENCY_ITEM_IDS, remainingFor } from '../lib/needs'
 import { computeTaskStatuses, countStatuses, isFactionEligible } from '../lib/taskStatus'
+import { useProgressContext } from '../hooks/useProgressContext'
 import { findMapConfig, resolveBaseLayer } from '../maps/mapConfig'
 import { buildMapTasks, type MapTask } from '../maps/overlay/mapTasks'
 import { buildBringList } from '../maps/overlay/bringList'
@@ -99,6 +100,7 @@ function NextUpRow({ task }: { task: Task }) {
 export function DashboardPage() {
   const navigate = useNavigate()
   const profile = useProfile()
+  const progress = useProgressContext()
   const gameMode = useProgressStore((s) => s.gameMode)
   const query = useGameData()
   const itemsQuery = useItems()
@@ -116,7 +118,8 @@ export function DashboardPage() {
   const derived = useMemo(() => {
     if (!query.data) return null
     const eligible = query.data.tasks.filter((t) => isFactionEligible(t, profile.faction))
-    const statuses = computeTaskStatuses(eligible, profile)
+    const statuses = computeTaskStatuses(eligible, profile, progress ?? undefined)
+    const done = progress?.completed ?? profile.completedTaskIds
     const counts = countStatuses(statuses)
     const nextUp = eligible.filter((t) => statuses[t.id] === 'available').sort((a, b) => a.minPlayerLevel - b.minPlayerLevel || a.name.localeCompare(b.name)).slice(0, 10)
     const kappa = eligible.filter((t) => t.kappaRequired)
@@ -126,10 +129,10 @@ export function DashboardPage() {
       nextUp,
       total: eligible.length,
       statuses,
-      kappa: { done: kappa.filter((t) => profile.completedTaskIds.has(t.id)).length, total: kappa.length },
-      lightkeeper: { done: lk.filter((t) => profile.completedTaskIds.has(t.id)).length, total: lk.length },
+      kappa: { done: kappa.filter((t) => done.has(t.id)).length, total: kappa.length },
+      lightkeeper: { done: lk.filter((t) => done.has(t.id)).length, total: lk.length },
     }
-  }, [query.data, profile])
+  }, [query.data, profile, progress])
 
   const itemsSummary = useMemo(() => {
     let remaining = 0

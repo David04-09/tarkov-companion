@@ -7,6 +7,7 @@ import { ErrorPanel, LoadingPanel } from '../components/DataState'
 import { autoTickFor, useSyncHistory } from '../desktop/syncHistory'
 import { formatCountdown, formatWait } from '../lib/storyTime'
 import { computeTaskStatuses, isFactionEligible } from '../lib/taskStatus'
+import { useProgressContext } from '../hooks/useProgressContext'
 import { useProfile, useProgressStore } from '../store/progress'
 import { useNow } from './storyUtils'
 import { formatDateTime } from '../lib/format'
@@ -20,6 +21,7 @@ const clock = (ms: number) => formatDateTime(ms, { weekday: 'short', hour: '2-di
 export function QuestGatesView() {
   const gameData = useGameData()
   const profile = useProfile()
+  const progress = useProgressContext()
   const mode = useProgressStore((s) => s.gameMode)
   const entries = useSyncHistory((s) => s.entries)
   const now = useNow(30_000)
@@ -28,7 +30,7 @@ export function QuestGatesView() {
     const data = gameData.data
     if (!data) return null
     const tasks = data.tasks.filter((t) => isFactionEligible(t, profile.faction))
-    const statuses = computeTaskStatuses(tasks, profile)
+    const statuses = computeTaskStatuses(tasks, profile, progress ?? undefined)
     const delayed = tasks.filter((t) => t.availableDelay).sort((a, b) => a.trader.name.localeCompare(b.trader.name) || a.name.localeCompare(b.name))
     const groups = new Map<string, { task: Task; value: number; compare: string }[]>()
     for (const t of tasks) {
@@ -48,7 +50,7 @@ export function QuestGatesView() {
     const dialogue = tasks.filter((t) => t.dialogueTraderIds.length)
     const traderName = (id: string) => data.traders.find((tr) => tr.id === id)?.name ?? 'a trader'
     return { data, statuses, delayed, counters, dialogue, traderName }
-  }, [gameData.data, profile])
+  }, [gameData.data, profile, progress])
 
   if (gameData.isPending) return <LoadingPanel label="quests" />
   if (!model) return <ErrorPanel error={gameData.error} onRetry={() => void gameData.refetch()} />

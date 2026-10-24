@@ -2,6 +2,7 @@ import { createContext, useContext } from 'react'
 import type { GameData, HideoutStation, Item, ItemsById, Position, Task } from '../api/types'
 import type { GuideImage } from '../api/wikiGuide'
 import type { ItemNeed } from '../lib/needs'
+import type { ProgressContext } from '../lib/progression'
 import type { TaskStatus } from '../lib/taskStatus'
 import type { MapOption } from '../maps/useMapOptions'
 import type { GameMode } from '../api/client'
@@ -51,7 +52,10 @@ export interface DetailsCtx {
   items: ItemsById | undefined
   stations: HideoutStation[]
   statuses: Record<string, TaskStatus>
+  /** Done: ticked, or by deduction (a later quest is done or started). */
   completed: ReadonlySet<string>
+  /** Levels, reputation and deductions (null while the data loads). */
+  progress: ProgressContext | null
   needs: Map<string, ItemNeed>
   collected: Record<string, number>
   ownedKeyIds: ReadonlySet<string>

@@ -85,6 +85,8 @@ export interface Prefs {
   bringBoxOpen: boolean
   /** Desktop: a card with the raid's quests and what they need when the game loads a map. */
   raidBriefing: boolean
+  /** Starting reputation the game edition gives every main trader (0, or 0.2 for Prepare for Escape / Edge of Darkness / The Unheard). */
+  startingReputation: number
   questPanelOpen: boolean
   showMapCredits: boolean
   // Scanner
@@ -124,6 +126,7 @@ export const DEFAULT_PREFS: Prefs = {
   markerScale: 100,
   bringBoxOpen: true,
   raidBriefing: true,
+  startingReputation: 0,
   questPanelOpen: true,
   showMapCredits: true,
   scanTicking: 'sure',
@@ -165,6 +168,7 @@ const VALID: { [K in keyof Prefs]: (v: unknown) => boolean } = {
   markerScale: clampNum(60, 200),
   bringBoxOpen: isBool,
   raidBriefing: isBool,
+  startingReputation: (v) => v === 0 || v === 0.2,
   questPanelOpen: isBool,
   showMapCredits: isBool,
   scanTicking: oneOf('needed', 'sure', 'none'),

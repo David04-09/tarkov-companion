@@ -54,6 +54,10 @@ function adaptTrader(raw: RawTrader, t: Translator): Trader {
     currency: raw.currency ?? 'RUB',
     resetTime: Number.isFinite(reset) ? reset : null,
     maxLevel: Math.max(1, raw.levels?.length ?? 1),
+    levels: (raw.levels ?? [])
+      .filter((l) => l && typeof l.level === 'number')
+      .map((l) => ({ level: l.level, playerLevel: l.requiredPlayerLevel ?? 0, reputation: l.requiredReputation ?? 0 }))
+      .sort((a, b) => a.level - b.level),
   }
 }
 
@@ -257,6 +261,7 @@ function adaptTask(
     currency: 'RUB',
     resetTime: null,
     maxLevel: 1,
+    levels: [],
   }
   return {
     id: raw.id,
@@ -285,6 +290,10 @@ function adaptTask(
       .filter((k) => k && k.map && Array.isArray(k.keys))
       .map((k) => ({ mapId: k.map, keyIds: k.keys })),
     objectives: (raw.objectives ?? []).map((o) => adaptObjective(o, t, mapsById, questItems)),
+    traderRequirements: (raw.traderRequirements ?? [])
+      .filter((r) => r && r.trader && typeof r.value === 'number')
+      .map((r) => ({ traderId: r.trader, type: r.requirementType, compare: r.compareMethod ?? '>=', value: r.value })),
+    standing: (raw.finishRewards?.traderStanding ?? []).filter((s) => s && s.trader && typeof s.standing === 'number').map((s) => ({ traderId: s.trader, standing: s.standing })),
   }
 }
 

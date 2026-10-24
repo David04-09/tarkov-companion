@@ -1,0 +1,155 @@
+{
+ "picture": "LighthouseGoonsMap.png and Rogues Lighthouse Map.png (same frame)",
+ "units": "pixels of the picture scaled to 1152 x 2000",
+ "affine": true,
+ "points": [
+  [
+   435,
+   213,
+   115,
+   -989,
+   "Northern Checkpoint"
+  ],
+  [
+   447,
+   240,
+   111,
+   -963,
+   "Transit woods"
+  ],
+  [
+   553,
+   355,
+   6,
+   -869,
+   "Armored train"
+  ],
+  [
+   716,
+   418,
+   -153,
+   -794,
+   "Industrial zone gates"
+  ],
+  [
+   857,
+   440,
+   -293,
+   -781,
+   "Transit reserve"
+  ],
+  [
+   941,
+   645,
+   -377,
+   -643,
+   "Passage by the lake"
+  ],
+  [
+   365,
+   733,
+   181,
+   -486,
+   "Scav hideout grotto"
+  ],
+  [
+   933,
+   1090,
+   -338,
+   -166,
+   "Transit Shoreline"
+  ],
+  [
+   933,
+   1112,
+   -364,
+   -121,
+   "Path to Shoreline"
+  ],
+  [
+   737,
+   1253,
+   -189,
+   -64,
+   "Mountain pass"
+  ],
+  [
+   401,
+   1552,
+   133,
+   287,
+   "Hideout landing stage"
+  ],
+  [
+   612,
+   1595,
+   -68,
+   318,
+   "Side tunnel"
+  ],
+  [
+   833,
+   1693,
+   -296,
+   421,
+   "Southern Road"
+  ],
+  [
+   849,
+   1713,
+   -281,
+   421,
+   "South road landslide"
+  ]
+ ],
+ "areas": {
+  "wtp": [
+   [
+    485,
+    455
+   ],
+   [
+    780,
+    455
+   ],
+   [
+    780,
+    795
+   ],
+   [
+    485,
+    795
+   ]
+  ]
+ },
+ "probe": {
+  "goonsX wtp": [
+   650,
+   476
+  ],
+  "goonsX chalet": [
+   679,
+   1183
+  ],
+  "rogueX wtp": [
+   633,
+   628
+  ],
+  "rogueX island": [
+   162,
+   1800
+  ],
+  "zryachiy": [
+   127,
+   1775
+  ],
+  "zGuard1": [
+   258,
+   1740
+  ],
+  "zGuard2": [
+   207,
+   1828
+  ]
+ }
+}

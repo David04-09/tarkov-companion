@@ -47,6 +47,8 @@ export interface ProgressState {
   setTaskCompletedFor: (mode: GameMode, taskId: string, completed: boolean) => void
   markTaskStartedFor: (mode: GameMode, taskId: string) => void
   markTaskFailedFor: (mode: GameMode, taskId: string) => void
+  /** "I have this quest" (the game gave it to you) on or off, set by hand. */
+  setTaskActiveFor: (mode: GameMode, taskId: string, active: boolean) => void
   /** Adds many completed tasks at once (backfill); returns how many were new. */
   addCompletedFor: (mode: GameMode, taskIds: string[]) => number
   resetProgress: () => void
@@ -170,6 +172,14 @@ export const useProgressStore = create<ProgressState>()(
             active.add(taskId)
             failed.delete(taskId)
             return { ...p, activeTaskIds: active, failedTaskIds: failed }
+          }),
+        setTaskActiveFor: (mode, taskId, on) =>
+          updateProfileFor(mode, (p) => {
+            if (p.activeTaskIds.has(taskId) === on) return p
+            const active = new Set(p.activeTaskIds)
+            if (on) active.add(taskId)
+            else active.delete(taskId)
+            return { ...p, activeTaskIds: active }
           }),
         markTaskFailedFor: (mode, taskId) =>
           updateProfileFor(mode, (p) => {

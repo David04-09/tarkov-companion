@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { Check, ChevronRight, Copy, ExternalLink, GitBranch, Map as MapIcon, Minus, PanelRightOpen, Plus, Star } from 'lucide-react'
+import { Check, ChevronRight, Copy, ExternalLink, GitBranch, KeyRound, Lock, Map as MapIcon, Minus, PanelRightOpen, Plus, Star, Unlock } from 'lucide-react'
 import { usePriceHistory } from '../api/hooks'
 import type { Item, Task } from '../api/types'
 import { useKeyWiki } from '../api/wikiKey'
@@ -11,6 +11,8 @@ import { formatNumber, formatRoubles } from '../lib/format'
 import { keyVerdict } from '../lib/keyVerdict'
 import { remainingFor } from '../lib/needs'
 import { STATUS_LABEL } from '../lib/taskStatus'
+import { isRequirementMet, lockReasons } from '../lib/progression'
+import { requiredClosure } from '../quests/questGraph'
 import { useInventoryStore } from '../store/inventory'
 import { useMapOverlayStore } from '../store/mapOverlay'
 import { useProgressStore } from '../store/progress'
@@ -142,6 +144,8 @@ const ITEM_OBJECTIVES = new Set(['giveItem', 'plantItem', 'giveQuestItem', 'plan
 export function QuestDetails({ task }: { task: Task }) {
   const c = useDetails()
   const setDone = useProgressStore((s) => s.setTaskCompleted)
+  const setActive = useProgressStore((s) => s.setTaskActiveFor)
+  const addCompleted = useProgressStore((s) => s.addCompletedFor)
   const status = c.statuses[task.id] ?? 'locked'
   const done = c.completed.has(task.id)
   const keyIds = useMemo(() => [...new Set([...task.neededKeys.flatMap((k) => k.keyIds), ...task.objectives.flatMap((o) => o.requiredKeys.flat())])], [task])
@@ -152,6 +156,12 @@ export function QuestDetails({ task }: { task: Task }) {
   const mapIds = [...new Set([task.map?.id, ...task.objectives.flatMap((o) => o.maps.map((m) => m.id))].filter((id): id is string => Boolean(id)))]
   const mapName = (id: string) => c.data.maps.find((m) => m.id === id)?.name ?? 'Map'
   const delay = task.availableDelay
+  const ctx = c.progress
+  const inferred = Boolean(ctx?.inferred.has(task.id))
+  const active = Boolean(ctx?.active.has(task.id))
+  const reasons = ctx && status === 'locked' ? lockReasons(task, ctx, (id) => c.data.tasksById[id]?.name ?? 'an earlier quest', c.traderName) : []
+  const notDoneBefore = ctx ? [...requiredClosure([task.id], c.data.tasksById, ctx.completed)].filter((id) => id !== task.id) : []
+  const level = ctx?.level ?? 0
   // Spots double-clicked as done on a map (per objective).
   const doneSpots = useMapOverlayStore((s) => s.doneSpots[c.mode])
   const spotsDone = (objectiveId: string) => (doneSpots ?? []).filter((k) => k.startsWith(`${objectiveId}:`)).length
@@ -171,9 +181,19 @@ export function QuestDetails({ task }: { task: Task }) {
         {task.lightkeeperRequired ? ' · Lightkeeper' : ''}
       </div>
       <div className="mt-1.5 flex flex-wrap gap-1">
-        <ActionButton onClick={() => setDone(task.id, !done)} active={done} title={done ? 'Ticked as done in the app. Click to untick.' : 'Tick it as done in the app (same as on the Quests tab)'}>
-          <Check className="h-3 w-3" /> {done ? 'Done' : 'Mark done'}
+        <ActionButton onClick={() => setDone(task.id, !done || inferred)} active={done && !inferred} title={inferred ? 'Done by deduction (a later quest is done or started). Click to tick it.' : done ? 'Ticked as done in the app. Click to untick.' : 'Tick it as done in the app (same as on the Quests tab)'}>
+          <Check className="h-3 w-3" /> {inferred ? 'Done (deduced) · tick' : done ? 'Done' : 'Mark done'}
         </ActionButton>
+        {!done && (
+          <ActionButton onClick={() => setActive(c.mode, task.id, !active)} active={active} title="The game gave you this quest: it counts as open here, and everything before it as done">
+            <Unlock className="h-3 w-3" /> {active ? 'I have it ✓' : 'I have this quest'}
+          </ActionButton>
+        )}
+        {!done && notDoneBefore.length > 0 && (
+          <ActionButton onClick={() => addCompleted(c.mode, notDoneBefore)} title={notDoneBefore.map((id) => c.data.tasksById[id]?.name).filter(Boolean).join('\n')}>
+            <Check className="h-3 w-3" /> Mark the {notDoneBefore.length} before it done
+          </ActionButton>
+        )}
         <ActionButton onClick={() => c.open({ kind: 'questline', id: task.id })} title="Everything before and after this quest">
           <GitBranch className="h-3 w-3" /> Questline
         </ActionButton>
@@ -190,6 +210,14 @@ export function QuestDetails({ task }: { task: Task }) {
           </ActionButton>
         ))}
       </div>
+      {reasons.length > 0 && (
+        <div className="mt-1.5 rounded border border-amber-300/30 bg-amber-300/10 px-2 py-1 text-xs">
+          <div className="text-[10px] uppercase tracking-wide text-amber-200">Locked because</div>
+          {reasons.map((r, i) => (
+            <div key={i} className="text-white/80">• {r.text}</div>
+          ))}
+        </div>
+      )}
       <ul className="mt-1.5 space-y-0.5 text-white/85">
         {task.objectives.map((o) => (
           <li key={o.id} className={`flex gap-1.5 ${o.optional ? 'text-white/50' : ''}`}>
@@ -198,6 +226,15 @@ export function QuestDetails({ task }: { task: Task }) {
               {o.description}
               {o.optional ? ' (optional)' : ''}
               {spotsDone(o.id) > 0 && <span className="text-[10px] text-green-300"> · {spotsDone(o.id)} spot{spotsDone(o.id) === 1 ? '' : 's'} done on the map</span>}
+              {o.maps.length > 0 && <span className="text-[10px] text-white/40"> · {o.maps.map((m) => m.name).join(', ')}</span>}
+              {o.requiredKeys.map((g, i) => (
+                <span key={i} className="ml-1 inline-flex items-center gap-0.5 text-[10px] text-amber-200">
+                  <KeyRound className="h-2.5 w-2.5" />
+                  {g.map((id) => c.items?.[id]?.shortName ?? 'key').join(' or ')}
+                </span>
+              ))}
+              {o.wearingIds.length > 0 && <span className="text-[10px] text-white/55"> · wear {o.wearingIds[0].map((id) => c.items?.[id]?.shortName ?? 'item').join(' + ')}{o.wearingIds.length > 1 ? ` (or ${o.wearingIds.length - 1} other)` : ''}</span>}
+              {o.usingWeaponIds.length > 0 && <span className="text-[10px] text-white/55"> · use {o.usingWeaponIds.slice(0, 2).map((id) => c.items?.[id]?.shortName ?? 'weapon').join(', ')}{o.usingWeaponIds.length > 2 ? ` or ${o.usingWeaponIds.length - 2} more` : ''}</span>}
             </span>
           </li>
         ))}
@@ -236,19 +273,44 @@ export function QuestDetails({ task }: { task: Task }) {
           </ul>
         </Section>
       )}
-      {(before.length > 0 || task.otherRequirements.length > 0 || delay) && (
-        <Section title="Before this" count={before.length + task.otherRequirements.length} defaultOpen={status === 'locked'}>
+      {(before.length > 0 || task.otherRequirements.length > 0 || task.minPlayerLevel > 1 || delay) && (
+        <Section title="What it needs" count={before.length + task.traderRequirements.length + (task.minPlayerLevel > 1 ? 1 : 0)} defaultOpen={status === 'locked'}>
           <ul className="space-y-0.5">
-            {before.map((r) => (
-              <li key={r.task.id}>
-                <QuestLink task={r.task} note={r.status.includes('complete') ? undefined : `needs it ${r.status.join('/')}`} />
+            {task.minPlayerLevel > 1 && (
+              <li className="flex items-center gap-1.5 text-xs">
+                {level >= task.minPlayerLevel ? <Check className="h-3 w-3 text-green-400" /> : <Lock className="h-3 w-3 text-white/45" />}
+                Level {task.minPlayerLevel} <span className="text-white/45">(you: {level || '?'})</span>
               </li>
-            ))}
-            {task.otherRequirements.map((r) => (
-              <li key={r} className="text-xs text-white/60">
-                Also: {r}
-              </li>
-            ))}
+            )}
+            {before.map((r) => {
+              const met = ctx ? isRequirementMet(r.status, r.task.id, ctx) : c.completed.has(r.task.id)
+              return (
+                <li key={r.task.id} className="flex items-center gap-1.5">
+                  {met ? <Check className="h-3 w-3 shrink-0 text-green-400" /> : <Lock className="h-3 w-3 shrink-0 text-white/45" />}
+                  <QuestLink task={r.task} note={ctx?.inferred.has(r.task.id) ? 'done by deduction' : r.status.includes('complete') && r.status.length === 1 ? undefined : `needs it ${r.status.join(' or ')}`} />
+                </li>
+              )
+            })}
+            {task.traderRequirements.map((r, i) => {
+              const have = c.traderLevels[r.traderId] ?? 1
+              return r.type === 'level' ? (
+                <li key={`t${i}`} className="flex items-center gap-1.5 text-xs">
+                  {have >= r.value ? <Check className="h-3 w-3 text-green-400" /> : <Lock className="h-3 w-3 text-white/45" />}
+                  {c.traderName(r.traderId)} loyalty {r.value} <span className="text-white/45">(you: {have})</span>
+                </li>
+              ) : (
+                <li key={`t${i}`} className="text-xs text-white/60">
+                  ? {c.traderName(r.traderId)} reputation {r.compare} {r.value} <span className="text-white/40">(check in game)</span>
+                </li>
+              )
+            })}
+            {task.otherRequirements
+              .filter((r) => !/loyalty level|reputation/i.test(r))
+              .map((r) => (
+                <li key={r} className="text-xs text-white/60">
+                  ? {r} <span className="text-white/40">(not tracked; never locks it)</span>
+                </li>
+              ))}
             {delay && (
               <li className="text-xs text-white/60">
                 Offered {Math.round(delay.minS / 3600)}–{Math.round(delay.maxS / 3600)} h after the quests before it are done.

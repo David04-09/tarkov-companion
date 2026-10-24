@@ -1,4 +1,6 @@
 import type { GameData, MapBoss, MapDetails, Position } from '../../api/types'
+import { buildSpots, type BossSpot } from './bossSpots'
+import { reportedAreasFor, type ReportedArea } from './bossAreas'
 
 export type SpawnGroup = 'boss' | 'goons' | 'cultists' | 'raiders' | 'rogues'
 
@@ -14,6 +16,10 @@ export interface BossEntry {
   spawns: MapBoss[]
   escorts: { name: string; counts: number[] }[]
   conditions: string[]
+  /** Where players report this boss on this map (EFT Wiki pictures, see bossAreas.ts). */
+  areas: ReportedArea[]
+  /** Spawn spots from the game data checked against those areas, most likely first. */
+  spots: BossSpot[]
 }
 
 export interface SpawnModel {
@@ -42,7 +48,9 @@ function conditionsFor(b: MapBoss, group: SpawnGroup): string[] {
   const out: string[] = []
   if (group === 'cultists') out.push('Night raids only (not stated in the data; from game knowledge)')
   if (b.trigger) out.push(`Needs a switch/lever (${b.trigger})`)
-  if (b.spawnTime > 0) out.push(`Spawns ${Math.round(b.spawnTime / 60)} min after raid start${b.spawnTimeRandom ? ' (random)' : ''}`)
+  // 9999 s is the data's "not on a timer" (Icebreaker's scripted squads), not 167 minutes.
+  if (b.spawnTime >= 9999) out.push('Scripted spawn: not on a timer (the data gives 9999 s)')
+  else if (b.spawnTime > 0) out.push(`Spawns ${Math.round(b.spawnTime / 60)} min after raid start${b.spawnTimeRandom ? ' (random)' : ''}`)
   return out
 }
 
@@ -56,7 +64,7 @@ export function buildSpawnModel(data: GameData, mapId: string): SpawnModel {
     const group = groupOf(key)
     let e = byKey.get(key)
     if (!e) {
-      e = { key, name: b.name ?? (b.mobId && data.mobNames[b.mobId]) ?? 'Boss', group, portrait: (b.mobId && data.mobPortraits[b.mobId]) || null, spawnChance: 0, spawns: [], escorts: [], conditions: [] }
+      e = { key, name: b.name ?? (b.mobId && data.mobNames[b.mobId]) ?? 'Boss', group, portrait: (b.mobId && data.mobPortraits[b.mobId]) || null, spawnChance: 0, spawns: [], escorts: [], conditions: [], areas: [], spots: [] }
       byKey.set(key, e)
     }
     e.spawns.push(b)
@@ -67,9 +75,12 @@ export function buildSpawnModel(data: GameData, mapId: string): SpawnModel {
     }
     for (const c of conditionsFor(b, group)) if (!e.conditions.includes(c)) e.conditions.push(c)
   }
+  const mapKey = data.maps.find((m) => m.id === mapId)?.normalizedName ?? ''
   for (const e of byKey.values()) {
     // Independent listings: chance that at least one spawns.
     e.spawnChance = 1 - e.spawns.reduce((p, s) => p * (1 - Math.min(1, Math.max(0, s.spawnChance))), 1)
+    e.areas = reportedAreasFor(mapKey, e.key)
+    e.spots = buildSpots(e.spawns, e.areas, mapKey)
   }
   const bosses = [...byKey.values()].sort((a, b) => Number(a.group !== 'boss') - Number(b.group !== 'boss') || b.spawnChance - a.spawnChance || a.name.localeCompare(b.name))
 

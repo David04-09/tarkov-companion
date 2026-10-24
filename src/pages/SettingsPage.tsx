@@ -638,6 +638,8 @@ function DesktopAppSection() {
 }
 
 function ProgressSection() {
+  const startingReputation = usePrefs((p) => p.startingReputation)
+  const setPref = usePrefs((p) => p.set)
   const resetProgress = useProgressStore((s) => s.resetProgress)
   const gameMode = useProgressStore((s) => s.gameMode)
   const [autoBackup, setAutoBackup] = usePref('autoBackup')
@@ -675,7 +677,10 @@ function ProgressSection() {
   }
 
   return (
-    <Section id="progress" title="Progress & backups" icon={ShieldCheck} keywords="progress export import backup restore reset wipe archive save file">
+    <Section id="progress" title="Progress & backups" icon={ShieldCheck} keywords="progress export import backup restore reset wipe archive save file trader loyalty reputation edition standing level">
+      <Row label="Game edition (starting trader reputation)" hint="Trader loyalty levels are worked out from this, the reputation your finished quests gave, and your level. Prepare for Escape, Edge of Darkness and The Unheard start every main trader at +0.2; Standard and Left Behind at 0.">
+        <Segmented value={startingReputation === 0.2 ? 'bonus' : 'none'} onChange={(v) => setPref('startingReputation', v === 'bonus' ? 0.2 : 0)} label="Starting trader reputation" options={[{ value: 'none', label: 'Standard / Left Behind' }, { value: 'bonus', label: 'PfE / EoD / Unheard (+0.2)' }]} />
+      </Row>
       <Row label="Export or import progress" hint="One file with your quests, items, keys, hideout, drawings, story and raid log. Use it to move to another PC or keep a copy.">
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={handleExport} className="btn">

@@ -8,13 +8,17 @@ import { formatDuration } from '../lib/economy'
 import { formatRoubles } from '../lib/format'
 import { isFactionEligible } from '../lib/taskStatus'
 import { buildSpawnModel } from '../maps/overlay/spawns'
+import { MAP_NOTES, pictureThumb, wikiPageUrl } from '../maps/overlay/bossAreas'
+import { spotSource } from '../maps/overlay/bossSpots'
+import type { GuideImage } from '../api/wikiGuide'
 import { requiredClosure, topoOrder } from '../quests/questGraph'
 import { useInventoryStore } from '../store/inventory'
 import { useProfile } from '../store/progress'
 import { useStoryStore } from '../store/story'
-import { ActionButton, ItemLink, QuestLink, Section, StarButton, Stepper } from './details'
+import { ActionButton, ItemLink, Pictures, QuestLink, Section, StarButton, Stepper, WikiCredit } from './details'
 import { useDetails } from './detailsContext'
 import { bossIndex, clock, questline } from './overlayLogic'
+import { nextLoyalty } from '../lib/progression'
 import { useNow } from './shell'
 import { buildUnlocks } from '../quests/questGraph'
 
@@ -69,6 +73,9 @@ export function TraderView({ id }: { id: string }) {
   const locked = by('locked')
   const done = by('completed')
   const level = c.traderLevels[id] ?? 1
+  const calc = c.progress?.calculatedTraderLevel[id] ?? 1
+  const rep = c.progress?.reputation[id] ?? 0
+  const next = c.progress ? nextLoyalty(trader, level, c.progress.level, rep) : null
   return (
     <>
       <div className="flex items-center gap-2">
@@ -80,9 +87,17 @@ export function TraderView({ id }: { id: string }) {
         <StarButton r={{ kind: 'trader', id, label: trader.name }} />
       </div>
       {trader.maxLevel > 1 && (
-        <div className="mt-1.5 flex items-center gap-2 text-xs">
-          <span className="text-white/55">Your loyalty level</span>
-          <Stepper value={level} min={1} max={trader.maxLevel} label="Loyalty level" onChange={(n) => setLevel(c.mode, id, n)} />
+        <div className="mt-1.5 text-xs">
+          <div className="flex items-center gap-2">
+            <span className="text-white/55">Loyalty level</span>
+            <Stepper value={level} min={1} max={trader.maxLevel} label="Loyalty level" onChange={(n) => setLevel(c.mode, id, n <= calc ? 0 : n)} />
+            <span className="text-white/45">{level > calc ? 'set by you' : 'from your quests'}</span>
+          </div>
+          <p className="mt-0.5 text-[11px] text-white/55">
+            Reputation {rep.toFixed(2)} from finished quests{c.progress ? `, level ${c.progress.level}` : ''} → LL{calc}.
+            {next ? ` LL${next.level} needs level ${next.playerLevel} and reputation ${next.reputation}${next.needLevel || next.needReputation ? ` (${[next.needLevel ? `${next.needLevel} more levels` : '', next.needReputation ? `${next.needReputation.toFixed(2)} more reputation` : ''].filter(Boolean).join(', ')})` : ''}.` : ''}
+            {' '}Daily quests are not counted: raise it with + if yours is higher.
+          </p>
         </div>
       )}
       <div className="mt-1.5 text-xs text-white/70">
@@ -143,10 +158,29 @@ export function TradersView() {
 export function BossView({ id }: { id: string }) {
   const c = useDetails()
   const boss = useMemo(() => bossIndex(c.data).find((b) => b.key === id), [c.data, id])
-  const detail = useMemo(() => (boss?.maps[0] ? buildSpawnModel(c.data, boss.maps[0].mapId).bosses.find((b) => b.key === id) : undefined), [c.data, boss, id])
+  // One spawn model per map the boss is on: its spots checked against where players report it.
+  const perMap = useMemo(
+    () => (boss?.maps ?? []).map((m) => ({ ...m, entry: buildSpawnModel(c.data, m.mapId).bosses.find((b) => b.key === id) })),
+    [c.data, boss, id],
+  )
+  // Guards and conditions from the most likely map that has spots (Knight: Customs, not Icebreaker's scripted squad).
+  const detail = (perMap.find((m) => m.entry?.spots.length) ?? perMap[0])?.entry
+  const detailMap = (perMap.find((m) => m.entry?.spots.length) ?? perMap[0])?.mapId
+  const pictures = useMemo(() => {
+    const seen = new Set<string>()
+    const out: GuideImage[] = []
+    for (const m of perMap)
+      for (const a of m.entry?.areas ?? []) {
+        if (seen.has(a.picture)) continue
+        seen.add(a.picture)
+        // 1600 px: the originals are up to 7000 px (≈190 MB decoded in the search bar).
+        out.push({ full: pictureThumb(a, 1600), thumb: pictureThumb(a), caption: `${a.pictureFile} (EFT Wiki, ${a.pictureDate.slice(0, 7)})`, section: 'Boss' })
+      }
+    return out
+  }, [perMap])
   if (!boss) return <Muted>Not in the data any more.</Muted>
   const mapName = (mapId: string) => c.data.maps.find((m) => m.id === mapId)?.name ?? 'Map'
-  const pointsOn = (mapId: string) => (c.data.mapDetails[mapId]?.bosses ?? []).filter((b) => (b.normalizedName || b.mobId) === id).flatMap((b) => b.locations.flatMap((l) => l.positions))
+  const pages = [...new Set(perMap.flatMap((m) => m.entry?.areas.map((a) => a.page) ?? []))]
   return (
     <>
       <div className="flex items-center gap-2">
@@ -155,29 +189,55 @@ export function BossView({ id }: { id: string }) {
         <span className="flex-1" />
         <StarButton r={{ kind: 'boss', id, label: boss.name }} />
       </div>
-      <ul className="mt-1.5 space-y-0.5">
-        {boss.maps.map((m) => {
-          const pts = pointsOn(m.mapId)
+      <ul className="mt-1.5 space-y-1">
+        {perMap.map((m) => {
+          const spots = m.entry?.spots ?? []
+          const shown = spots.filter((s) => s.kind !== 'data')
+          const dataOnly = spots.filter((s) => s.kind === 'data').reduce((n, s) => n + s.points.length, 0)
+          const pts = [...(m.entry?.areas.flatMap((a) => a.polygon.map(([x, z]) => ({ x, y: 0, z }))) ?? []), ...shown.flatMap((s) => (s.points.length ? s.points : [s.centre]))]
           return (
-            <li key={m.mapId} className="flex items-center gap-2 text-xs">
-              <span className="w-10 shrink-0 tabular-nums text-white/70">{Math.round(m.chance * 100)}%</span>
-              <span className="min-w-0 flex-1 truncate">{mapName(m.mapId)}</span>
-              {pts.length > 0 ? (
-                <ActionButton onClick={() => c.openMap(m.mapId, { layers: ['bosses'], spot: { points: pts, label: boss.name }, title: `${boss.name} on ${mapName(m.mapId)}` })}>
-                  <MapIcon className="h-3 w-3" /> Spawns
-                </ActionButton>
-              ) : (
-                <span className="text-[10px] text-white/40">no spots in the data</span>
+            <li key={m.mapId} className="text-xs">
+              <div className="flex items-center gap-2">
+                <span className="w-10 shrink-0 tabular-nums text-white/70">{Math.round(m.chance * 100)}%</span>
+                <span className="min-w-0 flex-1 truncate">{mapName(m.mapId)}</span>
+                {pts.length > 0 ? (
+                  <ActionButton onClick={() => c.openMap(m.mapId, { layers: ['bosses'], spot: { points: pts, label: boss.name }, title: `${boss.name} on ${mapName(m.mapId)}` })}>
+                    <MapIcon className="h-3 w-3" /> Spawns
+                  </ActionButton>
+                ) : (
+                  <span className="text-[10px] text-white/40">no spots in the data</span>
+                )}
+              </div>
+              {shown.length > 0 && (
+                <ul className="ml-12 mt-0.5 space-y-px text-[11px] text-white/65">
+                  {shown.map((s) => (
+                    <li key={s.key} title={m.entry ? spotSource(s, boss.name) : undefined}>
+                      <span className={s.kind === 'reported' ? 'text-white/85' : ''}>{s.kind === 'reported' ? '◌ ' : ''}{s.name}</span>
+                      {s.share > 0 ? <span className="text-white/45"> · {Math.round(s.share * 100)}%</span> : <span className="text-white/35"> · players report it; no data points</span>}
+                    </li>
+                  ))}
+                </ul>
               )}
+              {dataOnly > 0 && <p className="ml-12 text-[10px] text-white/35">+{dataOnly} point{dataOnly === 1 ? '' : 's'} only in the game data, away from where players report {boss.name}</p>}
             </li>
           )
         })}
       </ul>
-      {detail && detail.escorts.length > 0 && <p className="mt-1.5 text-xs text-white/70">Guards: {detail.escorts.map((x) => `${x.name} ×${x.counts.join('/') || '?'}`).join(', ')}</p>}
+      {MAP_NOTES[id] && <p className="mt-1 text-xs text-amber-300/90">{MAP_NOTES[id]}</p>}
+      {pictures.length > 0 && (
+        <Section title="Where players report it" count={pictures.length}>
+          <Pictures images={pictures} title={`${boss.name}: EFT Wiki maps`} />
+          <p className="mt-1 text-[11px] text-white/50">◌ spots are these marked areas, fitted to the map with the extracts they show (±7–18 m).</p>
+          {pages.map((pg) => (
+            <WikiCredit key={pg} url={wikiPageUrl(pg)} />
+          ))}
+        </Section>
+      )}
+      {detail && detail.escorts.length > 0 && <p className="mt-1.5 text-xs text-white/70">Guards{perMap.length > 1 && detailMap ? ` on ${mapName(detailMap)}` : ''}: {detail.escorts.map((x) => `${x.name} ×${x.counts.join('/') || '?'}`).join(', ')}</p>}
       {detail?.conditions.map((t) => (
         <p key={t} className="text-xs text-white/55">{t}</p>
       ))}
-      <Muted>Chance and spots are tarkov.dev's game data.</Muted>
+      <Muted>Chances and spawn points are tarkov.dev's game data; ◌ areas are from the EFT Wiki's maps. % = its share of that map's spawn chance (game data), given to the area that zone stands for.</Muted>
     </>
   )
 }

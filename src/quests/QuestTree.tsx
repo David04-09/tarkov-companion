@@ -5,6 +5,7 @@ import type { GameData, Task } from '../api/types'
 import { KappaBadge, LightkeeperBadge, StatusPill } from '../components/Badges'
 import { ErrorPanel, LoadingPanel, RefreshErrorBanner } from '../components/DataState'
 import { computeTaskStatuses, isFactionEligible, type TaskStatus } from '../lib/taskStatus'
+import { useProgressContext } from '../hooks/useProgressContext'
 import { useProfile, useProgressStore, type Profile } from '../store/progress'
 import { allPrereqIds, buildUnlocks, layeredLayout, requiredClosure, topoOrder } from './questGraph'
 
@@ -45,7 +46,8 @@ export function QuestTreeView() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
   const data = query.data
-  const statuses = useMemo(() => (data ? computeTaskStatuses(data.tasks, profile) : {}), [data, profile])
+  const progress = useProgressContext()
+  const statuses = useMemo(() => (data ? computeTaskStatuses(data.tasks, profile, progress ?? undefined) : {}), [data, profile, progress])
 
   const openInTree = (task: Task) => {
     setTraderId(task.trader.id)

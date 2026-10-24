@@ -53,7 +53,12 @@ export const useInventoryStore = create<InventoryState>()(
         setStationLevel: (mode, stationId, level) =>
           update(mode, (inv) => ({ ...inv, stationLevels: { ...inv.stationLevels, [stationId]: Math.max(0, level) } })),
         setTraderLevel: (mode, traderId, level) =>
-          update(mode, (inv) => ({ ...inv, traderLevels: { ...inv.traderLevels, [traderId]: Math.max(1, Math.min(4, level)) } })),
+          update(mode, (inv) => {
+            const traderLevels = { ...inv.traderLevels }
+            if (level <= 0) delete traderLevels[traderId]
+            else traderLevels[traderId] = Math.max(1, Math.min(4, level))
+            return { ...inv, traderLevels }
+          }),
         toggleFavoriteCraft: (craftId) =>
           set((s) => ({
             favoriteCraftIds: s.favoriteCraftIds.includes(craftId)
