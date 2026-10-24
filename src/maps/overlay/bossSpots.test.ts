@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { MapBoss } from '../../api/types'
 import { distanceToArea, insidePolygon, reportedAreasFor } from './bossAreas'
-import { buildSpots } from './bossSpots'
+import { buildSpots, spotSource } from './bossSpots'
+import { BOSS_INFO, bossNote } from './bossInfo'
 
 const pos = (x: number, z: number) => ({ x, y: 0, z })
 const listing = (spawnChance: number, locations: { name: string; chance: number; positions: [number, number][] }[]): MapBoss => ({
@@ -29,7 +30,8 @@ describe('reported areas', () => {
     expect(reportedAreasFor('customs', 'reshala').flatMap((a) => a.zones)).toEqual(['Stronghold', 'New Gas Station', 'Dorms'])
     expect(reportedAreasFor('shoreline', 'sanitar').some((a) => a.zones.includes('Pier'))).toBe(true)
     expect(reportedAreasFor('lighthouse', 'zryachiy')[0].zones).toEqual(['Island'])
-    expect(reportedAreasFor('streets-of-tarkov', 'kaban')).toEqual([])
+    expect(reportedAreasFor('streets-of-tarkov', 'kaban')).toHaveLength(1)
+    expect(reportedAreasFor('reserve', 'raider')).toEqual([])
   })
 })
 
@@ -115,5 +117,47 @@ describe('buildSpots', () => {
     expect(spots[0].name).toBe('Car Dealership')
     expect(spots[0].points).toHaveLength(2)
     expect(spots[0].share).toBeCloseTo(1)
+  })
+})
+
+describe('more boss areas and notes', () => {
+  it('puts every Kaban and Kollontay point inside its Streets area', () => {
+    const kaban = buildSpots(
+      [listing(0.75, [{ name: 'Car Dealership', chance: 1, positions: [[86, 349], [78, 286], [101, 313], [72, 266], [96, 306]] }])],
+      reportedAreasFor('streets-of-tarkov', 'kaban'),
+      'streets-of-tarkov',
+    )
+    expect(kaban.filter((s) => s.kind === 'data')).toEqual([])
+    expect(kaban[0].share).toBeCloseTo(1)
+    const kollontay = buildSpots(
+      [listing(0.75, [
+        { name: 'Klimov Shopping Mall', chance: 0.5, positions: [[-156, -58], [-159, -28], [-147, -66]] },
+        { name: 'Ministry of the Interior Academy', chance: 0.5, positions: [[-254, 150], [-254, 125], [-258, 141]] },
+      ])],
+      reportedAreasFor('streets-of-tarkov', 'kollontay'),
+      'streets-of-tarkov',
+    )
+    expect(kollontay.map((s) => [s.kind, s.points.length, Math.round(s.share * 100)])).toEqual([
+      ['reported', 3, 50],
+      ['reported', 3, 50],
+    ])
+  })
+
+  it('shows player reports as their own spot with no chance from the data', () => {
+    const areas = reportedAreasFor('customs', 'knight')
+    expect(areas.map((a) => a.source)).toEqual(['wiki', 'player'])
+    const spots = buildSpots([listing(0.2, [{ name: 'Stronghold', chance: 1, positions: [[125, -146], [103, -115]] }])], areas, 'customs')
+    const reported = spots.find((s) => s.area?.source === 'player')!
+    expect(reported.noPoints).toBe(true)
+    expect(reported.share).toBe(0)
+    expect(spotSource(reported, 'The Goons')).toMatch(/fought The Goons here/)
+  })
+
+  it('has a map note where the wiki and the data disagree', () => {
+    expect(bossNote('glukhar', 'lighthouse')).toMatch(/still lists Reserve/)
+    expect(bossNote('glukhar', 'terminal')).toMatch(/one of five bosses/)
+    expect(bossNote('tagilla', 'interchange')).toMatch(/parking garage/)
+    expect(bossNote('reshala', 'customs')).toBeUndefined()
+    for (const key of ['knight', 'reshala', 'killa', 'shturman', 'sanitar', 'glukhar', 'tagilla', 'kaban', 'kollontay', 'zryachiy', 'partisan', 'rogue', 'raider', 'cultist-priest']) expect(BOSS_INFO[key]?.behaviour.length).toBeGreaterThan(0)
   })
 })

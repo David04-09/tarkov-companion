@@ -1,0 +1,24 @@
+{
+ "picture": "KabanSpawnsStreets.png (Jindouz v4.1, 2023-08)",
+ "units": "pixels of the picture scaled to 2000 x 1395",
+ "affine": true,
+ "points": [
+  [748, 832, 216, 273, "Collapsed crane"],
+  [588, 1068, 313, 406, "Crash site"],
+  [1505, 968, -245, 345, "Damaged house"],
+  [934, 111, 105, -161, "Cardinal parking"],
+  [1525, 800, -249, 244, "Entrance to catacombs"],
+  [1287, 488, -114, 65, "Pinewood basement"],
+  [1381, 383, -164, -6, "Klimov mall exfil"],
+  [1505, 463, -263, 43, "Klimov street"],
+  [675, 475, 260, 49, "Near Kamchatskaya arch"],
+  [1532, 740, -267, 219, "Sewer river"],
+  [1100, 1160, -2, 461, "Primorsky taxi"],
+  [635, 968, 276, 345, "Sewer manhole"],
+  [1360, 1228, -151, 500, "Courtyard"],
+  [1310, 1098, -124, 424, "Ventilation shaft"],
+  [722, 205, 213, -105, "Expo checkpoint"]
+ ],
+ "areas": { "lexos": [[918, 815], [1048, 815], [1048, 985], [918, 1015]] },
+ "probe": { "lexos label": [1037, 880], "kaban X 1": [943, 883], "kaban X 2": [1008, 872], "pinewood X 1": [1146, 568], "pinewood X 2": [1209, 557] }
+}

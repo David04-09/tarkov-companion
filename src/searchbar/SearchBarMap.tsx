@@ -398,7 +398,7 @@ export function SearchBarMap({
                   const dataOnly = b.spots.filter((s) => s.kind === 'data').reduce((n, s) => n + s.points.length, 0)
                   const places = shownSpots.map((s) => `${s.kind === 'reported' ? '◌ ' : ''}${s.name}${s.share > 0 ? ` ${Math.round(s.share * 100)}%` : ''}`)
                   return (
-                    <li key={b.key}>
+                    <li key={b.key} className="flex items-start">
                       <button
                         type="button"
                         disabled={!points.length}
@@ -407,14 +407,18 @@ export function SearchBarMap({
                           zoomTo(points, b.name, fit)
                         }}
                         title={points.length ? 'Show where it spawns (◌ = players report it there, EFT Wiki map)' : 'No spawn spots in the data'}
-                        className="flex w-full items-start gap-1.5 px-2 py-0.5 text-left hover:bg-white/5 hover:text-white disabled:cursor-default"
+                        className="flex min-w-0 flex-1 items-start gap-1.5 px-2 py-0.5 text-left hover:bg-white/5 hover:text-white disabled:cursor-default"
                       >
                         <span className="w-9 shrink-0 tabular-nums text-[11px] text-white/60">{Math.round(b.spawnChance * 100)}%</span>
                         <span className="min-w-0 flex-1">
                           <span className="block truncate">{b.name}</span>
                           {places.length > 0 && <span className="block text-[10px] text-white/45">{places.join(' · ')}</span>}
                           {dataOnly > 0 && <span className="block text-[10px] text-white/30">+{dataOnly} point{dataOnly === 1 ? '' : 's'} only in the game data</span>}
+                          {b.note && <span className="block text-[10px] text-amber-300/80">{b.note}</span>}
                         </span>
+                      </button>
+                      <button type="button" onClick={() => ctx?.open({ kind: 'boss', id: b.key })} aria-label={`How ${b.name} behaves`} title="How it behaves, every map, the wiki's maps (beside the map)" className="mr-1 mt-1 shrink-0 text-white/45 hover:text-white">
+                        <Info className="h-3.5 w-3.5" />
                       </button>
                     </li>
                   )

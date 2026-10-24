@@ -2,6 +2,7 @@ import type { GameData, MapBoss, MapDetails, Position } from '../../api/types'
 import { buildSpots, type BossSpot } from './bossSpots'
 import { reportedAreasFor, type ReportedArea } from './bossAreas'
 import { bossName } from './bossNames'
+import { bossNote } from './bossInfo'
 
 export type SpawnGroup = 'boss' | 'goons' | 'cultists' | 'raiders' | 'rogues'
 
@@ -21,6 +22,8 @@ export interface BossEntry {
   areas: ReportedArea[]
   /** Spawn spots from the game data checked against those areas, most likely first. */
   spots: BossSpot[]
+  /** Where the wiki and the data disagree on this map, or a place no picture marks (bossInfo.ts). */
+  note?: string
 }
 
 export interface SpawnModel {
@@ -82,6 +85,7 @@ export function buildSpawnModel(data: GameData, mapId: string): SpawnModel {
     e.spawnChance = 1 - e.spawns.reduce((p, s) => p * (1 - Math.min(1, Math.max(0, s.spawnChance))), 1)
     e.areas = reportedAreasFor(mapKey, e.key)
     e.spots = buildSpots(e.spawns, e.areas, mapKey)
+    e.note = bossNote(e.key, mapKey)
   }
   const bosses = [...byKey.values()].sort((a, b) => Number(a.group !== 'boss') - Number(b.group !== 'boss') || b.spawnChance - a.spawnChance || a.name.localeCompare(b.name))
 

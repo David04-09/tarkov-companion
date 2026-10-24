@@ -14,6 +14,8 @@ export interface ChangelogEntry {
 /** Committed, waiting for the next update. */
 export const UNRELEASED: string[] = [
   "Dashboard: \"Lightkeeper chain\" showed 0 / 0 because the game data no longer marks any quest as needed for Lightkeeper. It now counts his own quests plus every quest that has to be done before them (the same path the Quests tab shows), and quests done by deduction count there too.",
+  "Bosses: a short \"How it behaves\" for every boss (the Goons, Reshala, Killa, Shturman, Sanitar, Glukhar, Tagilla, Kaban, Kollontay, Zryachiy, Partisan, Rogues, Raiders, Cultists and more): who rushes, who hangs back, where they hide, what to watch for. It is in the map pop-ups, the Maps tab's spawn list, and the search bar's boss cards (the i next to each boss in the map's Bosses tab opens it).",
+  "Bosses: more places. The Goons on Customs also get the area south of the industrial plant by Warehouse 4, where players have fought them; Sanitar gets the fenced construction site next to the cottages he roams to; Kaban (LexOs) and Kollontay (Klimov mall and the police academy) are now drawn from the wiki's Streets maps. Notes say where the wiki and the game data disagree (Tagilla on Interchange, Glukhar) and describe Terminal's boss spot, which no map marks with positions.",
 ]
 
 export const RELEASES: ChangelogEntry[] = [

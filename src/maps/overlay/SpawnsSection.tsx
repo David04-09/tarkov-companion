@@ -2,7 +2,7 @@ import { Skull } from 'lucide-react'
 import { formatTimeAgo } from '../../lib/format'
 import { useMapOverlayStore } from '../../store/mapOverlay'
 import { type BossEntry, type SpawnModel, spawnKey, toggleKeyFor } from './spawns'
-import { MAP_NOTES } from './bossAreas'
+import { BOSS_INFO } from './bossInfo'
 
 const pct = (p: number) => `${Math.round(p * 100)}%`
 
@@ -18,7 +18,8 @@ function Portrait({ e }: { e: BossEntry }) {
 function SpotLines({ e, indent = 'ml-11' }: { e: BossEntry; indent?: string }) {
   const shown = e.spots.filter((s) => s.kind !== 'data')
   const dataOnly = e.spots.filter((s) => s.kind === 'data').reduce((n, s) => n + s.points.length, 0)
-  if (!shown.length && !dataOnly && !MAP_NOTES[e.key]) return <p className={`${indent} text-[11px] text-ink-dim`}>Roams: no fixed spawn spot in the data.</p>
+  const info = BOSS_INFO[e.key]
+  if (!shown.length && !dataOnly && !e.note && !info) return <p className={`${indent} text-[11px] text-ink-dim`}>Roams: no fixed spawn spot in the data.</p>
   return (
     <div className={`${indent} text-[11px] text-ink-dim`}>
       {shown.length > 0 && (
@@ -34,7 +35,18 @@ function SpotLines({ e, indent = 'ml-11' }: { e: BossEntry; indent?: string }) {
         </p>
       )}
       {dataOnly > 0 && <p>{dataOnly} more point{dataOnly === 1 ? '' : 's'} only in the game data (faded on the map).</p>}
-      {MAP_NOTES[e.key] && <p className="text-amber-300/80">{MAP_NOTES[e.key]}</p>}
+      {e.note && <p className="text-amber-300/80">{e.note}</p>}
+      {info && (
+        <details>
+          <summary className="cursor-pointer text-accent">How {info.members ? 'they behave' : 'it behaves'}</summary>
+          {info.members && <p>{info.members}.</p>}
+          <ul className="list-disc space-y-0.5 pl-4">
+            {info.behaviour.map((b) => (
+              <li key={b}>{b}</li>
+            ))}
+          </ul>
+        </details>
+      )}
     </div>
   )
 }

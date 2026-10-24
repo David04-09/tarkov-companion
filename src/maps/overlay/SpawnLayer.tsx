@@ -3,7 +3,8 @@ import L from 'leaflet'
 import { CircleMarker, Marker, Polygon, Popup, Tooltip, useMap, useMapEvents } from 'react-leaflet'
 import type { Position } from '../../api/types'
 import { type BossEntry, type SpawnModel, spawnKey, toggleKeyFor } from './spawns'
-import { MAP_NOTES, wikiPageUrl } from './bossAreas'
+import { wikiPageUrl } from './bossAreas'
+import { BOSS_INFO } from './bossInfo'
 import { spotSource, type BossSpot } from './bossSpots'
 
 /** Red/orange family, deliberately away from the quest palette's blues/greens. */
@@ -57,6 +58,8 @@ function openLink(url: string) {
 }
 
 function BossPopup({ e, spot }: { e: BossEntry; spot: BossSpot }) {
+  const info = BOSS_INFO[e.key]
+  const page = info?.page ?? spot.area?.page
   return (
     <div className="min-w-[220px] max-w-[300px] text-xs">
       <div className="flex items-center gap-2">
@@ -75,10 +78,20 @@ function BossPopup({ e, spot }: { e: BossEntry; spot: BossSpot }) {
       {e.conditions.map((c) => (
         <div key={c} className="mt-1 text-ink-dim">{c}</div>
       ))}
-      {MAP_NOTES[e.key] && <div className="mt-1 text-amber-300">{MAP_NOTES[e.key]}</div>}
-      {spot.area && (
-        <button type="button" onClick={() => openLink(wikiPageUrl(spot.area!.page))} className="mt-1 text-[11px] text-accent underline">
-          {spot.area.page} on the EFT Wiki
+      {e.note && <div className="mt-1 text-amber-300">{e.note}</div>}
+      {info && (
+        <div className="mt-1.5 border-t border-line pt-1">
+          <div className="text-[10px] uppercase tracking-wide text-ink-dim">How {info.members ? 'they behave' : 'it behaves'}{info.members ? ` (${info.members})` : ''}</div>
+          <ul className="mt-0.5 list-disc space-y-0.5 pl-4 text-[11px] text-ink-muted">
+            {info.behaviour.map((b) => (
+              <li key={b}>{b}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {page && (
+        <button type="button" onClick={() => openLink(wikiPageUrl(page))} className="mt-1 text-[11px] text-accent underline">
+          {page} on the EFT Wiki (CC BY-SA)
         </button>
       )}
     </div>

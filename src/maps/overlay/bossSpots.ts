@@ -209,7 +209,11 @@ export function spotSource(s: BossSpot, bossName: string): string {
   const n = (k: number) => `${k} spawn point${k === 1 ? '' : 's'}`
   if (s.kind === 'listed') return `Game data: zone ${s.zones.join(', ')}, ${n(s.points.length)}.`
   if (s.kind === 'data') return `Only the game data lists this (${n(s.points.length)} in zone ${s.zones.join(', ')}). Players report ${bossName} elsewhere on this map, so treat it as unconfirmed.`
-  const wiki = s.area ? `Players report ${bossName} here (EFT Wiki map, ${s.area.pictureDate.slice(0, 7)}).` : ''
+  const wiki = !s.area
+    ? ''
+    : s.area.source === 'player'
+      ? `Players have fought ${bossName} here (reported ${s.area.pictureDate.slice(0, 7)}); no wiki map marks it.`
+      : `Players report ${bossName} here (EFT Wiki map, ${s.area.pictureDate.slice(0, 7)}).`
   const zone = s.zones.length ? ` The game data's zone ${s.zones.join(' and ')} counts here.` : ' No game-data zone counts here.'
   if (s.noPoints) return `${wiki}${zone} No exact points in the data.`
   const area = s.area

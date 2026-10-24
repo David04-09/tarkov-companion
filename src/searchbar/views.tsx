@@ -8,7 +8,8 @@ import { formatDuration } from '../lib/economy'
 import { formatRoubles } from '../lib/format'
 import { isFactionEligible } from '../lib/taskStatus'
 import { buildSpawnModel } from '../maps/overlay/spawns'
-import { MAP_NOTES, pictureThumb, wikiPageUrl } from '../maps/overlay/bossAreas'
+import { pictureThumb, wikiPageUrl } from '../maps/overlay/bossAreas'
+import { BOSS_INFO } from '../maps/overlay/bossInfo'
 import { spotSource } from '../maps/overlay/bossSpots'
 import type { GuideImage } from '../api/wikiGuide'
 import { requiredClosure, topoOrder } from '../quests/questGraph'
@@ -171,7 +172,7 @@ export function BossView({ id }: { id: string }) {
     const out: GuideImage[] = []
     for (const m of perMap)
       for (const a of m.entry?.areas ?? []) {
-        if (seen.has(a.picture)) continue
+        if (!a.picture || seen.has(a.picture)) continue
         seen.add(a.picture)
         // 1600 px: the originals are up to 7000 px (≈190 MB decoded in the search bar).
         out.push({ full: pictureThumb(a, 1600), thumb: pictureThumb(a), caption: `${a.pictureFile} (EFT Wiki, ${a.pictureDate.slice(0, 7)})`, section: 'Boss' })
@@ -220,11 +221,22 @@ export function BossView({ id }: { id: string }) {
                 </ul>
               )}
               {dataOnly > 0 && <p className="ml-12 text-[10px] text-white/35">+{dataOnly} point{dataOnly === 1 ? '' : 's'} only in the game data, away from where players report {boss.name}</p>}
+              {m.entry?.note && <p className="ml-12 text-[11px] text-amber-300/90">{m.entry.note}</p>}
             </li>
           )
         })}
       </ul>
-      {MAP_NOTES[id] && <p className="mt-1 text-xs text-amber-300/90">{MAP_NOTES[id]}</p>}
+      {BOSS_INFO[id] && (
+        <Section title={BOSS_INFO[id].members ? 'How they behave' : 'How it behaves'} count={BOSS_INFO[id].behaviour.length} defaultOpen>
+          {BOSS_INFO[id].members && <p className="text-xs text-white/70">{BOSS_INFO[id].members}.</p>}
+          <ul className="list-disc space-y-0.5 pl-4 text-xs text-white/80">
+            {BOSS_INFO[id].behaviour.map((b) => (
+              <li key={b}>{b}</li>
+            ))}
+          </ul>
+          <WikiCredit url={wikiPageUrl(BOSS_INFO[id].page)} />
+        </Section>
+      )}
       {pictures.length > 0 && (
         <Section title="Where players report it" count={pictures.length}>
           <Pictures images={pictures} title={`${boss.name}: EFT Wiki maps`} />
