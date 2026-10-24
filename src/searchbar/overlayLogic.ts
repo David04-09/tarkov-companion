@@ -5,6 +5,7 @@
  */
 import type { GameData, Item, ItemsById, MapDetails, Position, Task } from '../api/types'
 import type { GameEvent } from '../shared/desktop-api'
+import { bossName, bossSearchWords } from '../maps/overlay/bossNames'
 
 // ---------------------------------------------------------------------------
 // Tarkov time
@@ -227,6 +228,8 @@ export interface BossRef {
   key: string
   name: string
   portrait: string | null
+  /** More words search finds it by (the Goons: Knight, Big Pipe, Birdeye). */
+  aka?: string
   /** Per map: chance that at least one listing spawns. */
   maps: { mapId: string; chance: number }[]
 }
@@ -243,7 +246,10 @@ export function bossIndex(data: GameData): BossRef[] {
       const key = b.normalizedName || b.mobId || 'boss'
       if (NOT_BOSSES.has(key)) continue
       perMap.set(key, 1 - (1 - (perMap.get(key) ?? 0)) * (1 - Math.min(1, Math.max(0, b.spawnChance))))
-      if (!by.has(key)) by.set(key, { key, name: b.name || (b.mobId && data.mobNames[b.mobId]) || 'Boss', portrait: (b.mobId && data.mobPortraits[b.mobId]) || null, maps: [] })
+      if (!by.has(key)) {
+        const dataName = b.name || (b.mobId && data.mobNames[b.mobId]) || 'Boss'
+        by.set(key, { key, name: bossName(key, dataName), aka: bossSearchWords(key, dataName), portrait: (b.mobId && data.mobPortraits[b.mobId]) || null, maps: [] })
+      }
     }
     for (const [key, chance] of perMap) by.get(key)!.maps.push({ mapId: m.id, chance })
   }

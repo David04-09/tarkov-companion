@@ -1,6 +1,7 @@
 import type { GameData, MapBoss, MapDetails, Position } from '../../api/types'
 import { buildSpots, type BossSpot } from './bossSpots'
 import { reportedAreasFor, type ReportedArea } from './bossAreas'
+import { bossName } from './bossNames'
 
 export type SpawnGroup = 'boss' | 'goons' | 'cultists' | 'raiders' | 'rogues'
 
@@ -64,7 +65,7 @@ export function buildSpawnModel(data: GameData, mapId: string): SpawnModel {
     const group = groupOf(key)
     let e = byKey.get(key)
     if (!e) {
-      e = { key, name: b.name ?? (b.mobId && data.mobNames[b.mobId]) ?? 'Boss', group, portrait: (b.mobId && data.mobPortraits[b.mobId]) || null, spawnChance: 0, spawns: [], escorts: [], conditions: [], areas: [], spots: [] }
+      e = { key, name: bossName(key, b.name ?? (b.mobId && data.mobNames[b.mobId]) ?? 'Boss'), group, portrait: (b.mobId && data.mobPortraits[b.mobId]) || null, spawnChance: 0, spawns: [], escorts: [], conditions: [], areas: [], spots: [] }
       byKey.set(key, e)
     }
     e.spawns.push(b)

@@ -87,7 +87,9 @@ export function searchAll(query: string, src: SearchSource): Hit[] {
   const specials = SPECIALS.filter((s) => w.some((q) => s.words.some((word) => word === q || (q.length >= 3 && word.startsWith(q))))).slice(0, LIMITS.special)
   const maps = src.maps.filter((m) => !/night/.test(m.key) && has(`${m.name} ${MAP_NICKNAMES[m.key] ?? ''}`)).slice(0, LIMITS.map)
   const traders = byRank(src.traders.filter((t) => has(t.name)), (t) => t.name).slice(0, LIMITS.trader)
-  const bosses = byRank(src.bosses.filter((b) => b.maps.length && has(b.name)), (b) => b.name).slice(0, LIMITS.boss)
+  // Other names only by whole word starts: "night" must not find the Goons through "Knight".
+  const akaHas = (aka = '') => w.every((q) => aka.toLowerCase().split(/\s+/).some((word) => word.startsWith(q)))
+  const bosses = byRank(src.bosses.filter((b) => b.maps.length && (has(b.name) || akaHas(b.aka))), (b) => b.name).slice(0, LIMITS.boss)
   const stations = byRank(src.stations.filter((s) => has(s.name)), (s) => s.name).slice(0, LIMITS.station)
   const extracts = byRank(src.extracts.filter((e) => has(e.name)), (e) => e.name).slice(0, LIMITS.extract)
   const items = byRank(src.items.filter((it) => matchesSearch(src.itemText.get(it.id) ?? '', w)), (it) => it.name, (it) => it.shortName).slice(0, LIMITS.item)

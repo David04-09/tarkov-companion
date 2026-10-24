@@ -270,6 +270,7 @@ src/data/mapConfig.json      vendored tarkov.dev map config (records source comm
 
 ## Unreleased pool after v2.11.0 (owner: do NOT push/tag until they say so; keep changelog.ts UNRELEASED in sync)
 - Spot rings (owner: "selecting boss areas the yellow possible spots stay there cluttering the screen"): the Bosses tab and BossView rang every polygon vertex of every reported area (zoomTo got the area outlines as points). `Spot.fit` (mapLayers.tsx; MapRequest.spot.fit, SearchBarMap prop) = zoomed to but not ringed; bosses ring only their non-data spot centres. SpotLayer hides its rings after SPOT_SHOW_MS 6 s or on a map click (zoom stays). Checked in a throwaway desktop run (scratchpad cdp-spotclear.cjs): label "Knight" shown, gone after 7 s; "Reshala" gone right after a map click.
+- Goons name (owner: "it's not called just Knight, it's the Goons"): `src/maps/overlay/bossNames.ts` bossName (knight → "The Goons") used by buildSpawnModel and overlayLogic bossIndex; BossRef.aka = bossSearchWords (Knight Big Pipe Birdeye Goons), matched in search.ts by word starts only (substring "night" must not find Knight; test).
 
 ## Status
 Done: everything above (incl. Spawns, packaging/updates, quest sync review/undo, wiki guides and the stash scanner, 2026-10-04) plus Dashboard, Quests, Maps (viewer, base layers, Lighthouse render, overlay, dev alignment tool), desktop app with tray and log watcher (parser + 10 tests, backfill, status light), level estimate, README.

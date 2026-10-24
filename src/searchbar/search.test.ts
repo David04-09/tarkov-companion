@@ -12,7 +12,10 @@ const src: SearchSource = {
   itemText: new Map(items.map((it) => [it.id, `${it.name}\n${it.shortName}`.toLowerCase()])),
   tasks: [{ id: 'q1', name: 'Shady Business' }, { id: 'q2', name: 'Gunsmith - Part 1' }] as unknown as Task[],
   traders: [{ id: 't1', name: 'Prapor' }, { id: 't2', name: 'Therapist' }] as unknown as Trader[],
-  bosses: [{ key: 'bully', name: 'Reshala', portrait: null, maps: [{ mapId: 'm1', chance: 0.4 }] }],
+  bosses: [
+    { key: 'bully', name: 'Reshala', portrait: null, maps: [{ mapId: 'm1', chance: 0.4 }] },
+    { key: 'knight', name: 'The Goons', aka: 'Knight Big Pipe Birdeye Goons', portrait: null, maps: [{ mapId: 'm1', chance: 0.2 }] },
+  ],
   extracts: [{ name: "Smugglers' Boat", faction: 'pmc', mapId: 'm1', position: { x: 0, y: 0, z: 0 } }],
   mapNameById: new Map([['m1', 'Customs']]),
   stations: [{ id: 's1', name: 'Intelligence center' }] as unknown as HideoutStation[],
@@ -43,6 +46,8 @@ describe('searchAll', () => {
   it('finds traders, bosses, extracts, stations and story chapters', () => {
     expect(kinds('prapor')).toEqual(['trader:Prapor'])
     expect(kinds('reshala')).toEqual(['boss:Reshala'])
+    // The game data lists the Goons as Knight; they show as "The Goons" and are found by any member.
+    for (const q of ['goons', 'knight', 'birdeye', 'big pipe']) expect(kinds(q)).toEqual(['boss:The Goons'])
     expect(kinds('smugglers')).toEqual(["extract:Smugglers' Boat"])
     expect(kinds('intel')).toEqual(['station:Intelligence center'])
     expect(kinds('tour')).toEqual(['story:Tour'])
