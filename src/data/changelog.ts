@@ -12,12 +12,18 @@ export interface ChangelogEntry {
 }
 
 /** Committed, waiting for the next update. */
-export const UNRELEASED: string[] = [
-  "Quests: every quest on the EFT Wiki now shows on the Quests tab, also the ones the game data does not have yet, such as Honest Review, Number Temporarily Unavailable, Fog of War, the To the Light and Make Amends lines and the Prestige quests. They carry a \"Wiki\" badge and show the wiki's objectives, requirements (level for your mode, loyalty, earlier quests), rewards and guide pictures. Switches under the filters choose what else to list: new and event quests are on; Seasonal-mode, Arena and past (removed) quests are off until you turn them on, and past ones never count as available. Tick them by hand (the game log cannot); once the game data adds a quest, your tick moves over to it by itself. The wiki is read at most once a day.",
-  "Maps: the wiki-only quests now have their spots on the Maps tab and the search bar's map, like every other quest: Honest Review's three BTR stops, Fog of War's lookouts, Prapor's camp for Number Temporarily Unavailable, the Rogue stashes for Ease the Move, the Make Amends cameras, the V3 flash drive spots, the Shoreline/Streets/Ground Zero camera spots, the fence breaches, the case spawns, the Break the Chain transmitters, the marked rooms, the Lab spots and more (89 quest steps in 34 quests). Transits and named extracts come straight from the game data, and so do places other quests already mark (the Thirsty store, the Steady Signal weather station, the human experiment room, the Burger Spot keycard panel). The rest were read off the wiki's own quest maps and converted with the same fitted maps as the boss areas, mostly within 5 to 20 m; places only known to the building show a circle. Not placed because no reliable source exists: Container 14 on Interchange and the yellow bus underground on Ground Zero.",
-]
+export const UNRELEASED: string[] = []
 
 export const RELEASES: ChangelogEntry[] = [
+  {
+    version: '2.13.0',
+    date: '2026-10-25',
+    title: 'Every quest on the EFT Wiki, on the Quests tab and the maps',
+    changes: [
+    "Quests: every quest on the EFT Wiki now shows on the Quests tab, also the ones the game data does not have yet, such as Honest Review, Number Temporarily Unavailable, Fog of War, the To the Light and Make Amends lines and the Prestige quests. They carry a \"Wiki\" badge and show the wiki's objectives, requirements (level for your mode, loyalty, earlier quests), rewards and guide pictures. Switches under the filters choose what else to list: new and event quests are on; Seasonal-mode, Arena and past (removed) quests are off until you turn them on, and past ones never count as available. Tick them by hand (the game log cannot); once the game data adds a quest, your tick moves over to it by itself. The wiki is read at most once a day.",
+    "Maps: the wiki-only quests now have their spots on the Maps tab and the search bar's map, like every other quest: Honest Review's three BTR stops, Fog of War's lookouts, Prapor's camp for Number Temporarily Unavailable, the Rogue stashes for Ease the Move, the Make Amends cameras, the V3 flash drive spots, the Shoreline/Streets/Ground Zero camera spots, the fence breaches, the case spawns, the Break the Chain transmitters, the marked rooms, the Lab spots and more (89 quest steps in 34 quests). Transits and named extracts come straight from the game data, and so do places other quests already mark (the Thirsty store, the Steady Signal weather station, the human experiment room, the Burger Spot keycard panel). The rest were read off the wiki's own quest maps and converted with the same fitted maps as the boss areas, mostly within 5 to 20 m; places only known to the building show a circle. Not placed because no reliable source exists: Container 14 on Interchange and the yellow bus underground on Ground Zero.",
+    ],
+  },
   {
     version: '2.12.0',
     date: '2026-10-25',
