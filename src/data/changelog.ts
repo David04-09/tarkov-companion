@@ -12,15 +12,21 @@ export interface ChangelogEntry {
 }
 
 /** Committed, waiting for the next update. */
-export const UNRELEASED: string[] = [
-  "Quests: kill objectives now say what the game actually counts: how many, which targets, which weapons and parts, distance, body parts, time and map, written from the quest's own conditions. Where the quest text in the game data is out of date it says so: Hunting Trip's text still reads \"Shturman with an M700\", but the game now counts 20 kills of any of a dozen bosses with any bolt-action sniper rifle and the listed scope from 40 m or more; Job for a Patriot's text says 20 kills where the game counts 10. On the Quests tab, in the search bar's quest cards and in the map pop-ups.",
-  "Dashboard: \"Lightkeeper chain\" showed 0 / 0 because the game data no longer marks any quest as needed for Lightkeeper. It now counts his own quests plus every quest that has to be done before them (the same path the Quests tab shows), and quests done by deduction count there too.",
-  "Where am I: new option \"Clear those screenshots after reading\" (Settings → Desktop app, off by default). Screenshots you take during a raid go to the Recycle Bin a few seconds after your position is read, so the folder does not fill up; stash screenshots taken outside a raid are kept. If Windows refuses the Recycle Bin they go into a \"Read by Tarkov Companion\" folder next to them instead. You still press the screenshot key yourself: the app never presses keys in the game.",
-  "Bosses: a short \"How it behaves\" for every boss (the Goons, Reshala, Killa, Shturman, Sanitar, Glukhar, Tagilla, Kaban, Kollontay, Zryachiy, Partisan, Rogues, Raiders, Cultists and more): who rushes, who hangs back, where they hide, what to watch for. It is in the map pop-ups, the Maps tab's spawn list, and the search bar's boss cards (the i next to each boss in the map's Bosses tab opens it).",
-  "Bosses: more places. The Goons on Customs also get the area south of the industrial plant by Warehouse 4, where players have fought them; Sanitar gets the fenced construction site next to the cottages he roams to; Kaban (LexOs) and Kollontay (Klimov mall and the police academy) are now drawn from the wiki's Streets maps. Notes say where the wiki and the game data disagree (Tagilla on Interchange, Glukhar) and describe Terminal's boss spot, which no map marks with positions.",
-]
+export const UNRELEASED: string[] = []
 
 export const RELEASES: ChangelogEntry[] = [
+  {
+    version: '2.12.0',
+    date: '2026-10-25',
+    title: 'What kill quests really count, how each boss behaves, Lightkeeper count, optional screenshot clean-up',
+    changes: [
+    "Quests: kill objectives now say what the game actually counts: how many, which targets, which weapons and parts, distance, body parts, time and map, written from the quest's own conditions. Where the quest text in the game data is out of date it says so: Hunting Trip's text still reads \"Shturman with an M700\", but the game now counts 20 kills of any of a dozen bosses with any bolt-action sniper rifle and the listed scope from 40 m or more; Job for a Patriot's text says 20 kills where the game counts 10. On the Quests tab, in the search bar's quest cards and in the map pop-ups.",
+    "Dashboard: \"Lightkeeper chain\" showed 0 / 0 because the game data no longer marks any quest as needed for Lightkeeper. It now counts his own quests plus every quest that has to be done before them (the same path the Quests tab shows), and quests done by deduction count there too.",
+    "Where am I: new option \"Clear those screenshots after reading\" (Settings → Desktop app, off by default). Screenshots you take during a raid go to the Recycle Bin a few seconds after your position is read, so the folder does not fill up; stash screenshots taken outside a raid are kept. If Windows refuses the Recycle Bin they go into a \"Read by Tarkov Companion\" folder next to them instead. You still press the screenshot key yourself: the app never presses keys in the game.",
+    "Bosses: a short \"How it behaves\" for every boss (the Goons, Reshala, Killa, Shturman, Sanitar, Glukhar, Tagilla, Kaban, Kollontay, Zryachiy, Partisan, Rogues, Raiders, Cultists and more): who rushes, who hangs back, where they hide, what to watch for. It is in the map pop-ups, the Maps tab's spawn list, and the search bar's boss cards (the i next to each boss in the map's Bosses tab opens it).",
+    "Bosses: more places. The Goons on Customs also get the area south of the industrial plant by Warehouse 4, where players have fought them; Sanitar gets the fenced construction site next to the cottages he roams to; Kaban (LexOs) and Kollontay (Klimov mall and the police academy) are now drawn from the wiki's Streets maps. Notes say where the wiki and the game data disagree (Tagilla on Interchange, Glukhar) and describe Terminal's boss spot, which no map marks with positions.",
+    ],
+  },
   {
     version: '2.11.1',
     date: '2026-10-24',
