@@ -2,6 +2,7 @@ import { useItems } from '../../api/hooks'
 import type { Task } from '../../api/types'
 import { formatNumber } from '../../lib/format'
 import { KeyBadge } from './KeyBadge'
+import { ObjectiveFacts } from '../../components/ObjectiveFacts'
 import type { MapObjective, Placement } from './mapTasks'
 import { OBJECTIVE_TYPE_LABEL } from './objectiveIcons'
 
@@ -34,6 +35,7 @@ export function ObjectivePopup({
         {o.optional ? ' · optional' : ''}
       </div>
       <p className="mt-1.5 text-ink">{o.description}</p>
+      <ObjectiveFacts objective={o} className="mt-1 block text-ink-muted" warnClassName="mt-1 block text-warning" />
 
       {(o.questItem || o.itemIds.length > 0) && (
         <div className="mt-1.5 flex items-center gap-1.5">

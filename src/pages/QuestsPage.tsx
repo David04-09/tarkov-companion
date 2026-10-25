@@ -16,6 +16,7 @@ import {
 import { useGameData, useItems } from '../api/hooks'
 import type { GameData, ItemsById, Task, TaskObjective } from '../api/types'
 import { KappaBadge, LightkeeperBadge, StatusPill } from '../components/Badges'
+import { ObjectiveFacts } from '../components/ObjectiveFacts'
 import { AutoTickBadge } from '../desktop/SyncReview'
 import { QuestGuide } from '../components/QuestGuide'
 import { ErrorPanel, LoadingPanel, RefreshErrorBanner } from '../components/DataState'
@@ -130,6 +131,7 @@ function ObjectiveList({
               <span>{o.description}</span>
               {o.optional && <span className="text-xs text-ink-dim">(optional)</span>}
             </div>
+            <ObjectiveFacts objective={o} className="block text-xs text-ink-muted" warnClassName="block rounded border border-warning/40 bg-warning/10 px-1.5 py-0.5 text-xs text-warning" />
             <div className="flex flex-wrap items-center gap-1.5">
               <span className="rounded border border-line px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-ink-muted">
                 {formatObjectiveType(o.type)}
@@ -139,12 +141,6 @@ function ObjectiveList({
                   {m.name}
                 </span>
               ))}
-              {o.type === 'shoot' && o.targetNames.length > 0 && (
-                <span className="rounded bg-surface px-1.5 py-0.5 text-xs text-ink-muted">
-                  Target: {o.targetNames.join(', ')}
-                  {o.count ? ` ×${o.count}` : ''}
-                </span>
-              )}
               <ObjectiveItems objective={o} items={items} itemsLoading={itemsLoading} />
               <ObjectiveNeeds objective={o} items={items} />
             </div>

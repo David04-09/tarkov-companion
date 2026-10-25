@@ -201,6 +201,11 @@ function adaptObjective(
     build: adaptBuild(raw),
     markerItemId: raw.markerItem ?? null,
     usingWeaponIds: (raw.usingWeapon ?? []).map(idOf).filter(Boolean),
+    usingWeaponModIds: (raw.usingWeaponMods ?? []).map((g) => (Array.isArray(g) ? g : [g]).map(idOf).filter(Boolean)).filter((g) => g.length > 0),
+    shotType: raw.shotType === 'kill' || raw.shotType === 'hit' ? raw.shotType : null,
+    bodyParts: (raw.bodyParts ?? []).filter((p): p is string => typeof p === 'string'),
+    distance: raw.distance && typeof raw.distance.value === 'number' && raw.distance.value > 0 ? { compare: raw.distance.compareMethod === '<=' ? '<=' : '>=', value: raw.distance.value } : null,
+    hours: typeof raw.timeFromHour === 'number' && typeof raw.timeUntilHour === 'number' && raw.timeFromHour !== raw.timeUntilHour ? { from: raw.timeFromHour, until: raw.timeUntilHour } : null,
     wearingIds: (raw.wearing ?? []).map((g) => (Array.isArray(g) ? g : [g]).map(idOf).filter(Boolean)).filter((g) => g.length > 0),
   }
 }

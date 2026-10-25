@@ -149,6 +149,13 @@ export interface RawTaskObjective {
   // Shoot objectives
   targetNames?: string[]
   shotType?: string
+  /** "QuestCondition/Elimination/Kill/BodyPart/Head" etc.; empty = any part. */
+  bodyParts?: string[]
+  /** Parts the weapon must carry: each set must be fitted whole; the sets are alternatives. */
+  usingWeaponMods?: (string | { id?: string })[][]
+  distance?: { compareMethod?: string; value?: number } | null
+  timeFromHour?: number
+  timeUntilHour?: number
   // Task-status objectives
   task?: string
   status?: string[]
@@ -757,6 +764,16 @@ export interface TaskObjective {
   markerItemId: string | null
   /** shoot objectives: weapons that count (any one). */
   usingWeaponIds: string[]
+  /** shoot objectives: parts the weapon must carry (each set fitted whole; the sets are alternatives). */
+  usingWeaponModIds: string[][]
+  /** shoot objectives: kill or just hit. */
+  shotType: 'kill' | 'hit' | null
+  /** shoot objectives: body parts that count (game ids); empty = any. */
+  bodyParts: string[]
+  /** shoot objectives: distance limit, if any. */
+  distance: { compare: '>=' | '<='; value: number } | null
+  /** shoot objectives: in-game hours it has to happen between, if any. */
+  hours: { from: number; until: number } | null
   /** shoot objectives: alternative outfits (any one), each a list of items worn together. */
   wearingIds: string[][]
 }

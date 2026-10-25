@@ -11,6 +11,7 @@ import { formatNumber, formatRoubles } from '../lib/format'
 import { keyVerdict } from '../lib/keyVerdict'
 import { remainingFor } from '../lib/needs'
 import { STATUS_LABEL } from '../lib/taskStatus'
+import { ObjectiveFacts } from '../components/ObjectiveFacts'
 import { isRequirementMet, lockReasons } from '../lib/progression'
 import { requiredClosure } from '../quests/questGraph'
 import { useInventoryStore } from '../store/inventory'
@@ -234,7 +235,7 @@ export function QuestDetails({ task }: { task: Task }) {
                 </span>
               ))}
               {o.wearingIds.length > 0 && <span className="text-[10px] text-white/55"> · wear {o.wearingIds[0].map((id) => c.items?.[id]?.shortName ?? 'item').join(' + ')}{o.wearingIds.length > 1 ? ` (or ${o.wearingIds.length - 1} other)` : ''}</span>}
-              {o.usingWeaponIds.length > 0 && <span className="text-[10px] text-white/55"> · use {o.usingWeaponIds.slice(0, 2).map((id) => c.items?.[id]?.shortName ?? 'weapon').join(', ')}{o.usingWeaponIds.length > 2 ? ` or ${o.usingWeaponIds.length - 2} more` : ''}</span>}
+              <ObjectiveFacts objective={o} className="block text-[10px] text-white/60" warnClassName="block text-[10px] text-amber-300" />
             </span>
           </li>
         ))}
