@@ -1,0 +1,16 @@
+{
+ "note": "Shoreline quest pictures that share the frame of ShorelineGoonsMap.png (Jindouz v3.3.2, 6668 x 4567; same-frame.ps1 0.97). Marker centres / arrow tips in full-size pixels.",
+ "frame": "scripts/boss-areas/specs/shoreline-goons-cultists.json",
+ "pictureWidth": 6668,
+ "spots": {
+  "Cast the Net | excavator by the smugglers' base (Cast the Net Shoreline Map.png)": [3804, 1825],
+  "Cast the Net | Ural truck by the power station": [2425, 2942],
+  "Stay Clear | west fence breach (Stay Clear of Blast Zone Map.png)": [2245, 2190],
+  "Stay Clear | north fence breach": [2245, 2292],
+  "Stay Clear | east fence breach": [3092, 2196],
+  "Uninvited Guests | power station (Uninvited Guests - Part 1 Map.png)": [2600, 3113],
+  "Uninvited Guests | weather station": [3533, 3280],
+  "Uninvited Guests | sordi tower shack": [4213, 2813],
+  "Clip Their Wings | admin building (TTLClipTheirWingsShorelineMap.png)": [2678, 2042]
+ }
+}

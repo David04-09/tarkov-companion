@@ -1,0 +1,82 @@
+{
+ "picture": "Trust but Verify map.png (technical + first level plans, 2592 x 2029; only the first level is fitted). Control points: room names matched to tarkov.dev Lab labels (room centres).",
+ "affine": true,
+ "points": [
+  [
+   1795,
+   881,
+   -260,
+   -342,
+   "label Reception"
+  ],
+  [
+   2076,
+   1073,
+   -236,
+   -302,
+   "label Gym"
+  ],
+  [
+   2065,
+   1230,
+   -207,
+   -305,
+   "label Lecture Hall"
+  ],
+  [
+   2027,
+   1730,
+   -125,
+   -308,
+   "label Server Room"
+  ],
+  [
+   1714,
+   1703,
+   -130,
+   -356,
+   "label Test Room"
+  ],
+  [
+   1432,
+   1708,
+   -130,
+   -398,
+   "label Infirmary Lvl 1"
+  ],
+  [
+   1359,
+   968,
+   -230,
+   -400,
+   "label Parking"
+  ],
+  [
+   2251,
+   1089,
+   -236,
+   -280,
+   "labels locker rooms"
+  ],
+  [
+   1808,
+   1089,
+   -221,
+   -343,
+   "label Recreation Area"
+  ],
+  [
+   1838,
+   1459,
+   -172,
+   -342,
+   "label Main Working Area"
+  ]
+ ],
+ "spots": {
+  "Trust but Verify | stash at the servers in the main working area": [
+   1914,
+   1384
+  ]
+ }
+}

@@ -1,6 +1,7 @@
 import { useCallback, useContext, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { ChevronLeft, ChevronRight, Crosshair, DoorOpen, Gem, Info, KeyRound, Layers, ListChecks, Ruler, Skull } from 'lucide-react'
-import { useGameData, useItems } from '../api/hooks'
+import { useItems } from '../api/hooks'
+import { useGameDataWithWiki } from '../hooks/useWikiQuests'
 import type { Position } from '../api/types'
 import { MapViewer } from '../maps/MapViewer'
 import { floorIsDrawable, resolveBaseLayer } from '../maps/mapConfig'
@@ -65,7 +66,9 @@ export function SearchBarMap({
   position: PlayerPosition | null
 }) {
   const ctx = useContext(DetailsContext)
-  const gameData = useGameData()
+  // Wiki-only quests (new, event) have their spots too.
+  const { data: mapData, wikiTasks } = useGameDataWithWiki()
+  const gameData = { data: mapData }
   const items = useItems().data?.items
   const profile = useProfile()
   const preferred = useUiStore((s) => s.baseLayerByMap[option.key])
@@ -101,7 +104,7 @@ export function SearchBarMap({
     () => (data && option.id ? buildMapTasks(data, option.id, layer).filter((m) => isFactionEligible(m.task, profile.faction) && m.placements.length > 0) : []),
     [data, option.id, layer, profile.faction],
   )
-  const progress = useProgressContext()
+  const progress = useProgressContext(wikiTasks)
   const statuses = useMemo(() => computeTaskStatuses(mapTasks.map((m) => m.task), profile, progress ?? undefined), [mapTasks, profile, progress])
   const shown = useMemo(() => {
     if (!layers.quests) return []

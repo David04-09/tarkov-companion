@@ -1,0 +1,31 @@
+{
+ "note": "Lighthouse quest pictures that share the frame of LighthouseGoonsMap.png (Jindouz 2242 x 3892; same-frame.ps1 0.87-0.97). Marker centres in full-size pixels.",
+ "frame": "scripts/boss-areas/specs/lighthouse.json",
+ "pictureWidth": 2242,
+ "spots": {
+  "Honest Review | Village Crossroads (Lighthouse BTR stops map.png)": [1495, 1955],
+  "Honest Review | UN Checkpoint": [1067, 2702],
+  "Honest Review | WTP Building 2 Parking": [1430, 915],
+  "check: BTR stop Northern Checkpoint (extract 115,-989)": [880, 512],
+  "Fog of War | BRDM (Fog of War Map.png)": [1228, 1022],
+  "Fog of War | SW checkpoint": [1047, 1528],
+  "Fog of War | roof building 1": [1005, 1170],
+  "Fog of War | roof building 2": [1290, 927],
+  "Fog of War | roof building 3": [1477, 1083],
+  "check: Armored Train icon (6,-869)": [1075, 695],
+  "Cabin at Passage by the Lake (All-Inclusive Support Location.png)": [1853, 1165],
+  "check: Passage by the Lake icon (-377,-643)": [1832, 1252],
+  "Prapor's camp (Bogatyrs patch Lighthouse map.png)": [1218, 3383],
+  "Ease the Move | 1.1 (Ease the Move Map.png)": [1168, 1666],
+  "Ease the Move | 1.2": [1417, 1672],
+  "Ease the Move | 1.3": [1708, 2006],
+  "Ease the Move | 2.1": [1943, 1883],
+  "Ease the Move | 2.2": [1974, 1777],
+  "Ease the Move | grotto": [717, 1450],
+  "V3 flash drive | southern chalet (To the Light Getting Acquainted Chalet Map.png)": [1343, 2645],
+  "V3 flash drive | tennis court (LostContactMap.png)": [1241, 2710],
+  "Scope the Clearing | platform north (Scope the Clearing Map.png)": [1070, 618],
+  "Scope the Clearing | platform south": [1075, 700],
+  "Scope the Clearing | Woods transit car": [886, 528]
+ }
+}

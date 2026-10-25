@@ -1,0 +1,8 @@
+{
+ "note": "PostOfficeMap.png shares the frame of KabanSpawnsStreets.png (Jindouz v4.1, 7384 x 5152; same-frame.ps1 1.00).",
+ "frame": "scripts/boss-areas/specs/streets-kaban.json",
+ "pictureWidth": 7384,
+ "spots": {
+  "Side Hustle | post office (packages)": [3846, 2177]
+ }
+}

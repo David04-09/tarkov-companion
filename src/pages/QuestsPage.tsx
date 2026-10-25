@@ -15,8 +15,8 @@ import {
 } from 'lucide-react'
 import { useGameData, useItems } from '../api/hooks'
 import type { GameData, GameMap, ItemsById, Task, TaskObjective } from '../api/types'
-import type { WikiQuestKind } from '../api/wikiQuests'
-import { useWikiQuests } from '../hooks/useWikiQuests'
+import { withWiki, type WikiQuestKind } from '../api/wikiQuests'
+import { WIKI_KINDS, loadWikiKinds, saveWikiKinds, useWikiQuests, type WikiKinds } from '../hooks/useWikiQuests'
 import { KappaBadge, LightkeeperBadge, StatusPill } from '../components/Badges'
 import { ObjectiveFacts } from '../components/ObjectiveFacts'
 import { AutoTickBadge } from '../desktop/SyncReview'
@@ -45,10 +45,6 @@ type SortDir = 'asc' | 'desc'
 const STATUS_FILTERS: StatusFilter[] = ['all', 'available', 'locked', 'completed']
 const MAP_ANY = '__any__'
 
-type WikiKinds = Record<WikiQuestKind, boolean>
-const WIKI_KEY = 'tc-quests-wiki'
-const WIKI_KINDS: WikiQuestKind[] = ['regular', 'event', 'seasonal', 'arena', 'past']
-const WIKI_DEFAULT: WikiKinds = { regular: true, event: true, seasonal: false, arena: false, past: false }
 const WIKI_LABEL: Record<WikiQuestKind, string> = { regular: 'New', event: 'Event', seasonal: 'Seasonal mode', arena: 'Arena', past: 'Past (removed)' }
 const WIKI_TITLE: Record<WikiQuestKind, string> = {
   regular: 'On the EFT Wiki but not in the game data yet (new, or part of a story chapter)',
@@ -56,23 +52,6 @@ const WIKI_TITLE: Record<WikiQuestKind, string> = {
   seasonal: 'Only in the Seasonal mode (EFT Wiki)',
   arena: 'Escape from Tarkov: Arena quest (a separate game)',
   past: 'No longer in the game: the EFT Wiki keeps it as history',
-}
-
-function loadWikiKinds(): WikiKinds {
-  try {
-    const saved = JSON.parse(localStorage.getItem(WIKI_KEY) ?? '{}') as Partial<Record<string, unknown>>
-    return Object.fromEntries(WIKI_KINDS.map((k) => [k, typeof saved[k] === 'boolean' ? saved[k] : WIKI_DEFAULT[k]])) as WikiKinds
-  } catch {
-    return { ...WIKI_DEFAULT }
-  }
-}
-
-/** The game data with the wiki-only quests added (Quests tab list and details). */
-function withWiki(data: GameData, wiki: Task[]): GameData {
-  if (!wiki.length) return data
-  const tasksById = { ...data.tasksById }
-  for (const t of wiki) tasksById[t.id] ??= t
-  return { ...data, tasks: [...data.tasks, ...wiki], tasksById }
 }
 
 /** Map filter: the quest's map, or one of the maps a wiki quest names. */
@@ -389,7 +368,7 @@ function TaskDetail({
                     : task.wiki.kind === 'event'
                       ? 'Part of an event: the trader gives it only while the event runs. '
                       : 'The game data (tarkov.dev) does not have this quest yet. '}
-              {!removed && task.wiki.kind !== 'arena' && 'No map spots, and the game log cannot tick it: tick it here by hand.'}
+              {!removed && task.wiki.kind !== 'arena' && (task.objectives.some((o) => o.locations.length > 0) ? 'Map spots are read off the wiki\'s quest maps or taken from the game data (see Maps). The game log cannot tick it: tick it here by hand.' : 'The game log cannot tick it: tick it here by hand.')}
             </p>
           </div>
         )}
@@ -677,11 +656,7 @@ function QuestList() {
   const toggleWikiKind = (k: WikiQuestKind) => {
     const next = { ...wikiKinds, [k]: !wikiKinds[k] }
     setWikiKinds(next)
-    try {
-      localStorage.setItem(WIKI_KEY, JSON.stringify(next))
-    } catch {
-      // remembering the switches is only a convenience
-    }
+    saveWikiKinds(next)
   }
   const wiki = useWikiQuests(wikiKinds.past)
   const progress = useProgressContext(wiki.tasks)

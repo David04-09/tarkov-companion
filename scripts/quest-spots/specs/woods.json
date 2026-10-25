@@ -1,0 +1,13 @@
+{
+ "note": "Woods quest pictures on the frame of WoodsCultistMap.png (Jindouz v6.5.5, 6994 x 6843). EFT TAAH Woods House Map.png and TTLClipTheirWingsWoodsMap.png share it (same-frame.ps1 0.98-0.99); Break the Chain Woods Map.png is the same map cropped: its pixels + (25, 25) (offset.ps1, 0.98 equal).",
+ "frame": "scripts/boss-areas/specs/woods-2026.json",
+ "pictureWidth": 6994,
+ "spots": {
+  "Historical Prospects | abandoned village house (EFT TAAH Woods House Map.png)": [3879, 1229],
+  "Clip Their Wings | weather station on the mountain (TTLClipTheirWingsWoodsMap.png)": [4264, 3207],
+  "Clip Their Wings | sawmill guardhouse": [3393, 4743],
+  "Break the Chain | cell tower at Scav Bunker (Break the Chain Woods Map.png 2143,1036 + 25)": [2168, 1061],
+  "Break the Chain | mountain peak transmitter (4057,3257 + 25)": [4082, 3282],
+  "check: Scav Bunker extract (220,-706)": [2171, 1215]
+ }
+}

@@ -1,0 +1,86 @@
+{
+ "picture": "Scourge Location Map.png (first level plan, 1549 x 1433). Control points: room names matched to tarkov.dev Lab labels (room centres).",
+ "affine": true,
+ "points": [
+  [
+   747,
+   267,
+   -260,
+   -342,
+   "label Reception"
+  ],
+  [
+   1015,
+   463,
+   -236,
+   -302,
+   "label Gym"
+  ],
+  [
+   1007,
+   613,
+   -207,
+   -305,
+   "label Lecture Hall"
+  ],
+  [
+   972,
+   1120,
+   -125,
+   -308,
+   "label Server Room"
+  ],
+  [
+   658,
+   1095,
+   -130,
+   -356,
+   "label Test Room"
+  ],
+  [
+   377,
+   1100,
+   -130,
+   -398,
+   "label Infirmary Lvl 1"
+  ],
+  [
+   302,
+   358,
+   -230,
+   -400,
+   "label Parking"
+  ],
+  [
+   1192,
+   475,
+   -236,
+   -280,
+   "labels locker rooms"
+  ],
+  [
+   747,
+   480,
+   -221,
+   -343,
+   "label Recreation Area"
+  ],
+  [
+   758,
+   825,
+   -172,
+   -342,
+   "label Main Working Area"
+  ]
+ ],
+ "spots": {
+  "Scourge | reception": [
+   750,
+   245
+  ],
+  "Scourge | main working area by the orange dome": [
+   590,
+   828
+  ]
+ }
+}

@@ -1,0 +1,23 @@
+{
+ "picture": "MakeAmendsSecurityMap.png (Jindouz Lighthouse v1.7, 2023-01-08, 3680 x 2124, north to the left)",
+ "affine": true,
+ "points": [
+  [837, 463, -293, -781, "Road to Military Base (transit)"],
+  [2178, 400, -364, -121, "Path to Shoreline"],
+  [3315, 585, -296, 421, "Southern Road"],
+  [3352, 581, -281, 421, "South Road Landslide"],
+  [3122, 1044, -68, 318, "Side Tunnel"],
+  [3059, 1448, 133, 287, "Hideout Under the Landing Stage"],
+  [1444, 1526, 181, -486, "Scav Hideout at the Grotto"],
+  [715, 1163, 6, -869, "Armored Train"],
+  [422, 1393, 115, -989, "Northern Checkpoint"],
+  [837, 826, -153, -794, "Industrial Zone Gates"],
+  [2448, 800, -189, -64, "Mountain Pass"]
+ ],
+ "spots": {
+  "Make Amends - Security | bus": [1822, 1122],
+  "Make Amends - Security | bulldozer": [1563, 744],
+  "Make Amends - Security | police truck": [1311, 1311],
+  "Make Amends - Security | army truck": [837, 993]
+ }
+}

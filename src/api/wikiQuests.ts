@@ -7,7 +7,8 @@
  * Cost: the category lists (~4 small requests) plus the pages of the missing current quests in
  * batches of 50 (~120 pages, ~0.5 MB) once a day at most; past quests only when asked for.
  */
-import type { GameData, GameMap, Task, TaskObjective, Trader } from './types'
+import type { GameData, GameMap, MapTransit, ObjectiveLocation, Position, Task, TaskObjective, Trader } from './types'
+import { WIKI_QUEST_SPOTS, type WikiSpot } from './wikiQuestSpots'
 
 const API = 'https://escapefromtarkov.fandom.com/api.php'
 export const WIKI_PAGE = 'https://escapefromtarkov.fandom.com/wiki/'
@@ -199,12 +200,78 @@ function stubTrader(name: string): Trader {
 
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
+const plainText = (s: string) => s.toLowerCase().replace(/[’‘`]/g, "'")
+
+/** Night Factory and Ground Zero 21+ are the same places as their day / low-level maps. */
+const MAP_TWINS: Record<string, string[]> = { factory: ['night-factory'], 'ground-zero': ['ground-zero-21', 'ground-zero-high'] }
+
+/** A circle of `r` metres around a spot, for places only known to the building or area. */
+function circle(s: WikiSpot): Position[] {
+  return Array.from({ length: 12 }, (_, i) => ({ x: s.x + s.r! * Math.cos((i * Math.PI) / 6), y: s.y, z: s.z + s.r! * Math.sin((i * Math.PI) / 6) }))
+}
+
+/**
+ * Where a wiki objective happens: the spots in WIKI_QUEST_SPOTS for that quest and objective,
+ * else, from the game data, the transit ("Use the transit from Woods to Customs", "at the
+ * Shoreline transit on Customs") or the named extract ("Extract … through the Armored Train",
+ * "through the Nakatani Basement Stairs or Emercom Checkpoint exfil").
+ */
+export function objectiveLocations(title: string, text: string, maps: GameMap[], data: Pick<GameData, 'maps' | 'mapDetails'>): ObjectiveLocation[] {
+  const t = plainText(text)
+  const out: ObjectiveLocation[] = []
+  for (const entry of WIKI_QUEST_SPOTS) {
+    if (normQuestName(entry.quest) !== normQuestName(title) || !t.includes(entry.objective)) continue
+    const keys = [entry.map, ...(MAP_TWINS[entry.map] ?? [])]
+    for (const m of data.maps.filter((x) => keys.includes(x.normalizedName))) {
+      for (const s of entry.spots) out.push({ mapId: m.id, positions: [{ x: s.x, y: s.y, z: s.z }], outline: s.r ? circle(s) : null, zoneId: null })
+    }
+  }
+  if (out.length) return out
+
+  const mapNamed = (name: string) => data.maps.find((m) => m.name.toLowerCase() === name.trim().toLowerCase() && !/night/i.test(m.normalizedName))
+  // By target map, else by its name ("Transit to The Lab" may point at a variant of the map).
+  const transitTo = (from: GameMap, to: GameMap) =>
+    data.mapDetails[from.id]?.transits.find((tr) => tr.targetMapId === to.id) ?? data.mapDetails[from.id]?.transits.find((tr) => tr.name.toLowerCase() === `transit to ${to.name.toLowerCase()}`)
+  const transitLoc = (from: GameMap, tr: MapTransit): ObjectiveLocation => ({ mapId: from.id, positions: [tr.position], outline: tr.outline.length > 2 ? tr.outline : null, zoneId: null })
+  const use = /transit from (.+?) to (.+?)(?:\s*\(|$)/i.exec(text)
+  if (use) {
+    const from = mapNamed(use[1])
+    const to = mapNamed(use[2])
+    const tr = from && to ? transitTo(from, to) : undefined
+    return from && tr ? [transitLoc(from, tr)] : []
+  }
+  // "at the Shoreline transit on Customs", "Locate the transit to The Lab on Factory"
+  const at = /at the (.+?) transit on (.+?)(?:\s*\(|$)/i.exec(text) ?? /\btransit to (.+?) on (.+?)(?:\s*\(|$)/i.exec(text)
+  if (at) {
+    const from = mapNamed(at[2])
+    const to = mapNamed(at[1])
+    const tr = from && to ? transitTo(from, to) : undefined
+    return from && tr ? [transitLoc(from, tr)] : []
+  }
+  const through = /\bextract\b.*?\bthrough the (.+)$/i.exec(text)
+  if (through) {
+    const names = through[1]
+      .split(/\s+(?:while|in one raid)\b|\s*\(|\s+(?:exfil|extraction)\b/i)[0]
+      .split(/\s+or\s+/i)
+      .map((n) => n.trim().toLowerCase())
+    for (const m of maps) {
+      const seen = new Set<string>()
+      for (const e of data.mapDetails[m.id]?.extracts ?? []) {
+        if (!names.includes(e.name.toLowerCase()) || seen.has(e.name)) continue
+        seen.add(e.name)
+        out.push({ mapId: m.id, positions: [e.position], outline: e.outline.length > 2 ? e.outline : null, zoneId: null })
+      }
+    }
+  }
+  return out
+}
+
 /**
  * A wiki page as an app Task. Prerequisites point at the real task when tarkov.dev has one with
  * the same name, else at the other wiki quest; a previous step that is neither (a story chapter
  * such as Tour) stays a line of text. The trader is the real one when the names match.
  */
-export function toWikiTask(page: WikiQuestPage, data: Pick<GameData, 'tasks' | 'traders' | 'maps'>, wikiTitles: Set<string>, mode: GameModeName): Task {
+export function toWikiTask(page: WikiQuestPage, data: Pick<GameData, 'tasks' | 'traders' | 'maps' | 'mapDetails'>, wikiTitles: Set<string>, mode: GameModeName): Task {
   const realByName = new Map(data.tasks.map((t) => [normQuestName(t.name), t]))
   const wikiByName = new Map([...wikiTitles].map((t) => [normQuestName(t), t]))
   const mapByName = new Map(data.maps.filter((m) => !/night/i.test(m.normalizedName)).map((m) => [m.name.toLowerCase(), m]))
@@ -255,30 +322,16 @@ export function toWikiTask(page: WikiQuestPage, data: Pick<GameData, 'tasks' | '
     }),
   ]
 
-  const objectives: TaskObjective[] = page.objectives.map((text, i) => ({
-    id: `${id}#${i}`,
-    type: 'wiki',
-    description: text,
-    optional: /\boptional\b/i.test(text),
-    maps: mapsIn(text),
-    count: null,
-    itemIds: [],
-    questItem: null,
-    foundInRaid: /found in raid/i.test(text) ? true : null,
-    targetNames: [],
-    locations: [],
-    requiredKeys: [],
-    exitName: null,
-    build: null,
-    markerItemId: null,
-    usingWeaponIds: [],
-    wearingIds: [],
-    usingWeaponModIds: [],
-    shotType: null,
-    bodyParts: [],
-    distance: null,
-    hours: null,
-  }))
+  const objectives: TaskObjective[] = page.objectives.map((text, i) => {
+    const named = mapsIn(text)
+    const locations = objectiveLocations(page.title, text, named.length ? named : locMaps, data)
+    const maps = [...named]
+    for (const l of locations) {
+      const m = data.maps.find((x) => x.id === l.mapId)
+      if (m && !maps.includes(m)) maps.push(m)
+    }
+    return { ...wikiObjective(`${id}#${i}`, text), maps, locations }
+  })
   return {
     id,
     name: page.title.replace(/\s*\(quest\)\s*$/i, ''),
@@ -303,6 +356,41 @@ export function toWikiTask(page: WikiQuestPage, data: Pick<GameData, 'tasks' | '
     standing: [],
     wiki: { kind: page.kind, rewards: page.rewards, requirements: page.requirements, locations: page.locations },
   }
+}
+
+function wikiObjective(id: string, text: string): TaskObjective {
+  return {
+    id,
+    type: 'wiki',
+    description: text,
+    optional: /\boptional\b/i.test(text),
+    maps: [],
+    count: null,
+    itemIds: [],
+    questItem: null,
+    foundInRaid: /found in raid/i.test(text) ? true : null,
+    targetNames: [],
+    locations: [],
+    requiredKeys: [],
+    exitName: null,
+    build: null,
+    markerItemId: null,
+    usingWeaponIds: [],
+    wearingIds: [],
+    usingWeaponModIds: [],
+    shotType: null,
+    bodyParts: [],
+    distance: null,
+    hours: null,
+  }
+}
+
+/** The game data with the wiki-only quests added (Quests tab, maps). */
+export function withWiki(data: GameData, wiki: Task[]): GameData {
+  if (!wiki.length) return data
+  const tasksById = { ...data.tasksById }
+  for (const t of wiki) tasksById[t.id] ??= t
+  return { ...data, tasks: [...data.tasks, ...wiki], tasksById }
 }
 
 /**

@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react'
 import { Image as ImageIcon, Info, Layers, MapPin, X } from 'lucide-react'
-import { useGameData } from '../api/hooks'
+import { useGameDataWithWiki } from '../hooks/useWikiQuests'
 import { ONE_HOUR } from '../api/queryClient'
 import { SegmentButton } from '../components/SegmentButton'
 import { useNeeds } from '../hooks/useNeeds'
@@ -40,7 +40,9 @@ const CANVAS_THRESHOLD = 200
 export function MapsPage() {
   const options = useMapOptions()
   // The Goons' last reported map rides along in this data: keep it hourly while the map is open.
-  const gameData = useGameData({ refetchMs: ONE_HOUR })
+  // Wiki-only quests (new, event) have their spots too.
+  const { data: mapData, wikiTasks } = useGameDataWithWiki({ refetchMs: ONE_HOUR })
+  const gameData = { data: mapData }
   const { needs, items: itemsQuery } = useNeeds()
   const profile = useProfile()
   const gameMode = useProgressStore((s) => s.gameMode)
@@ -77,7 +79,7 @@ export function MapsPage() {
     return buildMapTasks(gameData.data, mapId, layer).filter((m) => isFactionEligible(m.task, profile.faction))
   }, [gameData.data, mapId, layer, profile.faction])
 
-  const progress = useProgressContext()
+  const progress = useProgressContext(wikiTasks)
   const statuses = useMemo(() => computeTaskStatuses(mapTasks.map((m) => m.task), profile, progress ?? undefined), [mapTasks, profile, progress])
   const factionTasks = useMemo(() => (gameData.data?.tasks ?? []).filter((t) => isFactionEligible(t, profile.faction)), [gameData.data, profile.faction])
 

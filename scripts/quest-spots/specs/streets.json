@@ -1,0 +1,14 @@
+{
+ "note": "Streets quest pictures on the frame of KollontaySpawnsStreets.png (Jindouz, 7620 x 5877). Cast the Net Streets of Tarkov Map.png and Final Stretch Map.png share it (same-frame.ps1 0.95-0.96); In the Name of Humanity Stashing Location Map.png and ITARPizzaLoverMap.png are crops: pixels + (126, 133); Nikitskaya Street 8 Map.png: + (184, 196) (offset.ps1, 0.96-0.97 equal).",
+ "frame": "scripts/boss-areas/specs/streets-kollontay.json",
+ "pictureWidth": 7620,
+ "spots": {
+  "Cast the Net | concrete mixer truck at the collapsed crane": [2954, 3662],
+  "Cast the Net | bio toilets by the Rodina cinema": [4485, 4423],
+  "Final Stretch | laptop at the vent chimney behind the diner": [4723, 3546],
+  "Historical Prospects | Nikitskaya St. 8 apartment (4922,3500 + 184,196)": [5106, 3696],
+  "In the Name of Humanity | Pinewood Hotel restaurant (4715,2646 + 126,133)": [4841, 2779],
+  "In the Name of Humanity | tram fallen into the sewers (5558,3233 + 126,133)": [5684, 3366],
+  "check: Collapsed Crane extract (216,273)": [2908, 3715]
+ }
+}

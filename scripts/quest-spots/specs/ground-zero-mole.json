@@ -1,0 +1,24 @@
+{
+ "picture": "Saving the Mole Map.png (RE3MR Ground Zero 0.1f, 2656 x 2160). Control points: extract icons, plus building names matched to tarkov.dev's map labels (both are rough building centres).",
+ "affine": true,
+ "points": [
+  [1572, 272, 152, -97, "Emercom Checkpoint"],
+  [2003, 314, 25, -80, "Scav Checkpoint (co-op)"],
+  [1344, 786, 218, -39, "Mira Ave"],
+  [2164, 1033, -20, 115, "Police Cordon V-Ex"],
+  [2142, 1756, -16, 335, "Nakatani Basement Stairs"],
+  [1558, 536, 150, 1, "label Skyside"],
+  [1569, 1117, 141, 142, "label Fusion"],
+  [1917, 1197, 14, 201, "label Empire"],
+  [1594, 1717, 115, 285, "label Capital Insight"],
+  [2006, 1842, 2, 324, "label Nakatani"],
+  [1694, 100, 80, -118, "label Elemental Global"],
+  [1903, 1092, 43, 150, "label Tarbank"],
+  [1919, 1403, 58, 234, "label Gagarin Hotel"],
+  [1706, 1003, 115, 104, "label Oasis"]
+ ],
+ "spots": {
+  "Doxed / Unanswered Calls | TerraGroup main building": [2222, 814],
+  "check: TERRAGROUP label (tarkov.dev label -50,0)": [2275, 814]
+ }
+}

@@ -1,0 +1,25 @@
+{
+ "picture": "ThirstyDeliveryCustomsMap.png (older RE3MR Customs render, 3840 x 2160; not the frame of CustomsGoonsMap.png: same-frame.ps1 0.13). Control points = extract letters read off the picture.",
+ "affine": false,
+ "points": [
+  [3760, 696, -336, -86, "C Crossroads"],
+  [2672, 1396, 15, 126, "N Sniper roadblock"],
+  [2788, 1396, -42, 123, "E Smugglers' boat"],
+  [2080, 1728, 181, 213, "O/D Old road gate, Dorms V-Ex"],
+  [188, 968, 665, -55, "A Admin gate"],
+  [404, 632, 622, -126, "11 ZB-1011"],
+  [1436, 888, 342, -26, "4 Warehouse 4"],
+  [1940, 1020, 206, 3, "Y Factory shacks"],
+  [2044, 448, 201, -153, "13 ZB-1013"],
+  [1518, 472, 311, -175, "L Old gas station"],
+  [2508, 532, -10, -138, "U RUAF roadblock"],
+  [1004, 652, 462, -112, "12 ZB-1012"],
+  [640, 1804, 539, 200, "P Passage between rocks"],
+  [788, 1808, 489, 221, "R3 Railroad to military base"],
+  [3028, 300, -153, -218, "R2 Railroad to Tarkov"],
+  [3432, 288, -316, -233, "I/T Trailer park"]
+ ],
+ "spots": {
+  "False Call | convenience store by the bridge": [2624, 1084]
+ }
+}

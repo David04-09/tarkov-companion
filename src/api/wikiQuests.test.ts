@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import type { GameMap, Task, Trader } from './types'
-import { levelFor, missingTitles, normQuestName, parseWikiQuest, questInMode, toWikiTask, wikiRenames, wikiText } from './wikiQuests'
+import type { GameMap, MapDetails, Task, Trader } from './types'
+import { levelFor, missingTitles, normQuestName, objectiveLocations, parseWikiQuest, questInMode, toWikiTask, wikiRenames, wikiText } from './wikiQuests'
+import { WIKI_QUEST_SPOTS } from './wikiQuestSpots'
 import { withRenamed } from '../store/progress'
 
 // Shortened from the real EFT Wiki pages (2026-10-25).
@@ -58,11 +59,30 @@ const page = (_title: string, fields: Record<string, string>, sections: Record<s
 
 const map = (name: string): GameMap => ({ id: name.toLowerCase(), name, normalizedName: name.toLowerCase().replace(/\s+/g, '-') }) as GameMap
 const trader = (name: string): Trader => ({ id: `t-${name.toLowerCase()}`, name, normalizedName: name.toLowerCase(), imageLink: null, currency: 'RUB', resetTime: null, maxLevel: 4, levels: [] })
+const maps = ['Lighthouse', 'Customs', 'The Lab', 'Night Factory', 'Ground Zero', 'Reserve'].map(map)
+const at = (x: number, z: number) => ({ x, y: 0, z })
+const details = (d: Partial<MapDetails>) => ({ transits: [], extracts: [], ...d }) as MapDetails
 const data = {
   tasks: [{ id: 'debut', name: 'Debut' }, { id: 'fog', name: 'Fog of War' }] as Task[],
   traders: ['Prapor', 'Therapist', 'Skier', 'Ragman'].map(trader),
-  maps: ['Lighthouse', 'Customs', 'The Lab', 'Night Factory'].map(map),
+  maps,
+  mapDetails: {
+    lighthouse: details({
+      transits: [{ id: 't1', name: 'Transit to Reserve', targetMapId: 'reserve', position: at(-293, -781), outline: [] }],
+      extracts: [{ id: 'e1', name: 'Armored Train', faction: 'shared', position: at(6, -869), outline: [] }],
+    }),
+    customs: details({ transits: [{ id: 't2', name: 'Transit to Lighthouse', targetMapId: 'lighthouse', position: at(21, 140), outline: [] }] }),
+    'ground zero': details({
+      extracts: [
+        { id: 'e2', name: 'Nakatani Basement Stairs', faction: 'shared', position: at(-16, 335), outline: [] },
+        { id: 'e3', name: 'Emercom Checkpoint', faction: 'shared', position: at(152, -97), outline: [] },
+        { id: 'e4', name: 'Emercom Checkpoint', faction: 'pmc', position: at(152, -97), outline: [] },
+      ],
+    }),
+  } as Record<string, MapDetails>,
 }
+const lh = maps[0]
+const gz = maps[4]
 
 describe('parseWikiQuest', () => {
   it('reads an event quest page', () => {
@@ -173,5 +193,48 @@ describe('ticks carry over', () => {
     // Done wins over started.
     expect([...next.activeTaskIds]).toEqual(['real-b'])
     expect(withRenamed(p, { 'wiki:C': 'c' })).toBe(p)
+  })
+})
+
+describe('map spots', () => {
+  it('uses the spots read off the wiki maps', () => {
+    const honest = objectiveLocations('Honest Review', 'Scout the UN checkpoint at the main road on Lighthouse', [lh], data)
+    expect(honest).toEqual([{ mapId: 'lighthouse', positions: [{ x: -4, y: 25, z: 128 }], outline: null, zoneId: null }])
+    // Area-only spots get a circle of r metres.
+    const doxed = objectiveLocations('Doxed', 'Locate the SSD with delivery routes on Ground Zero', [gz], data)
+    expect(doxed[0].outline).toHaveLength(12)
+    expect(Math.hypot(doxed[0].outline![0].x - doxed[0].positions[0].x, doxed[0].outline![0].z - doxed[0].positions[0].z)).toBeCloseTo(30)
+  })
+
+  it('finds transits and named extracts in the game data', () => {
+    expect(objectiveLocations('All-Inclusive Support', 'Use the transit from Lighthouse to Reserve', [lh], data)[0].positions).toEqual([at(-293, -781)])
+    expect(objectiveLocations('X', 'Launch a yellow signal flare at the Lighthouse transit on Customs (In one raid)', [maps[1]], data)[0].positions).toEqual([at(21, 140)])
+    expect(objectiveLocations('Hidden Route', 'Locate the transit to Reserve on Lighthouse', [lh], data)[0].positions).toEqual([at(-293, -781)])
+    expect(objectiveLocations('A Familiar Face...', 'Extract from Lighthouse through the Armored Train while wearing a Kirasa-N', [lh], data)[0].positions).toEqual([at(6, -869)])
+    // Two names, one spot each (the shared and PMC Emercom extracts are one place).
+    const calls = objectiveLocations('Unanswered Calls', 'Extract from the location through the Nakatani Basement Stairs or Emercom Checkpoint exfil (in one raid)', [gz], data)
+    expect(calls.map((l) => l.positions[0])).toEqual([at(-16, 335), at(152, -97)])
+  })
+
+  it('places nothing it has no source for', () => {
+    expect(objectiveLocations('Cast the Net', 'Plant a WI-FI Camera inside the yellow bus in the underground tunnel on Ground Zero', [gz], data)).toEqual([])
+    expect(objectiveLocations('Lose the Tail', 'Locate and neutralize Glukhar on Lighthouse', [lh], data)).toEqual([])
+  })
+
+  it('every table entry names a real map and sensible spots', () => {
+    const known = ['lighthouse', 'shoreline', 'woods', 'customs', 'reserve', 'streets-of-tarkov', 'interchange', 'ground-zero', 'the-lab']
+    for (const e of WIKI_QUEST_SPOTS) {
+      expect(known).toContain(e.map)
+      expect(e.objective).toBe(e.objective.toLowerCase())
+      expect(e.spots.length).toBeGreaterThan(0)
+      for (const p of e.spots) expect(Math.abs(p.x) < 1100 && Math.abs(p.z) < 1100).toBe(true)
+    }
+  })
+
+  it('gives wiki objectives their spots and maps', () => {
+    const page = parseWikiQuest('Number Temporarily Unavailable', NUMBER, { historical: false, event: true })
+    const t = toWikiTask(page, data, new Set(), 'pve')
+    expect(t.objectives[0].locations[0].positions).toEqual([{ x: -81, y: 10, z: 460 }])
+    expect(t.objectives[0].maps.map((m) => m.id)).toEqual(['lighthouse'])
   })
 })

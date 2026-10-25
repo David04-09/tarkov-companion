@@ -1,0 +1,34 @@
+{
+ "picture": "Break the Chain Customs Map.jpg (RE3MR Customs render, 7832 x 5016). Control points = extract and transit letters read off the picture.",
+ "affine": false,
+ "points": [
+  [7536, 2232, -336, -86, "C Crossroads"],
+  [7640, 1456, -334, -212, "G Interchange transit"],
+  [7440, 1320, -316, -233, "T Trailer park"],
+  [6048, 1392, -153, -218, "R2 Railroad to Tarkov"],
+  [5240, 1784, -10, -138, "U RUAF roadblock"],
+  [4408, 1664, 107, -44, "Z Boiler room basement"],
+  [4000, 1528, 201, -153, "13 ZB-1013"],
+  [3800, 1256, 141, -323, "W Railroad passage"],
+  [2816, 1480, 311, -175, "L Old gas station"],
+  [2576, 1536, 354, -190, "H Factory transit"],
+  [2504, 1824, 342, -26, "4 Warehouse 4"],
+  [528, 1664, 622, -126, "11 ZB-1011"],
+  [216, 2280, 665, -55, "A Admin gate"],
+  [352, 3320, 651, 125, "V Reserve transit"],
+  [480, 3320, 645, 127, "M Military base CP"],
+  [1312, 3688, 539, 200, "P Passage between rocks"],
+  [1520, 3792, 489, 221, "R3 Railroad to military base"],
+  [3792, 3796, 181, 213, "O/D Old road gate, Dorms V-Ex"],
+  [4888, 3408, 15, 126, "N Sniper roadblock"],
+  [5008, 3408, 21, 140, "E Shoreline transit"],
+  [6200, 2896, -149, 47, "R1 Railroad to port"],
+  [5408, 3408, -42, 123, "B Smugglers' boat"],
+  [1744, 1776, 462, -112, "X Smugglers' bunker"]
+ ],
+ "spots": {
+  "not used: factory chimney top (oblique render; see customs.json)": [4239, 1848],
+  "Break the Chain | power line tower (base)": [2222, 3605],
+  "check: tower top-left of it (label Powerline Tower 497,110)": [1500, 3015]
+ }
+}

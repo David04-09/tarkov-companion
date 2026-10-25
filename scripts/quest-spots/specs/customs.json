@@ -1,0 +1,10 @@
+{
+ "note": "Customs quest pictures on the RE3MR frame of CustomsGoonsMap.png (3840 x 2160): TTLClipTheirWingsCustomsMap.png (same-frame.ps1 0.99).",
+ "frame": "scripts/boss-areas/specs/customs-re3mr.json",
+ "pictureWidth": 3840,
+ "spots": {
+  "Clip Their Wings | roadside construction site (TTLClipTheirWingsCustomsMap.png)": [1860, 872],
+  "Break the Chain | west chimney of the boiler building, base (same picture; Break the Chain Customs Map.jpg circles this chimney)": [2138, 822],
+  "check: Boiler Building label (Boiler Room Basement extract 107,-44)": [2270, 860]
+ }
+}

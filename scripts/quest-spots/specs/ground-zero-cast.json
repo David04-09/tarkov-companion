@@ -1,0 +1,16 @@
+{
+ "picture": "Cast the Net Ground Zero Map.png (Xtycho Ground Zero, 6920 x 6920). Control points: extract and transit icons.",
+ "affine": true,
+ "points": [
+  [1900, 743, 152, -97, "Emercom Checkpoint (exfil box)"],
+  [3221, 907, 25, -80, "Scav Checkpoint (exfil box)"],
+  [1179, 1464, 218, -39, "Mira Ave"],
+  [907, 2379, 230, 65, "Transit to Streets"],
+  [3821, 2864, -20, 115, "Police Cordon V-Ex"],
+  [1671, 3321, 191, 133, "Tartowers Sales Office"],
+  [3771, 5143, -16, 335, "Nakatani Basement Stairs"]
+ ],
+ "spots": {
+  "Cast the Net | cargo truck on the ramp to the Streets transit": [2229, 2500]
+ }
+}

@@ -1,0 +1,86 @@
+{
+ "picture": "Side Hustle TerraGroup employee's suitcase The Lab Map.png (first level plan, 1525 x 1399). Control points: room names matched to tarkov.dev Lab labels (room centres).",
+ "affine": true,
+ "points": [
+  [
+   727,
+   247,
+   -260,
+   -342,
+   "label Reception"
+  ],
+  [
+   1007,
+   442,
+   -236,
+   -302,
+   "label Gym"
+  ],
+  [
+   985,
+   595,
+   -207,
+   -305,
+   "label Lecture Hall"
+  ],
+  [
+   948,
+   1100,
+   -125,
+   -308,
+   "label Server Room"
+  ],
+  [
+   637,
+   1075,
+   -130,
+   -356,
+   "label Test Room"
+  ],
+  [
+   353,
+   1077,
+   -130,
+   -398,
+   "label Infirmary Lvl 1"
+  ],
+  [
+   280,
+   335,
+   -230,
+   -400,
+   "label Parking"
+  ],
+  [
+   1170,
+   450,
+   -236,
+   -280,
+   "labels locker rooms"
+  ],
+  [
+   723,
+   450,
+   -221,
+   -343,
+   "label Recreation Area"
+  ],
+  [
+   750,
+   800,
+   -172,
+   -342,
+   "label Main Working Area"
+  ]
+ ],
+ "spots": {
+  "Side Hustle | suitcase spawn 1": [
+   617,
+   450
+  ],
+  "Side Hustle | suitcase spawn 2": [
+   825,
+   450
+  ]
+ }
+}
