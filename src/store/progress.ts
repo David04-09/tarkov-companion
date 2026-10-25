@@ -51,6 +51,8 @@ export interface ProgressState {
   setTaskActiveFor: (mode: GameMode, taskId: string, active: boolean) => void
   /** Adds many completed tasks at once (backfill); returns how many were new. */
   addCompletedFor: (mode: GameMode, taskIds: string[]) => number
+  /** Moves done/started/failed marks from one id to another (a wiki quest that the game data now has under its real id). */
+  renameTasksFor: (mode: GameMode, ids: Record<string, string>) => void
   resetProgress: () => void
   exportProgress: () => ProgressExport
   /** Replaces all progress with the given export. Throws if the shape is invalid. */
@@ -140,6 +142,23 @@ function withCompleted(p: Profile, taskId: string, completed: boolean): Profile 
   return { ...p, completedTaskIds: next, activeTaskIds: active, failedTaskIds: failed }
 }
 
+/** The profile with every mark on an old id moved to its new id (unchanged object when nothing moves). */
+export function withRenamed(p: Profile, ids: Record<string, string>): Profile {
+  const move = (set: Set<string>) => {
+    if (![...set].some((id) => id in ids)) return set
+    return new Set([...set].map((id) => ids[id] ?? id))
+  }
+  const completedTaskIds = move(p.completedTaskIds)
+  const activeTaskIds = move(p.activeTaskIds)
+  const failedTaskIds = move(p.failedTaskIds)
+  if (completedTaskIds === p.completedTaskIds && activeTaskIds === p.activeTaskIds && failedTaskIds === p.failedTaskIds) return p
+  for (const id of completedTaskIds) {
+    activeTaskIds.delete(id)
+    failedTaskIds.delete(id)
+  }
+  return { ...p, completedTaskIds, activeTaskIds, failedTaskIds }
+}
+
 export const useProgressStore = create<ProgressState>()(
   persist(
     (set, get) => {
@@ -208,6 +227,7 @@ export const useProgressStore = create<ProgressState>()(
           })
           return added
         },
+        renameTasksFor: (mode, ids) => updateProfileFor(mode, (p) => withRenamed(p, ids)),
         resetProgress: () => updateProfile(() => emptyProfile()),
 
         exportProgress: () => {

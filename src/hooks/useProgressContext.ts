@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { useGameData, useItems } from '../api/hooks'
+import type { Task } from '../api/types'
 import { buildProgressContext, type ProgressContext } from '../lib/progression'
 import { isFactionEligible } from '../lib/taskStatus'
 import { useModeInventory } from '../store/inventory'
@@ -10,8 +11,9 @@ import { useProfile } from '../store/progress'
  * The one picture of your progress every page uses: quests done (ticked or by deduction), the
  * player level (set, or reached by quest XP), reputation and loyalty level per trader. The items
  * document (for the level table) is used only when it is already loaded; this never downloads it.
+ * `extraTasks` (wiki-only quests on the Quests tab) take part in "done by deduction" only.
  */
-export function useProgressContext(): ProgressContext | null {
+export function useProgressContext(extraTasks?: Task[]): ProgressContext | null {
   const data = useGameData().data
   const levelTable = useItems(false).data?.playerLevels ?? null
   const profile = useProfile()
@@ -24,9 +26,9 @@ export function useProgressContext(): ProgressContext | null {
             data.tasks.filter((t) => isFactionEligible(t, profile.faction)),
             data.traders,
             profile,
-            { startingReputation, manualTraderLevels: inventory.traderLevels, levelTable },
+            { startingReputation, manualTraderLevels: inventory.traderLevels, levelTable, extraTasks },
           )
         : null,
-    [data, profile, inventory.traderLevels, startingReputation, levelTable],
+    [data, profile, inventory.traderLevels, startingReputation, levelTable, extraTasks],
   )
 }

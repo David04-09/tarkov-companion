@@ -12,7 +12,9 @@ export interface ChangelogEntry {
 }
 
 /** Committed, waiting for the next update. */
-export const UNRELEASED: string[] = []
+export const UNRELEASED: string[] = [
+  "Quests: every quest on the EFT Wiki now shows on the Quests tab, also the ones the game data does not have yet, such as Honest Review, Number Temporarily Unavailable, Fog of War, the To the Light and Make Amends lines and the Prestige quests. They carry a \"Wiki\" badge and show the wiki's objectives, requirements (level for your mode, loyalty, earlier quests), rewards and guide pictures. Switches under the filters choose what else to list: new and event quests are on; Seasonal-mode, Arena and past (removed) quests are off until you turn them on, and past ones never count as available. Tick them by hand (the game log cannot, and they have no map spots); once the game data adds a quest, your tick moves over to it by itself. The wiki is read at most once a day.",
+]
 
 export const RELEASES: ChangelogEntry[] = [
   {

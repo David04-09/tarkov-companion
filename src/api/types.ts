@@ -899,6 +899,8 @@ export interface Task {
   traderRequirements: { traderId: string; type: string; compare: string; value: number }[]
   /** Reputation the hand-in gives (negative for some traders). */
   standing: { traderId: string; standing: number }[]
+  /** Set only for quests that come from the EFT Wiki because the game data lacks them (api/wikiQuests.ts). */
+  wiki?: { kind: 'regular' | 'event' | 'seasonal' | 'arena' | 'past'; rewards: string[]; requirements: string[]; locations: string[] }
 }
 
 /** Everything the Quests/Dashboard tabs need, loaded for one game mode. */

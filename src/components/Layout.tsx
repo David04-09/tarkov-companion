@@ -19,6 +19,7 @@ import { WipeBanner } from '../desktop/WipeBanner'
 import { ItemLookup } from './ItemLookup'
 import { StoryTimerWatcher } from '../story/StoryTimerWatcher'
 import { AutoUntickCompleted } from '../maps/AutoUntick'
+import { WikiTickCarryOver } from '../quests/WikiTickCarryOver'
 import { RaidResultPrompt } from '../stats/RaidResultPrompt'
 import { RaidBriefingHost } from '../briefing/RaidBriefingHost'
 import { PositionListener } from '../maps/position'
@@ -79,6 +80,7 @@ export function Layout() {
       <ErrorBoundary area="Story timers" quiet>
         <StoryTimerWatcher />
         <AutoUntickCompleted />
+        <WikiTickCarryOver />
       </ErrorBoundary>
       <ErrorBoundary area="Raid briefing" quiet>
         {/* Briefs when the game log (desktop) says a map is loading. */}

@@ -23,6 +23,8 @@ export interface ProgressOptions {
   manualTraderLevels: Record<string, number>
   /** The game's level table (items document), to get the level your quest XP alone reaches; null when not loaded. */
   levelTable: PlayerLevel[] | null
+  /** Quests known only from the wiki (Quests tab): used for "done by deduction", never for XP or reputation. */
+  extraTasks?: Task[]
 }
 
 export interface ProgressContext {
@@ -99,6 +101,7 @@ export function nextLoyalty(trader: Trader, level: number, playerLevel: number, 
 export function buildProgressContext(tasks: Task[], traders: Trader[], profile: Profile, opts: ProgressOptions): ProgressContext {
   const tasksById: Record<string, Task> = {}
   for (const t of tasks) tasksById[t.id] = t
+  for (const t of opts.extraTasks ?? []) tasksById[t.id] ??= t
   const known = new Set([...profile.completedTaskIds, ...profile.activeTaskIds, ...profile.failedTaskIds])
   const inferred = inferCompleted(tasksById, known, profile.completedTaskIds)
   const completed = new Set([...profile.completedTaskIds, ...inferred])

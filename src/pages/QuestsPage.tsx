@@ -14,7 +14,9 @@ import {
   Unlock,
 } from 'lucide-react'
 import { useGameData, useItems } from '../api/hooks'
-import type { GameData, ItemsById, Task, TaskObjective } from '../api/types'
+import type { GameData, GameMap, ItemsById, Task, TaskObjective } from '../api/types'
+import type { WikiQuestKind } from '../api/wikiQuests'
+import { useWikiQuests } from '../hooks/useWikiQuests'
 import { KappaBadge, LightkeeperBadge, StatusPill } from '../components/Badges'
 import { ObjectiveFacts } from '../components/ObjectiveFacts'
 import { AutoTickBadge } from '../desktop/SyncReview'
@@ -42,6 +44,59 @@ type SortDir = 'asc' | 'desc'
 
 const STATUS_FILTERS: StatusFilter[] = ['all', 'available', 'locked', 'completed']
 const MAP_ANY = '__any__'
+
+type WikiKinds = Record<WikiQuestKind, boolean>
+const WIKI_KEY = 'tc-quests-wiki'
+const WIKI_KINDS: WikiQuestKind[] = ['regular', 'event', 'seasonal', 'arena', 'past']
+const WIKI_DEFAULT: WikiKinds = { regular: true, event: true, seasonal: false, arena: false, past: false }
+const WIKI_LABEL: Record<WikiQuestKind, string> = { regular: 'New', event: 'Event', seasonal: 'Seasonal mode', arena: 'Arena', past: 'Past (removed)' }
+const WIKI_TITLE: Record<WikiQuestKind, string> = {
+  regular: 'On the EFT Wiki but not in the game data yet (new, or part of a story chapter)',
+  event: 'Event quest from the EFT Wiki: given only while its event runs',
+  seasonal: 'Only in the Seasonal mode (EFT Wiki)',
+  arena: 'Escape from Tarkov: Arena quest (a separate game)',
+  past: 'No longer in the game: the EFT Wiki keeps it as history',
+}
+
+function loadWikiKinds(): WikiKinds {
+  try {
+    const saved = JSON.parse(localStorage.getItem(WIKI_KEY) ?? '{}') as Partial<Record<string, unknown>>
+    return Object.fromEntries(WIKI_KINDS.map((k) => [k, typeof saved[k] === 'boolean' ? saved[k] : WIKI_DEFAULT[k]])) as WikiKinds
+  } catch {
+    return { ...WIKI_DEFAULT }
+  }
+}
+
+/** The game data with the wiki-only quests added (Quests tab list and details). */
+function withWiki(data: GameData, wiki: Task[]): GameData {
+  if (!wiki.length) return data
+  const tasksById = { ...data.tasksById }
+  for (const t of wiki) tasksById[t.id] ??= t
+  return { ...data, tasks: [...data.tasks, ...wiki], tasksById }
+}
+
+/** Map filter: the quest's map, or one of the maps a wiki quest names. */
+function onMap(t: Task, mapId: string, maps: GameMap[]): boolean {
+  if (t.map?.id === mapId) return true
+  const name = maps.find((m) => m.id === mapId)?.name.toLowerCase()
+  return Boolean(name && t.wiki?.locations.some((l) => l.toLowerCase() === name))
+}
+
+/** Map column text: one map, "Any", or the wiki's list of maps. */
+function mapLabel(t: Task): string | null {
+  if (t.map) return t.map.name
+  const locs = t.wiki?.locations ?? []
+  if (!locs.length) return null
+  return locs.length <= 2 ? locs.join(', ') : `${locs.slice(0, 2).join(', ')} +${locs.length - 2}`
+}
+
+function WikiBadge({ kind }: { kind: WikiQuestKind }) {
+  return (
+    <span className={`rounded border px-1 text-[10px] ${kind === 'past' ? 'border-line text-ink-dim' : 'border-info/50 text-info'}`} title={WIKI_TITLE[kind]}>
+      Wiki{kind === 'regular' ? '' : ` · ${WIKI_LABEL[kind]}`}
+    </span>
+  )
+}
 
 const selectClass =
   'rounded border border-line bg-surface-2 px-2 py-1.5 text-sm text-ink focus:border-accent focus:outline-none'
@@ -133,9 +188,11 @@ function ObjectiveList({
             </div>
             <ObjectiveFacts objective={o} className="block text-xs text-ink-muted" warnClassName="block rounded border border-warning/40 bg-warning/10 px-1.5 py-0.5 text-xs text-warning" />
             <div className="flex flex-wrap items-center gap-1.5">
-              <span className="rounded border border-line px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-ink-muted">
-                {formatObjectiveType(o.type)}
-              </span>
+              {o.type !== 'wiki' && (
+                <span className="rounded border border-line px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-ink-muted">
+                  {formatObjectiveType(o.type)}
+                </span>
+              )}
               {o.maps.map((m) => (
                 <span key={m.id} className="rounded bg-surface px-1.5 py-0.5 text-xs text-ink-muted">
                   {m.name}
@@ -270,21 +327,23 @@ function TaskDetail({
   status,
   items,
   itemsLoading,
+  ctx,
 }: {
   task: Task
   data: GameData
   status: TaskStatus
   items: ItemsById | undefined
   itemsLoading: boolean
+  ctx: ProgressContext | null
 }) {
   const profile = useProfile()
-  const ctx = useProgressContext()
   const mode = useProgressStore((s) => s.gameMode)
   const setTaskCompleted = useProgressStore((s) => s.setTaskCompleted)
   const setTaskActive = useProgressStore((s) => s.setTaskActiveFor)
   const addCompleted = useProgressStore((s) => s.addCompletedFor)
   const active = profile.activeTaskIds.has(task.id)
-  const reasons = ctx && status === 'locked' ? lockReasons(task, ctx, (id) => data.tasksById[id]?.name ?? 'an earlier quest', (id) => data.traders.find((t) => t.id === id)?.name ?? 'the trader') : []
+  const removed = task.wiki?.kind === 'past'
+  const reasons = ctx && status === 'locked' && !removed ? lockReasons(task, ctx, (id) => data.tasksById[id]?.name ?? 'an earlier quest', (id) => data.traders.find((t) => t.id === id)?.name ?? 'the trader') : []
   // Everything before it that is not done yet (not this quest itself).
   const before = ctx ? [...requiredClosure([task.id], data.tasksById, ctx.completed)].filter((id) => id !== task.id) : []
   const keyMaps = task.neededKeys.filter((k) => k.keyIds.length > 0)
@@ -304,7 +363,7 @@ function TaskDetail({
           <dt className="text-ink-muted">Trader</dt>
           <dd>{task.trader.name}</dd>
           <dt className="text-ink-muted">Map</dt>
-          <dd>{task.map?.name ?? 'Any'}</dd>
+          <dd>{task.map?.name ?? (task.wiki?.locations.length ? task.wiki.locations.join(', ') : 'Any')}</dd>
           <dt className="text-ink-muted">Min level</dt>
           <dd>{task.minPlayerLevel > 0 ? task.minPlayerLevel : 'None'}</dd>
           <dt className="text-ink-muted">XP reward</dt>
@@ -316,6 +375,24 @@ function TaskDetail({
             </>
           )}
         </dl>
+
+        {task.wiki && (
+          <div className="rounded border border-info/40 bg-info/10 px-3 py-2 text-xs text-ink-muted">
+            <div className="font-semibold uppercase tracking-wide text-info">From the EFT Wiki</div>
+            <p className="mt-1">
+              {removed
+                ? 'No longer in the game: the wiki keeps it as history.'
+                : task.wiki.kind === 'arena'
+                  ? 'A quest in Escape from Tarkov: Arena, a separate game.'
+                  : task.wiki.kind === 'seasonal'
+                    ? 'Only in the Seasonal mode. '
+                    : task.wiki.kind === 'event'
+                      ? 'Part of an event: the trader gives it only while the event runs. '
+                      : 'The game data (tarkov.dev) does not have this quest yet. '}
+              {!removed && task.wiki.kind !== 'arena' && 'No map spots, and the game log cannot tick it: tick it here by hand.'}
+            </p>
+          </div>
+        )}
 
         {reasons.length > 0 && (
           <div className="rounded border border-warning/40 bg-warning/10 px-3 py-2">
@@ -334,6 +411,17 @@ function TaskDetail({
           <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink-muted">What it needs</h3>
           <RequirementList task={task} data={data} ctx={ctx} />
         </div>
+
+        {task.wiki && task.wiki.rewards.length > 0 && (
+          <div>
+            <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink-muted">Rewards</h3>
+            <ul className="list-disc space-y-0.5 pl-4">
+              {task.wiki.rewards.map((r, i) => (
+                <li key={i}>{r}</li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         {keyMaps.length > 0 && (
           <div>
@@ -423,6 +511,7 @@ function QuestTable({
   onSort,
   items,
   itemsLoading,
+  progress,
 }: {
   tasks: Task[]
   data: GameData
@@ -431,11 +520,11 @@ function QuestTable({
   onSort: (key: SortKey) => void
   items: ItemsById | undefined
   itemsLoading: boolean
+  progress: ProgressContext | null
 }) {
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const setTaskCompleted = useProgressStore((s) => s.setTaskCompleted)
   const gameMode = useProgressStore((s) => s.gameMode)
-  const progress = useProgressContext()
 
   return (
     <div className="overflow-hidden rounded-lg border border-line bg-surface-2">
@@ -486,13 +575,14 @@ function QuestTable({
                         </span>
                         {task.kappaRequired && <KappaBadge />}
                         {task.lightkeeperRequired && <LightkeeperBadge />}
+                        {task.wiki && <WikiBadge kind={task.wiki.kind} />}
                         {status === 'completed' && <AutoTickBadge mode={gameMode} taskId={task.id} />}
                         {progress?.inferred.has(task.id) && <span className="rounded border border-line px-1 text-[10px] text-ink-dim" title="A later quest is done or started, so this one must be finished">by deduction</span>}
                         {status !== 'completed' && progress?.active.has(task.id) && <span className="rounded border border-success/50 px-1 text-[10px] text-success" title="Started in game (from the log) or marked I have this quest">started</span>}
                       </div>
                     </td>
                     <td className="px-3 py-2 whitespace-nowrap">{task.trader.name}</td>
-                    <td className="px-3 py-2 whitespace-nowrap">{task.map?.name ?? <span className="text-ink-dim">Any</span>}</td>
+                    <td className="px-3 py-2 whitespace-nowrap" title={task.wiki?.locations.join(', ') || undefined}>{mapLabel(task) ?? <span className="text-ink-dim">Any</span>}</td>
                     <td className="px-3 py-2 tabular-nums">
                       {task.minPlayerLevel > 0 ? task.minPlayerLevel : <span className="text-ink-dim">–</span>}
                     </td>
@@ -512,6 +602,7 @@ function QuestTable({
                           status={status}
                           items={items}
                           itemsLoading={itemsLoading}
+                          ctx={progress}
                         />
                       </td>
                     </tr>
@@ -578,10 +669,28 @@ export function QuestsPage() {
 
 function QuestList() {
   const profile = useProfile()
-  const progress = useProgressContext()
   const mode = useProgressStore((s) => s.gameMode)
   const addCompleted = useProgressStore((s) => s.addCompletedFor)
   const query = useGameData()
+  // Quests only the EFT Wiki has (new, event, Seasonal, Arena, past), behind their own switches.
+  const [wikiKinds, setWikiKinds] = useState<WikiKinds>(loadWikiKinds)
+  const toggleWikiKind = (k: WikiQuestKind) => {
+    const next = { ...wikiKinds, [k]: !wikiKinds[k] }
+    setWikiKinds(next)
+    try {
+      localStorage.setItem(WIKI_KEY, JSON.stringify(next))
+    } catch {
+      // remembering the switches is only a convenience
+    }
+  }
+  const wiki = useWikiQuests(wikiKinds.past)
+  const progress = useProgressContext(wiki.tasks)
+  const data = useMemo(() => (query.data ? withWiki(query.data, wiki.tasks) : undefined), [query.data, wiki.tasks])
+  const wikiCounts = useMemo(() => {
+    const out: Partial<Record<WikiQuestKind, number>> = {}
+    for (const t of wiki.tasks) if (t.wiki && isFactionEligible(t, profile.faction)) out[t.wiki.kind] = (out[t.wiki.kind] ?? 0) + 1
+    return out
+  }, [wiki.tasks, profile.faction])
   // Items are only needed for objective names/icons, so load them in the background.
   const itemsQuery = useItems()
 
@@ -604,9 +713,11 @@ function QuestList() {
     setSort((s) => (s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' }))
 
   const derived = useMemo(() => {
-    if (!query.data) return null
-    const eligible = query.data.tasks.filter((t) => isFactionEligible(t, profile.faction))
+    if (!data) return null
+    const eligible = data.tasks.filter((t) => isFactionEligible(t, profile.faction) && (!t.wiki || wikiKinds[t.wiki.kind]))
     const statuses = computeTaskStatuses(eligible, profile, progress ?? undefined)
+    // Removed quests can be ticked (history) but are never "available".
+    for (const t of eligible) if (t.wiki?.kind === 'past' && statuses[t.id] === 'available') statuses[t.id] = 'locked'
     const counts = countStatuses(statuses)
 
     const needle = search.trim().toLowerCase()
@@ -614,10 +725,10 @@ function QuestList() {
       if (statusFilter !== 'all' && statuses[t.id] !== statusFilter) return false
       if (trader !== 'all' && t.trader.id !== trader) return false
       if (map !== 'all') {
-        if (map === MAP_ANY ? t.map !== null : t.map?.id !== map) return false
+        if (map === MAP_ANY ? t.map !== null || Boolean(t.wiki?.locations.length) : !onMap(t, map, data.maps)) return false
       }
       if (needle) {
-        const hay = `${t.name} ${t.trader.name} ${t.map?.name ?? ''}`.toLowerCase()
+        const hay = `${t.name} ${t.trader.name} ${t.map?.name ?? ''} ${t.wiki?.locations.join(' ') ?? ''}`.toLowerCase()
         if (!hay.includes(needle)) return false
       }
       return true
@@ -634,7 +745,7 @@ function QuestList() {
           r = a.trader.name.localeCompare(b.trader.name)
           break
         case 'map':
-          r = (a.map?.name ?? 'Any').localeCompare(b.map?.name ?? 'Any')
+          r = (mapLabel(a) ?? 'Any').localeCompare(mapLabel(b) ?? 'Any')
           break
         case 'minPlayerLevel':
           r = a.minPlayerLevel - b.minPlayerLevel
@@ -645,7 +756,7 @@ function QuestList() {
     })
 
     return { statuses, counts, filtered, total: eligible.length }
-  }, [query.data, profile, progress, search, trader, map, statusFilter, sort])
+  }, [data, profile, progress, search, trader, map, statusFilter, sort, wikiKinds])
 
   return (
     <div>
@@ -730,6 +841,37 @@ function QuestList() {
         </div>
       </div>
 
+      <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
+        <span className="text-ink-muted" title="Quests the EFT Wiki lists that the game data (tarkov.dev) does not have">Also from the EFT Wiki:</span>
+        {WIKI_KINDS.map((k) => {
+          const on = wikiKinds[k]
+          const count = wikiCounts[k]
+          return (
+            <button
+              key={k}
+              type="button"
+              onClick={() => toggleWikiKind(k)}
+              aria-pressed={on}
+              title={WIKI_TITLE[k]}
+              className={`rounded border px-2 py-0.5 transition-colors ${on ? 'border-info/60 bg-info/10 text-info' : 'border-line text-ink-muted hover:text-ink'}`}
+            >
+              {on ? '✓ ' : ''}
+              {WIKI_LABEL[k]}
+              {count != null && <span className="ml-1 opacity-70">{count}</span>}
+            </button>
+          )
+        })}
+        {wiki.loading && <span className="text-ink-dim">reading the wiki…</span>}
+        {wiki.error != null && (
+          <span className="text-danger">
+            The wiki could not be read ({wiki.error instanceof Error ? wiki.error.message : 'error'}).{' '}
+            <button type="button" onClick={wiki.retry} className="underline">
+              Try again
+            </button>
+          </span>
+        )}
+      </div>
+
       <div className="mt-4">
         {query.isError && query.data && (
           <RefreshErrorBanner error={query.error} onRetry={() => void query.refetch()} />
@@ -738,10 +880,11 @@ function QuestList() {
         {query.isError && !query.data && (
           <ErrorPanel error={query.error} onRetry={() => void query.refetch()} retrying={query.isFetching} />
         )}
-        {query.data && derived && (
+        {data && derived && (
           <QuestTable
             tasks={derived.filtered}
-            data={query.data}
+            data={data}
+            progress={progress}
             statuses={derived.statuses}
             sort={sort}
             onSort={onSort}
