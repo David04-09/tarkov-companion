@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { BackfillProgress, DesktopApi, DesktopSettings, GameEvent, PackName, PackProgress, PlayerPosition, UpdateStatus, WatcherState, WipeEvent } from '../src/shared/desktop-api'
+import type { BackfillProgress, DesktopApi, DesktopSettings, GameEvent, PackName, PackProgress, PlayerPosition, SearchBarFrame, UpdateStatus, WatcherState, WipeEvent } from '../src/shared/desktop-api'
 
 function subscribe<T>(channel: string, cb: (payload: T) => void): () => void {
   const listener = (_e: Electron.IpcRendererEvent, payload: T) => cb(payload)
@@ -11,13 +11,12 @@ const api: DesktopApi = {
   platform: process.platform,
   appVersion: process.argv.find((a) => a.startsWith('--tc-version='))?.slice('--tc-version='.length) ?? '',
   windowKind: process.argv.includes('--tc-window=searchbar') ? 'searchbar' : 'main',
-  setSearchBarSize: (width, height) => ipcRenderer.invoke('searchbar:size', width, height),
   openInApp: (to) => ipcRenderer.invoke('searchbar:open', to),
-  moveSearchBar: (dx, dy) => ipcRenderer.invoke('searchbar:move', dx, dy),
-  searchBarMoved: () => ipcRenderer.invoke('searchbar:moved'),
+  getSearchBarFrame: () => ipcRenderer.invoke('searchbar:frame'),
+  onSearchBarFrame: (cb) => subscribe<SearchBarFrame>('searchbar:frame', cb),
+  searchBarMoved: (x, y) => ipcRenderer.invoke('searchbar:moved', x, y),
   searchBarHome: () => ipcRenderer.invoke('searchbar:home'),
-  setSearchBarPassthrough: (on) => ipcRenderer.invoke('searchbar:passthrough', on),
-  onSearchBarLayout: (cb) => subscribe<{ left: boolean; up: boolean }>('searchbar:layout', cb),
+  setSearchBarShape: (rects) => ipcRenderer.invoke('searchbar:shape', rects),
   setSearchBarLocked: (on) => ipcRenderer.invoke('searchbar:lock', on),
   isSearchBarLocked: () => ipcRenderer.invoke('searchbar:locked'),
   onSearchBarLocked: (cb) => subscribe<boolean>('searchbar:locked', cb),

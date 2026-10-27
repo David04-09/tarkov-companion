@@ -1,11 +1,11 @@
 import { useMemo, useState } from 'react'
-import { Loader2 } from 'lucide-react'
+import { CheckCheck, Loader2, SlidersHorizontal } from 'lucide-react'
 import type { Item } from '../api/types'
 import { sellValue } from '../lib/economy'
 import { formatRoubles } from '../lib/format'
 import { groupDetections, needLookup, sourceLabel, sortSell, stashValues, type Confidence, type SellSort } from '../scan/stashValues'
 import { useDetails } from './detailsContext'
-import { useStashScan, type StashScan } from './stashScan'
+import { confirmScan, useStashScan, type StashScan } from './stashScan'
 
 const KEEP_FILL = 'rgba(34,197,94,0.32)'
 const SELL_FILL = 'rgba(239,68,68,0.28)'
@@ -64,6 +64,18 @@ function Icon({ item }: { item: Item | undefined }) {
 export function ScanItemsView() {
   const { ctx, scan, found, values, keepById } = useScanAnalysis()
   const [hover, setHover] = useState<string | null>(null)
+  const [confirmNote, setConfirmNote] = useState<string | null>(null)
+  // Items whose boxes came from your corrections (saved earlier or fixed in tuning).
+  const remembered = useMemo(() => {
+    const m = new Map<string, 'fixed' | 'learned'>()
+    scan?.detections.forEach((d, i) => {
+      if (!d.itemId) return
+      if (scan.fixed.includes(i)) m.set(d.itemId, 'fixed')
+      else if (d.learned && !m.has(d.itemId)) m.set(d.itemId, 'learned')
+    })
+    return m
+  }, [scan])
+  const unsure = found.filter((f) => f.confidence !== 'sure').length
   const name = (id: string) => ctx.items?.[id]?.name ?? 'Unknown item'
   const needOf = (id: string) => values?.keep.find((k) => k.itemId === id)?.need
   const rows = useMemo(
@@ -84,6 +96,16 @@ export function ScanItemsView() {
         <div className="sticky -top-2.5 z-10 -mx-2.5 -mt-2.5 flex justify-center border-b border-white/10 bg-black px-2.5 pb-2 pt-2.5">
           <div className="relative inline-block overflow-hidden rounded border border-white/10">
           <img src={scan.url} alt="Your snip" className="block max-h-56 w-auto max-w-full" />
+          {scan.status === 'done' && (
+            <button
+              type="button"
+              onClick={() => useStashScan.getState().setTuning(true)}
+              title="Full screen: move, resize, draw or delete boxes and pick the right items. Every fix is remembered for the next scans."
+              className="absolute right-1 top-1 z-10 flex items-center gap-1 rounded border border-white/25 bg-black/80 px-1.5 py-0.5 text-[11px] text-white/85 shadow hover:border-white/60 hover:text-white"
+            >
+              <SlidersHorizontal className="h-3 w-3" /> Manual tuning
+            </button>
+          )}
           {grid && (
             <svg viewBox={`0 0 ${scan.width} ${scan.height}`} className="absolute inset-0 h-full w-full" preserveAspectRatio="none">
               {scan.detections.map((d, i) =>
@@ -110,9 +132,20 @@ export function ScanItemsView() {
       {scan?.status === 'done' && (
         <>
           <p className="text-white/55">
-            {total === 0 ? 'No items found. Try a box that covers whole slots.' : `${total} item${total === 1 ? '' : 's'}, ${found.length} kind${found.length === 1 ? '' : 's'}.`}{' '}
+            {total === 0 ? 'No items found. Try a box that covers whole slots, or Manual tuning.' : `${total} item${total === 1 ? '' : 's'}, ${found.length} kind${found.length === 1 ? '' : 's'}.`}{' '}
             <span className="text-emerald-300/80">Green</span> = still needed, <span className="text-red-300/80">red</span> = spare.
           </p>
+          {unsure > 0 && !scan.confirmed && (
+            <button
+              type="button"
+              onClick={() => void confirmScan(scan.id).then((n) => setConfirmNote(n ? `Remembered ${n} find${n === 1 ? '' : 's'}: next time they count as sure.` : 'Nothing new to remember.'))}
+              title="Everything in this snip is named right: the scanner remembers these looks (wrong ones? use Manual tuning instead)"
+              className="flex items-center gap-1 rounded border border-white/20 px-1.5 py-0.5 text-[11px] text-white/75 hover:border-white/50 hover:text-white"
+            >
+              <CheckCheck className="h-3 w-3" /> All correct ({unsure} unsure)
+            </button>
+          )}
+          {confirmNote && <p className="text-[11px] text-sky-300">{confirmNote}</p>}
           <ul className="space-y-1">
             {rows.map((f) => {
               const keep = keepById.get(f.itemId) ?? 0
@@ -132,6 +165,11 @@ export function ScanItemsView() {
                         <span className="truncate">{name(f.itemId)}</span>
                         <span className="text-white/50">×{f.count}</span>
                         <ConfChip c={f.confidence} />
+                        {remembered.get(f.itemId) && (
+                          <span className="rounded border border-sky-300/50 px-1 text-[10px] text-sky-200" title={remembered.get(f.itemId) === 'fixed' ? 'Fixed by you in Manual tuning' : 'Matched one of your saved corrections'}>
+                            {remembered.get(f.itemId) === 'fixed' ? 'fixed' : 'learned'}
+                          </span>
+                        )}
                       </span>
                       {keep > 0 && need ? (
                         <span className="block truncate text-[11px] text-emerald-300/90" title={need.sources.map(sourceLabel).join('\n')}>

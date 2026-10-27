@@ -5,6 +5,7 @@
  */
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { cleanBoxes, type BoxPos } from './boxes'
 
 /** Map layers the bar can draw (its own choice, separate from the Maps tab). */
 export type OverlayLayer =
@@ -94,6 +95,8 @@ export interface OverlayPrefs {
   lastMapKey: string | null
   recent: Ref[]
   stars: Ref[]
+  /** Boxes (cards, the map, side panels) moved or resized by hand, by box id (boxes.ts). */
+  boxes: Record<string, BoxPos>
 }
 
 export const DEFAULT_LAYERS: Record<OverlayLayer, boolean> = {
@@ -162,6 +165,7 @@ export const DEFAULT_PREFS: OverlayPrefs = {
   lastMapKey: null,
   recent: [],
   stars: [],
+  boxes: {},
 }
 
 export const LIMITS = {
@@ -221,6 +225,7 @@ export function cleanOverlayPrefs(raw: unknown): OverlayPrefs {
     lastMapKey: typeof p.lastMapKey === 'string' && /^[a-z0-9-]{1,40}$/.test(p.lastMapKey) ? p.lastMapKey : null,
     recent: refs(p.recent, 10),
     stars: refs(p.stars, 40),
+    boxes: cleanBoxes(p.boxes),
   }
 }
 
@@ -230,7 +235,9 @@ interface OverlayStore extends OverlayPrefs {
   toggleContainer: (name: string) => void
   addRecent: (r: Ref) => void
   toggleStar: (r: Ref) => void
-  reset: (part: 'look' | 'size' | 'all') => void
+  /** A box let go after a move or resize; null forgets it (back next to the glass). */
+  setBox: (id: string, pos: BoxPos | null) => void
+  reset: (part: 'look' | 'size' | 'all' | 'boxes') => void
 }
 
 export const useOverlayPrefs = create<OverlayStore>()(
@@ -243,13 +250,22 @@ export const useOverlayPrefs = create<OverlayStore>()(
       toggleContainer: (name) => set((s) => ({ containersOff: s.containersOff.includes(name) ? s.containersOff.filter((n) => n !== name) : [...s.containersOff, name] })),
       addRecent: (r) => set((s) => ({ recent: [r, ...s.recent.filter((x) => !(x.kind === r.kind && x.id === r.id))].slice(0, 10) })),
       toggleStar: (r) => set((s) => ({ stars: s.stars.some((x) => x.kind === r.kind && x.id === r.id) ? s.stars.filter((x) => !(x.kind === r.kind && x.id === r.id)) : [r, ...s.stars].slice(0, 40) })),
+      setBox: (id, pos) =>
+        set((s) => {
+          const boxes = { ...s.boxes }
+          if (pos) boxes[id] = pos
+          else delete boxes[id]
+          return { boxes: cleanBoxes(boxes) }
+        }),
       reset: (part) =>
         set(
           part === 'look'
             ? { idle: DEFAULT_PREFS.idle, map: DEFAULT_PREFS.map, scale: DEFAULT_PREFS.scale, markerScale: DEFAULT_PREFS.markerScale }
             : part === 'size'
-              ? { mapW: DEFAULT_PREFS.mapW, mapH: DEFAULT_PREFS.mapH, sideW: DEFAULT_PREFS.sideW, panelW: DEFAULT_PREFS.panelW }
-              : { ...DEFAULT_PREFS, recent: get().recent, stars: get().stars },
+              ? { mapW: DEFAULT_PREFS.mapW, mapH: DEFAULT_PREFS.mapH, sideW: DEFAULT_PREFS.sideW, panelW: DEFAULT_PREFS.panelW, boxes: {} }
+              : part === 'boxes'
+                ? { boxes: {} }
+                : { ...DEFAULT_PREFS, recent: get().recent, stars: get().stars },
         ),
     }),
     {

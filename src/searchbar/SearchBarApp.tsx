@@ -1,10 +1,13 @@
 import { Component, lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { Camera, Lock, Search } from 'lucide-react'
-import type { GameEvent } from '../shared/desktop-api'
+import { savedFontStack } from '../lib/fonts'
+import type { GameEvent, SearchBarFrame } from '../shared/desktop-api'
+import { anchorStyle, GLASS, openSide, shapeRects, type Point } from './boxes'
+import { FrameContext, type FrameInfo } from './frameContext'
 import { raidMap, raidOverAt, reduceRaid, type MapRow, type RaidState, type RestockRow } from './overlayLogic'
 import { useOverlayPrefs } from './overlayPrefs'
 import { Pills } from './pills'
-import { columnClass, useDrag, type Flip } from './shell'
+import { columnClass, useDrag, useDragging } from './shell'
 import { SnipLayer, type SnipBox } from './SnipLayer'
 import { cropSnip, useStashScan } from './stashScan'
 
@@ -70,13 +73,17 @@ function wantsRestore(): boolean {
 export type Request = { nonce: number; kind: 'raidMap' | 'focus' | 'restore' | 'mapToggle' }
 
 /**
- * Desktop: the search bar over the game (its own small window). At rest it is only a magnifying
- * glass (and a few optional pills: the raid's time left, Tarkov time, scav cooldown): click it to
- * search, drag it anywhere. Cards, a map and side panels open around it; the see-through parts let
- * clicks through to the game. It reads the game data the app already saved on this PC.
+ * Desktop: the search bar over the game. At rest it is only a magnifying glass (and a few optional
+ * pills: the raid's time left, Tarkov time, scav cooldown): click it to search, drag it anywhere.
+ * Cards, a map and side panels open next to it, and each can be moved and resized on its own. The
+ * window covers the screen but is cut to what is drawn, so every other click goes to the game. It
+ * reads the game data the app already saved on this PC.
  */
 export function SearchBarApp() {
-  const [flip, setFlip] = useState<Flip>({ left: false, up: false })
+  // The window and the glass (screen pixels), from the main process.
+  const [placed, setPlaced] = useState<SearchBarFrame | null>(null)
+  // The glass while it is dragged (until the main process has the new spot).
+  const [moving, setMoving] = useState<Point | null>(null)
   // With "open the last map again" on, the bar starts with it.
   const [woken, setWoken] = useState(() => wantsRestore())
   const [expanded, setExpanded] = useState(false)
@@ -87,10 +94,11 @@ export function SearchBarApp() {
   const [scavEnd, setScavEnd] = useState<number | null>(readScavEnd)
   const [restocks, setRestocks] = useState<RestockRow[]>(readRestocks)
   const [story, setStory] = useState(readStory)
+  // The app's font choice (Settings → Appearance).
+  const [font, setFont] = useState(savedFontStack)
   const [request, setRequest] = useState<Request | null>(() => (wantsRestore() ? { nonce: 1, kind: 'restore' } : null))
   const p = useOverlayPrefs()
   const box = useRef<HTMLDivElement>(null)
-  const through = useRef<boolean | null>(null)
   // A snip for a stash scan: the screen picture while a box is dragged over it.
   const [snip, setSnip] = useState<{ blob: Blob; url: string } | null>(null)
 
@@ -101,12 +109,13 @@ export function SearchBarApp() {
       el.style.overflow = 'hidden'
     }
     const api = window.desktop
+    void api?.getSearchBarFrame().then((f) => f && setPlaced(f))
     const offs = [
-      api?.onSearchBarLayout(setFlip),
-      api?.onSearchBarLocked((on) => {
-        setLocked(on)
-        through.current = null
+      api?.onSearchBarFrame((f) => {
+        setPlaced(f)
+        setMoving(null)
       }),
+      api?.onSearchBarLocked(setLocked),
       api?.onSearchBarMap(() => {
         setWoken(true)
         setRequest({ nonce: Date.now(), kind: 'mapToggle' })
@@ -128,20 +137,13 @@ export function SearchBarApp() {
     // Clicking back into the game shrinks it to the glass (an open map and side panels stay).
     const blur = () => setExpanded(false)
     window.addEventListener('blur', blur)
-    // Clicks on see-through parts go to the game: only drawn parts (data-solid) take the mouse.
-    const move = (e: MouseEvent) => {
-      const on = !(e.target instanceof Element && e.target.closest('[data-solid]'))
-      if (on === through.current) return
-      through.current = on
-      void api?.setSearchBarPassthrough(on)
-    }
-    window.addEventListener('mousemove', move)
     // The app window keeps the scav timer and the map table; follow their changes.
     const storage = (e: StorageEvent) => {
       if (e.key === 'tarkov-companion-timers') setScavEnd(readScavEnd())
       if (e.key === 'tarkov-companion-story' || e.key === 'tarkov-companion-progress') setStory(readStory())
       if (e.key === MAP_ROWS_KEY) setRows(readRows())
       if (e.key === 'tc-overlay-prefs') void useOverlayPrefs.persist.rehydrate()
+      if (e.key === 'tarkov-companion-prefs') setFont(savedFontStack())
     }
     window.addEventListener('storage', storage)
     const rowsChanged = () => {
@@ -153,7 +155,6 @@ export function SearchBarApp() {
       window.removeEventListener(MAP_ROWS_EVENT, rowsChanged)
       offs.forEach((off) => off?.())
       window.removeEventListener('blur', blur)
-      window.removeEventListener('mousemove', move)
       window.removeEventListener('storage', storage)
     }
   }, [])
@@ -199,19 +200,61 @@ export function SearchBarApp() {
     document.documentElement.style.setProperty('--tc-marker-scale', String(markerScale / 100))
   }, [markerScale])
 
-  // The window follows what is drawn (the glass, the bar, cards, the map, side panels).
+  // Only what is drawn takes the mouse: the window's shape follows the drawn parts (data-solid).
+  // While something is dragged or resized, or a snip is on, the whole window takes it.
+  const dragging = useDragging((s) => s.count > 0)
+  const whole = dragging || Boolean(snip)
   useLayoutEffect(() => {
-    const el = box.current
-    if (!el) return
+    const root = box.current
+    const api = window.desktop
+    if (!root || !api || !placed) return
+    let last = ''
+    let raf = 0
+    let timer = 0
     const send = () => {
-      const r = el.getBoundingClientRect()
-      void window.desktop?.setSearchBarSize(Math.ceil(r.width) + 8, Math.ceil(r.height) + 8)
+      cancelAnimationFrame(raf)
+      window.clearTimeout(timer)
+      raf = 0
+      timer = 0
+      const w = window.innerWidth
+      const h = window.innerHeight
+      const parts = whole
+        ? [{ x: 0, y: 0, width: w, height: h }]
+        : [...root.querySelectorAll('[data-solid]')].filter((el) => !el.parentElement?.closest('[data-solid]')).map((el) => el.getBoundingClientRect())
+      const rects = shapeRects(parts, w, h)
+      const key = JSON.stringify(rects)
+      if (!rects.length || key === last) return
+      last = key
+      void api.setSearchBarShape(rects)
     }
+    // Once per frame at most (and a timer too: frames stop while the window is hidden).
+    const schedule = () => {
+      if (raf || timer) return
+      raf = requestAnimationFrame(send)
+      timer = window.setTimeout(send, 80)
+    }
+    const ro = new ResizeObserver(schedule)
+    const watch = () => {
+      ro.disconnect()
+      ro.observe(root)
+      root.querySelectorAll('[data-solid]').forEach((el) => ro.observe(el))
+    }
+    const mo = new MutationObserver(() => {
+      watch()
+      schedule()
+    })
+    mo.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] })
+    watch()
     send()
-    const ro = new ResizeObserver(send)
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [])
+    window.addEventListener('resize', schedule)
+    return () => {
+      mo.disconnect()
+      ro.disconnect()
+      cancelAnimationFrame(raf)
+      window.clearTimeout(timer)
+      window.removeEventListener('resize', schedule)
+    }
+  }, [placed, whole])
 
   // Lightweight while it waits: after a while with nothing open, unload the data.
   useEffect(() => {
@@ -233,14 +276,12 @@ export function SearchBarApp() {
     const r = await window.desktop?.startSnip().catch(() => null)
     if (!r) return
     const blob = new Blob([r.png as BlobPart], { type: 'image/png' })
-    through.current = null
     setSnip({ blob, url: URL.createObjectURL(blob) })
   }, [])
   const endSnip = useCallback(
     (box: SnipBox | null) => {
       const s = snip
       setSnip(null)
-      through.current = null
       void window.desktop?.endSnip()
       if (!s) return
       URL.revokeObjectURL(s.url)
@@ -253,8 +294,32 @@ export function SearchBarApp() {
     },
     [snip],
   )
-  const drag = useDrag(open)
-  const grip = useDrag()
+  // Dragging the glass (or the bar's grip): the page moves it; the main process keeps the spot.
+  const frame = placed?.frame ?? { x: 0, y: 0, width: window.innerWidth, height: window.innerHeight }
+  const anchor = moving ?? placed?.anchor ?? { x: frame.x + 16, y: frame.y + 16 }
+  const from = useRef<Point>(anchor)
+  const to = useRef<Point | null>(null)
+  const glassDrag = {
+    onStart: () => {
+      from.current = anchor
+    },
+    onMove: (dx: number, dy: number) => {
+      to.current = { x: from.current.x + dx, y: from.current.y + dy }
+      setMoving(to.current)
+    },
+    onEnd: () => {
+      if (to.current) void window.desktop?.searchBarMoved(to.current.x, to.current.y)
+      to.current = null
+    },
+  }
+  const drag = useDrag({ ...glassDrag, onClick: open })
+  const grip = useDrag(glassDrag)
+  // On screen while it is dragged towards another screen (it moves there when let go).
+  const shown = {
+    x: Math.min(Math.max(anchor.x, frame.x), frame.x + frame.width - GLASS),
+    y: Math.min(Math.max(anchor.y, frame.y), frame.y + frame.height - GLASS),
+  }
+  const flip = openSide(shown, frame)
   const onState = useCallback(
     (busy: boolean, clear: boolean, preview: boolean) => setState((s) => (s.busy === busy && s.clear === clear && s.preview === preview ? s : { busy, clear, preview })),
     [],
@@ -300,25 +365,29 @@ export function SearchBarApp() {
   )
   const fade = (state.clear ? p.map : p.idle) / 100
   const hover = state.preview || locked ? '' : 'hover:opacity-100 focus-within:opacity-100'
+  const info = useMemo<FrameInfo>(() => ({ frame, anchor: shown, flip, zoom }), [frame.x, frame.y, frame.width, frame.height, shown.x, shown.y, flip.left, flip.up, zoom]) // eslint-disable-line react-hooks/exhaustive-deps
+  const atGlass = <div className={`absolute ${columnClass(flip)}`} style={anchorStyle(shown, frame, flip)}>{glass}</div>
 
   return (
-    <div className="fixed inset-0 flex p-1" style={{ justifyContent: flip.left ? 'flex-end' : 'flex-start', alignItems: flip.up ? 'flex-end' : 'flex-start' }}>
+    <div
+      ref={box}
+      className={`fixed inset-0 text-[13px] text-white transition-opacity duration-150 opacity-(--sb-fade) ${hover}`}
+      style={{ fontFamily: font, '--sb-fade': fade } as CSSProperties}
+    >
       {snip && <SnipLayer url={snip.url} onDone={endSnip} onCancel={() => endSnip(null)} />}
-      <div
-        ref={box}
-        className={`flex w-max gap-1.5 text-[13px] text-white transition-opacity duration-150 opacity-(--sb-fade) ${hover} ${flip.left ? 'flex-row-reverse' : ''} ${flip.up ? 'items-end' : 'items-start'}`}
-        style={{ fontFamily: 'system-ui, sans-serif', '--sb-fade': fade } as CSSProperties}
-      >
-        {woken ? (
-          <BodyGuard glass={glass} column={columnClass(flip)} onReset={() => setRequest(null)}>
-            <Suspense fallback={<div className={columnClass(flip)}>{glass}</div>}>
-              <SearchBarBody flip={flip} expanded={expanded} setExpanded={setExpanded} glass={glass} strip={strip} grip={grip} onState={onState} raid={raid} raidRow={row} request={request} locked={locked} />
-            </Suspense>
-          </BodyGuard>
-        ) : (
-          <div className={columnClass(flip)}>{glass}</div>
-        )}
-      </div>
+      {placed && (
+        <FrameContext.Provider value={info}>
+          {woken ? (
+            <BodyGuard glass={atGlass} onReset={() => setRequest(null)}>
+              <Suspense fallback={atGlass}>
+                <SearchBarBody expanded={expanded} setExpanded={setExpanded} glass={glass} strip={strip} grip={grip} onState={onState} raid={raid} raidRow={row} request={request} locked={locked} />
+              </Suspense>
+            </BodyGuard>
+          ) : (
+            atGlass
+          )}
+        </FrameContext.Provider>
+      )}
     </div>
   )
 }
@@ -327,7 +396,7 @@ export function SearchBarApp() {
  * If something inside the bar breaks (unexpected data), the glass keeps working: a small notice
  * offers to start the bar again instead of leaving an empty window over the game.
  */
-class BodyGuard extends Component<{ glass: ReactNode; column: string; onReset: () => void; children: ReactNode }, { error: Error | null }> {
+class BodyGuard extends Component<{ glass: ReactNode; onReset: () => void; children: ReactNode }, { error: Error | null }> {
   state: { error: Error | null } = { error: null }
 
   static getDerivedStateFromError(error: Error) {
@@ -341,7 +410,7 @@ class BodyGuard extends Component<{ glass: ReactNode; column: string; onReset: (
   render() {
     if (!this.state.error) return this.props.children
     return (
-      <div className={this.props.column}>
+      <>
         {this.props.glass}
         <button
           type="button"
@@ -350,11 +419,11 @@ class BodyGuard extends Component<{ glass: ReactNode; column: string; onReset: (
             this.props.onReset()
             this.setState({ error: null })
           }}
-          className="rounded-lg border border-red-400/40 bg-black/85 px-3 py-1.5 text-xs text-red-200 shadow-xl hover:text-white"
+          className="absolute left-1/2 top-4 -translate-x-1/2 rounded-lg border border-red-400/40 bg-black/85 px-3 py-1.5 text-xs text-red-200 shadow-xl hover:text-white"
         >
           The search bar hit a problem. Click to start it again.
         </button>
-      </div>
+      </>
     )
   }
 }

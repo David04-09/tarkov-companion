@@ -37,6 +37,7 @@ import { HealthAndBackups } from '../desktop/HealthAndBackups'
 import { SyncHistorySection } from '../desktop/SyncReview'
 import { AboutSection } from '../components/AboutSection'
 import { MAX_IMPORT_BYTES, buildProgressFile, importProgressFile, parseImportJson } from '../lib/progressFile'
+import { FONTS } from '../lib/fonts'
 import { askNotificationPermission, notificationPermission, notify } from '../lib/notify'
 import { formatDateTime, formatRoubles } from '../lib/format'
 import { JSON_API_BASE } from '../api/client'
@@ -164,6 +165,7 @@ function useDesktopSetting<K extends keyof DesktopSettings>(key: K, fallback: De
 function AppearanceSection() {
   const [theme, setTheme] = usePref('theme')
   const [uiScale, setUiScale] = usePref('uiScale')
+  const [font, setFont] = usePref('fontFamily')
   const [density, setDensity] = usePref('density')
   const [reduceMotion, setReduceMotion] = usePref('reduceMotion')
   return (
@@ -189,9 +191,30 @@ function AppearanceSection() {
           ))}
         </div>
       </Row>
-      <Row label="Text size" hint="Makes all text and controls bigger or smaller.">
+      <Row label="Font" hint="For the whole app and the search bar over the game. All are fonts Windows already has." wide>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+          {FONTS.map((f) => (
+            <button
+              key={f.id}
+              type="button"
+              onClick={() => setFont(f.id)}
+              aria-pressed={font === f.id}
+              className={`rounded-lg border px-2.5 py-2 text-left transition-colors ${font === f.id ? 'border-accent ring-1 ring-accent' : 'border-line hover:border-ink-dim'}`}
+            >
+              <div className="truncate text-lg leading-tight" style={{ fontFamily: f.stack }}>
+                Aa Kappa 123
+              </div>
+              <div className="mt-1 text-xs font-semibold" style={{ fontFamily: f.stack }}>
+                {f.label}
+              </div>
+              <div className="text-[11px] text-ink-muted">{f.note}</div>
+            </button>
+          ))}
+        </div>
+      </Row>
+      <Row label="Text size" hint="Makes all text and controls bigger or smaller. The search bar over the game has its own size slider in its settings.">
         <div className="flex items-center gap-2">
-          <Slider value={uiScale} min={80} max={140} step={5} onChange={setUiScale} label="Text size" />
+          <Slider value={uiScale} min={70} max={160} step={5} onChange={setUiScale} label="Text size" />
           {uiScale !== 100 && (
             <button type="button" onClick={() => setUiScale(100)} className="text-xs text-accent underline">
               Reset

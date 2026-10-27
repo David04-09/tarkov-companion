@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from 'react'
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client'
 import { useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, BookOpen, DoorOpen, ExternalLink, GripVertical, HelpCircle, Home, Lock, Map as MapIcon, Search, Settings2, Skull, Star, Store, X } from 'lucide-react'
+import { ArrowLeft, BookOpen, DoorOpen, ExternalLink, GripHorizontal, GripVertical, HelpCircle, Home, Lock, Map as MapIcon, Search, Settings2, Skull, Star, Store, X } from 'lucide-react'
 import { readOnlyPersistOptions } from '../api/persist'
 import { queryClient } from '../api/queryClient'
 import type { StoryData } from '../api/storyWiki'
@@ -19,6 +19,8 @@ import { useMapOverlayStore } from '../store/mapOverlay'
 import { useProfile, useProgressStore } from '../store/progress'
 import { useStoryStore } from '../store/story'
 import { useUiStore } from '../store/ui'
+import { Box } from './Box'
+import { anchorStyle, GAP } from './boxes'
 import { ItemDetails, OnMapBox, PictureDetails, QuestDetails, SideButton } from './details'
 import { DetailsContext, panelKey, type DetailsCtx, type KeyMap, type MapRequest, type View } from './detailsContext'
 import { bossIndex, extractIndex, mapRows, raidMap, type MapRow, type RaidState } from './overlayLogic'
@@ -26,6 +28,7 @@ import { useOverlayPrefs, type Ref } from './overlayPrefs'
 import type { Request } from './SearchBarApp'
 import { MAP_ROWS_EVENT, MAP_ROWS_KEY, RESTOCKS_KEY } from './SearchBarApp'
 import { hitKey, searchAll, type Hit, type SearchSource } from './search'
+import { useFrame } from './frameContext'
 import { SettingsView } from './settingsView'
 import { columnClass, type DragProps, type Flip } from './shell'
 import { useTickedOnMap } from './tickedOnMap'
@@ -33,8 +36,9 @@ import { ScanItemsView, ScanValuesView } from './scanViews'
 import { runStashScan, useStashScan } from './stashScan'
 import { AmmoView, BossView, HelpView, HideoutView, PathView, QuestlineView, StationView, StoryView, TradersView, TraderView } from './views'
 
-// The map (Leaflet) loads only when a map is opened.
+// The map (Leaflet) loads only when a map is opened, the box editor only for Manual tuning.
 const SearchBarMap = lazy(() => import('./SearchBarMap').then((m) => ({ default: m.SearchBarMap })))
+const TuneLayer = lazy(() => import('./TuneLayer'))
 
 /** Side panels at once (newest first). */
 const MAX_PANELS = 3
@@ -56,6 +60,25 @@ function trimPanels(ps: View[]): View[] {
   return out
 }
 const CARD_W = 'w-[372px]'
+const CARD_PX = 372
+
+/** Each open panel keeps one saved spot while it is open (two quest panels: "panel:quest" and "panel:quest#1"). */
+const slots = new Map<string, string>()
+function slotIds(open: { key: string; kind: string }[]): string[] {
+  for (const k of [...slots.keys()]) if (!open.some((o) => o.key === k)) slots.delete(k)
+  return open.map(({ key, kind }) => {
+    let id = slots.get(key)
+    if (!id) {
+      const used = new Set(slots.values())
+      for (let n = 0; !id; n++) {
+        const c = n ? `panel:${kind}#${n}` : `panel:${kind}`
+        if (!used.has(c)) id = c
+      }
+      slots.set(key, id)
+    }
+    return id
+  })
+}
 
 /** The tallest a card or the panel column may get (the window itself is capped by the screen). */
 const heightCap = () => Math.max(240, Math.round(window.screen.availHeight * 0.8) - 70)
@@ -63,7 +86,6 @@ const heightCap = () => Math.max(240, Math.round(window.screen.availHeight * 0.8
 type Picked = { kind: 'view'; view: View } | { kind: 'map'; map: MapOption; req: MapRequest; nonce: number }
 
 export interface BodyProps {
-  flip: Flip
   expanded: boolean
   setExpanded: (on: boolean) => void
   glass: ReactElement
@@ -97,7 +119,8 @@ export default function SearchBarBody(props: BodyProps) {
   )
 }
 
-function Body({ flip, expanded, setExpanded, glass, strip, grip, onState, raid, raidRow, request, locked }: BodyProps) {
+function Body({ expanded, setExpanded, glass, strip, grip, onState, raid, raidRow, request, locked }: BodyProps) {
+  const { frame, anchor, flip } = useFrame()
   const { needs, gameData, hideout, items, inventory } = useNeeds()
   const profile = useProfile()
   const mode = useProgressStore((s) => s.gameMode)
@@ -139,7 +162,8 @@ function Body({ flip, expanded, setExpanded, glass, strip, grip, onState, raid, 
   }, [expanded])
 
   const mapShown = picked?.kind === 'map'
-  useEffect(() => onState(mapShown || panels.length > 0, mapShown || panels.length > 0, preview), [onState, mapShown, panels.length, preview])
+  const tuning = useStashScan((s) => s.tuning)
+  useEffect(() => onState(mapShown || panels.length > 0 || tuning, mapShown || panels.length > 0 || tuning, preview), [onState, mapShown, panels.length, tuning, preview])
 
   // The map table for the raid pill (names and raid lengths), kept between starts.
   useEffect(() => {
@@ -554,9 +578,15 @@ function Body({ flip, expanded, setExpanded, glass, strip, grip, onState, raid, 
     </li>
   )
 
+  // A card or the map opens under the bar; side panels open beside them (until moved).
+  const below = anchorStyle(anchor, frame, flip, 0, 50)
+  const pickedW = picked?.kind === 'map' ? (prefs.mapW + (prefs.sidebar ? prefs.sideW : 0) + 26) * zoom : CARD_PX * zoom
+  const besideX = Math.round(Math.max(CARD_PX * zoom, picked ? pickedW : 0) + GAP)
+  const panelIds = slotIds(panels.map((p) => ({ key: panelKey(p), kind: p.kind })))
+
   return (
     <DetailsContext.Provider value={ctx}>
-      <div className={columnClass(flip)}>
+      <div className={`absolute ${columnClass(flip)}`} style={anchorStyle(anchor, frame, flip)}>
         {expanded ? bar : glass}
         {expanded && strip}
 
@@ -603,56 +633,84 @@ function Body({ flip, expanded, setExpanded, glass, strip, grip, onState, raid, 
           </ul>
         )}
 
-        {picked?.kind === 'map' && (
-          <MapCard
-            key={`${picked.map.key}:${picked.nonce}`}
-            option={picked.map}
-            req={picked.req}
-            flip={flip}
-            zoom={zoom}
-            locked={locked}
-            position={positionFor(picked.map)}
-            starred={starred('map', picked.map.key)}
-            onStar={() => prefs.toggleStar({ kind: 'map', id: picked.map.key, label: picked.map.name })}
-            maps={mapOptions}
-            onSwitch={(m) => openMapOption(m)}
-            onBack={() => setPicked(null)}
-            onOpen={() => openInApp(picked)}
-          />
-        )}
-        {expanded && ctx && picked?.kind === 'view' && (
-          <div data-solid className={`sb-z ${CARD_W} overflow-y-auto rounded-lg border border-white/15 bg-black/85 p-3 shadow-2xl [scrollbar-width:thin]`} style={{ maxHeight: cap / zoom, zoom }}>
-            {renderView(picked.view)}
-            <div className="mt-2 flex items-center justify-between gap-2 text-xs">
+      </div>
+
+      {picked?.kind === 'map' && (
+        <Box
+          id="map"
+          place={below}
+          resizable={false}
+          custom={(move) => (
+            <MapCard
+              key={`${picked.map.key}:${picked.nonce}`}
+              grip={move}
+              option={picked.map}
+              req={picked.req}
+              flip={flip}
+              zoom={zoom}
+              locked={locked}
+              position={positionFor(picked.map)}
+              starred={starred('map', picked.map.key)}
+              onStar={() => prefs.toggleStar({ kind: 'map', id: picked.map.key, label: picked.map.name })}
+              maps={mapOptions}
+              onSwitch={(m) => openMapOption(m)}
+              onBack={() => setPicked(null)}
+              onOpen={() => openInApp(picked)}
+            />
+          )}
+        />
+      )}
+      {expanded && ctx && picked?.kind === 'view' && (
+        <Box id="card" place={below} title={viewTitle(picked.view)} width={CARD_PX} maxHeight={cap / zoom} onClose={() => setPicked(null)}>
+          {renderView(picked.view)}
+          <div className="mt-2 flex items-center justify-between gap-2 text-xs">
               <button type="button" onClick={() => setPicked(null)} className="inline-flex items-center gap-1 text-white/60 hover:text-white">
                 <ArrowLeft className="h-3 w-3" /> Back
               </button>
               <button type="button" onClick={() => openPanel(picked.view)} className="inline-flex items-center gap-1 text-white/60 hover:text-white" title="Keep it beside the search">
                 Pin beside
               </button>
-              {picked.view.kind !== 'settings' && picked.view.kind !== 'help' && (
-                <button type="button" onClick={() => openInApp(picked)} className="inline-flex items-center gap-1 text-white/60 hover:text-white">
-                  Open in the app <ExternalLink className="h-3 w-3" />
-                </button>
-              )}
-            </div>
+            {picked.view.kind !== 'settings' && picked.view.kind !== 'help' && (
+              <button type="button" onClick={() => openInApp(picked)} className="inline-flex items-center gap-1 text-white/60 hover:text-white">
+                Open in the app <ExternalLink className="h-3 w-3" />
+              </button>
+            )}
           </div>
-        )}
-      </div>
+        </Box>
+      )}
 
-      {ctx && panels.length > 0 && (
-        <div className={`sb-z flex flex-col gap-1 ${flip.up ? 'flex-col-reverse' : ''}`} style={{ width: prefs.panelW, maxHeight: (cap + 60) / zoom, zoom }}>
-          {panels.length > 1 && (
-            <button data-solid type="button" onClick={() => setPanels([])} className="self-end rounded border border-white/15 bg-black/80 px-2 py-0.5 text-[11px] text-white/60 shadow-xl hover:text-white">
-              Close all {panels.length}
-            </button>
-          )}
-          {panels.map((p) => (
-            <PanelFrame key={panelKey(p)} title={viewTitle(p)} onClose={() => closePanel(p)} onOpen={NO_APP_PAGE.has(p.kind) ? undefined : () => openInApp(p)}>
-              {renderView(p)}
-            </PanelFrame>
-          ))}
-        </div>
+      {ctx &&
+        panels.map((p, i) => (
+          <Box
+            key={panelKey(p)}
+            id={panelIds[i]}
+            place={anchorStyle(anchor, frame, flip, besideX + i * Math.round(prefs.panelW * zoom + GAP), 0)}
+            title={viewTitle(p)}
+            width={prefs.panelW}
+            maxHeight={(cap + 60) / zoom}
+            onClose={() => closePanel(p)}
+            actions={
+              <>
+                {panels.length > 1 && (
+                  <button type="button" onClick={() => setPanels([])} title="Close every side panel" className="px-1 text-[10px] text-white/45 hover:text-white">
+                    Close all {panels.length}
+                  </button>
+                )}
+                {!NO_APP_PAGE.has(p.kind) && (
+                  <button type="button" onClick={() => openInApp(p)} title="Open in the app" aria-label="Open in the app" className="p-0.5 text-white/45 hover:text-white">
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </>
+            }
+          >
+            {renderView(p)}
+          </Box>
+        ))}
+      {tuning && ctx && (
+        <Suspense fallback={null}>
+          <TuneLayer />
+        </Suspense>
       )}
     </DetailsContext.Provider>
   )
@@ -746,26 +804,8 @@ function HitIcon({ h }: { h: Hit }) {
   return <span className={`${box} text-[10px]`}>{h.kind === 'quest' ? 'Q' : h.kind === 'ammo' ? '•••' : '★'}</span>
 }
 
-function PanelFrame({ title, onClose, onOpen, children }: { title: string; onClose: () => void; onOpen?: () => void; children: ReactNode }) {
-  return (
-    <section data-solid className="flex min-h-0 shrink flex-col rounded-lg border border-white/15 bg-black/85 shadow-2xl">
-      <header className="flex items-center gap-1 border-b border-white/10 px-2.5 py-1">
-        <span className="min-w-0 flex-1 truncate text-[11px] uppercase tracking-wide text-white/55">{title}</span>
-        {onOpen && (
-          <button type="button" onClick={onOpen} title="Open in the app" aria-label="Open in the app" className="p-0.5 text-white/45 hover:text-white">
-            <ExternalLink className="h-3.5 w-3.5" />
-          </button>
-        )}
-        <button type="button" onClick={onClose} title="Close" aria-label="Close this panel" className="p-0.5 text-white/45 hover:text-white">
-          <X className="h-3.5 w-3.5" />
-        </button>
-      </header>
-      <div className="min-h-0 overflow-y-auto p-2.5 [scrollbar-width:thin]">{children}</div>
-    </section>
-  )
-}
-
 function MapCard({
+  grip,
   option,
   req,
   flip,
@@ -779,6 +819,7 @@ function MapCard({
   onBack,
   onOpen,
 }: {
+  grip: DragProps
   maps: MapOption[]
   onSwitch: (m: MapOption) => void
   option: MapOption
@@ -797,6 +838,9 @@ function MapCard({
   return (
     <div data-solid className="w-max rounded-lg border border-white/20 bg-black/85 p-2 shadow-2xl">
       <div className="sb-z mb-1.5 flex items-center gap-1.5 px-1" style={{ zoom }}>
+        <span {...grip} title="Drag to move the map" aria-label="Move the map" className="flex shrink-0 cursor-move touch-none items-center text-white/35 hover:text-white">
+          <GripHorizontal className="h-4 w-4" />
+        </span>
         <button type="button" onClick={onBack} title="Back to the results" aria-label="Back" className="p-0.5 text-white/55 hover:text-white">
           <ArrowLeft className="h-3.5 w-3.5" />
         </button>
