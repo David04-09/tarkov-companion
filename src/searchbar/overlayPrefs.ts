@@ -84,6 +84,8 @@ export interface OverlayPrefs {
   stripScav: boolean
   stripStory: boolean
   stripRestock: boolean
+  /** The camera button next to the glass (stash scan). */
+  scanButton: boolean
   /** Open the raid's map when a raid starts; show your screenshot position on it. */
   autoRaidMap: boolean
   followPosition: boolean
@@ -153,6 +155,7 @@ export const DEFAULT_PREFS: OverlayPrefs = {
   stripScav: true,
   stripStory: true,
   stripRestock: false,
+  scanButton: true,
   autoRaidMap: true,
   followPosition: true,
   restoreMap: false,
@@ -211,6 +214,7 @@ export function cleanOverlayPrefs(raw: unknown): OverlayPrefs {
     stripScav: bool(p.stripScav, d.stripScav),
     stripStory: bool(p.stripStory, d.stripStory),
     stripRestock: bool(p.stripRestock, d.stripRestock),
+    scanButton: bool(p.scanButton, d.scanButton),
     autoRaidMap: bool(p.autoRaidMap, d.autoRaidMap),
     followPosition: bool(p.followPosition, d.followPosition),
     restoreMap: bool(p.restoreMap, d.restoreMap),

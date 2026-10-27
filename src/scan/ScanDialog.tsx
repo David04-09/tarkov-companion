@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Camera, Check, Crop, Palette, FolderOpen, ImageUp, Loader2, Minus, Move, Plus, ScanSearch, Search, Trash2, X, Undo2 } from 'lucide-react'
 import { useNeeds } from '../hooks/useNeeds'
-import { remainingFor, type NeedSource } from '../lib/needs'
 import { sellValue } from '../lib/economy'
 import { formatDateTime, formatRoubles } from '../lib/format'
 import { useGameData } from '../api/hooks'
@@ -17,6 +16,7 @@ import { LearnedPanel } from './LearnedPanel'
 import { readWords, warmUpOcr } from './ocr'
 import { imageFromClipboard, useScanStore } from './scanStore'
 import { undoLastApply } from './undoApply'
+import { confidence, marginOf, needLookup, sourceLabel } from './stashValues'
 import { prefs } from '../store/prefs'
 
 interface Row {
@@ -62,18 +62,9 @@ function detachSpots(rs: Row[], spots: number[]): Row[] {
     .filter((r) => r.spots.length > 0 || r.count > 0)
 }
 
-/** Sure only when the match is close AND clearly better than the next item (BEAR vs USEC tags etc.). */
-const confidence = (error: number, margin = Infinity, nameMatch = false) =>
-  nameMatch ? (error < 20 ? 'sure' : 'likely') : error < 12 && margin >= 1.5 ? 'sure' : error < 18 ? 'likely' : 'check'
-const marginOf = (d: Detection) => (d.alternatives.length ? d.alternatives[0].error - d.error : Infinity)
 const KEEP_FILL = 'rgba(34,197,94,0.30)'
 const SELL_FILL = 'rgba(239,68,68,0.30)'
 
-function sourceLabel(s: NeedSource): string {
-  if (s.kind === 'quest') return `${s.name} (${s.traderName})`
-  if (s.kind === 'hideout') return /level/i.test(s.name) ? s.name : `${s.name} level ${s.level}`
-  return `craft: ${s.name}`
-}
 const CONF_STYLE = {
   sure: { label: 'Sure', cls: 'border-success/50 text-success', stroke: '#4ade80' },
   likely: { label: 'Likely', cls: 'border-accent/60 text-accent', stroke: '#fbbf24' },
@@ -155,15 +146,7 @@ export function ScanDialog() {
   const fileInput = useRef<HTMLInputElement>(null)
 
   // Item id (including accepted alternatives) -> the need it counts toward.
-  const needFor = useMemo(() => {
-    const m = new Map<string, { needId: string; remaining: number; total: number; sources: NeedSource[] }>()
-    for (const n of needs.values()) {
-      const entry = { needId: n.itemId, remaining: remainingFor(n, inventory.collected[n.itemId] ?? 0), total: n.total, sources: n.sources }
-      m.set(n.itemId, entry)
-      for (const alt of n.alternatives) if (!m.has(alt)) m.set(alt, entry)
-    }
-    return m
-  }, [needs, inventory.collected])
+  const needFor = useMemo(() => needLookup(needs.values(), inventory.collected), [needs, inventory.collected])
 
   useEffect(() => {
     if (!open) return

@@ -5,6 +5,7 @@
  * Nothing here touches the game: a screen capture is the same as Win+Shift+S.
  */
 import { app, desktopCapturer, screen } from 'electron'
+import type { Display } from 'electron'
 import fs from 'node:fs'
 import { isScreenshotName } from './security'
 import { installedPackDir, packsEnabled } from './packs'
@@ -12,8 +13,14 @@ import path from 'node:path'
 import type { PackName } from '../src/shared/desktop-api'
 
 /** Captures the display under the mouse at full resolution, as PNG bytes. */
-export async function captureScreenUnderCursor(): Promise<Uint8Array> {
-  const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint())
+export function captureScreenUnderCursor(): Promise<Uint8Array> {
+  return captureDisplay(screen.getDisplayNearestPoint(screen.getCursorScreenPoint()))
+}
+
+/** Captures one display at full resolution, as PNG bytes. */
+export async function captureDisplay(display: Display): Promise<Uint8Array> {
+  // TC_SNIP_IMAGE is for testing (a saved stash picture instead of the real screen).
+  if (process.env.TC_SNIP_IMAGE && !app.isPackaged) return new Uint8Array(fs.readFileSync(process.env.TC_SNIP_IMAGE))
   const size = {
     width: Math.round(display.size.width * display.scaleFactor),
     height: Math.round(display.size.height * display.scaleFactor),

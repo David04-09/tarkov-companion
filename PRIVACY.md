@@ -22,7 +22,7 @@ To work, the app connects to these services. Like any website visit, they see yo
 
 - **View public profile on tarkov.dev** opens your browser at `tarkov.dev/players/…/<your account id>`: the account id comes from your game logs and is part of that address.
 - Links to the wiki, tarkov.dev or GitHub open in your normal browser.
-- The stash scanner looks at screenshots you paste or capture with its hotkey. The picture is processed on your computer and is not uploaded.
+- The stash scanner looks at screenshots you paste or capture with its hotkey or the search bar's camera button. The picture is processed on your computer and is not uploaded.
 
 ## Questions
 

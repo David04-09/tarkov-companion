@@ -80,6 +80,13 @@ export function warmUpOcr(): void {
   void getWorker().catch(() => undefined)
 }
 
+/** Frees the reader; the next read loads it again. */
+export function unloadOcr(): void {
+  const w = workerPromise
+  workerPromise = null
+  void w?.then((t) => t.terminate()).catch(() => undefined)
+}
+
 /** Otsu's threshold: the brightness that best splits the picture into dark and light. */
 function otsuThreshold(lum: Float32Array): number {
   const hist = new Array<number>(256).fill(0)

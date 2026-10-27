@@ -1,10 +1,12 @@
 import { Component, lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
-import { Lock, Search } from 'lucide-react'
+import { Camera, Lock, Search } from 'lucide-react'
 import type { GameEvent } from '../shared/desktop-api'
 import { raidMap, raidOverAt, reduceRaid, type MapRow, type RaidState, type RestockRow } from './overlayLogic'
 import { useOverlayPrefs } from './overlayPrefs'
 import { Pills } from './pills'
 import { columnClass, useDrag, type Flip } from './shell'
+import { SnipLayer, type SnipBox } from './SnipLayer'
+import { cropSnip, useStashScan } from './stashScan'
 
 // Everything past the magnifying glass (game data, search, cards, maps) loads on the first click.
 const SearchBarBody = lazy(() => import('./SearchBarBody'))
@@ -89,6 +91,8 @@ export function SearchBarApp() {
   const p = useOverlayPrefs()
   const box = useRef<HTMLDivElement>(null)
   const through = useRef<boolean | null>(null)
+  // A snip for a stash scan: the screen picture while a box is dragged over it.
+  const [snip, setSnip] = useState<{ blob: Blob; url: string } | null>(null)
 
   useEffect(() => {
     // The page itself is see-through; only the bar is drawn. The window follows its size, so no scroll bars.
@@ -112,6 +116,13 @@ export function SearchBarApp() {
         setExpanded(true)
         setRequest({ nonce: Date.now(), kind: 'focus' })
       }),
+      // Stopped from outside (another window clicked, or it took too long).
+      api?.onSnipCancel(() =>
+        setSnip((s) => {
+          if (s) URL.revokeObjectURL(s.url)
+          return null
+        }),
+      ),
     ]
     void api?.isSearchBarLocked().then(setLocked)
     // Clicking back into the game shrinks it to the glass (an open map and side panels stay).
@@ -216,6 +227,32 @@ export function SearchBarApp() {
     setWoken(true)
     setExpanded(true)
   }, [])
+
+  // Camera button: a picture of the screen without the bar, then drag a box over it.
+  const startSnip = useCallback(async () => {
+    const r = await window.desktop?.startSnip().catch(() => null)
+    if (!r) return
+    const blob = new Blob([r.png as BlobPart], { type: 'image/png' })
+    through.current = null
+    setSnip({ blob, url: URL.createObjectURL(blob) })
+  }, [])
+  const endSnip = useCallback(
+    (box: SnipBox | null) => {
+      const s = snip
+      setSnip(null)
+      through.current = null
+      void window.desktop?.endSnip()
+      if (!s) return
+      URL.revokeObjectURL(s.url)
+      if (!box) return
+      // The body scans it and opens the Item scan and Values panels.
+      void cropSnip(s.blob, box).then((img) => {
+        useStashScan.getState().start(img, box.w, box.h)
+        setWoken(true)
+      })
+    },
+    [snip],
+  )
   const drag = useDrag(open)
   const grip = useDrag()
   const onState = useCallback(
@@ -245,6 +282,19 @@ export function SearchBarApp() {
         <Search className="h-5 w-5" />
         {locked && <Lock className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full bg-black p-0.5 text-amber-300" />}
       </button>
+      {p.scanButton && !locked && (
+        <button
+          type="button"
+          data-solid
+          onClick={() => void startSnip()}
+          title="Check stash slots: drag a box around them (keep or sell, and what they are worth)"
+          aria-label="Scan stash slots"
+          className="sb-z flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/15 bg-black/75 text-white/75 shadow-2xl hover:text-white"
+          style={{ zoom }}
+        >
+          <Camera className="h-4 w-4" />
+        </button>
+      )}
       {strip}
     </div>
   )
@@ -253,6 +303,7 @@ export function SearchBarApp() {
 
   return (
     <div className="fixed inset-0 flex p-1" style={{ justifyContent: flip.left ? 'flex-end' : 'flex-start', alignItems: flip.up ? 'flex-end' : 'flex-start' }}>
+      {snip && <SnipLayer url={snip.url} onDone={endSnip} onCancel={() => endSnip(null)} />}
       <div
         ref={box}
         className={`flex w-max gap-1.5 text-[13px] text-white transition-opacity duration-150 opacity-(--sb-fade) ${hover} ${flip.left ? 'flex-row-reverse' : ''} ${flip.up ? 'items-end' : 'items-start'}`}

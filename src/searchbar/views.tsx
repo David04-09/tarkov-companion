@@ -564,6 +564,7 @@ export function HelpView() {
         <li>Maps: the list on the right has quests, extracts, bosses, locked doors, loot and layers. Click anything to zoom there. Drag the corner to resize the map.</li>
         <li>Layers: bosses (exact spawn points), sniper scavs, PMC and scav spawns, locked doors with their keys, containers, valuable loose loot, loot you still need, hazards.</li>
         <li>Double-click a quest spot when you have done it. The ruler measures distances in metres.</li>
+        <li>The camera next to the glass: drag a box around stash or container slots. "Item scan" shows what was found (green = still needed for quests or the hideout, red = spare); "Values" lists the spare items priciest first with a "Do not sell" list at the bottom. Close either one on its own.</li>
         <li>The pills next to the glass: time left in your raid (from the game log), Tarkov time (left and right side), your scav cooldown.</li>
         <li>Take an in-game screenshot (Print Screen) in a raid: an arrow shows where you were, and the quest and extract lists show how far each is (straight line), nearest first.</li>
         <li>The Quests list shows what to bring for the ticked quests; the Locks list filters keys you have or keys your quests need.</li>

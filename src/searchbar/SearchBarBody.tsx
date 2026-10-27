@@ -29,6 +29,8 @@ import { hitKey, searchAll, type Hit, type SearchSource } from './search'
 import { SettingsView } from './settingsView'
 import { columnClass, type DragProps, type Flip } from './shell'
 import { useTickedOnMap } from './tickedOnMap'
+import { ScanItemsView, ScanValuesView } from './scanViews'
+import { runStashScan, useStashScan } from './stashScan'
 import { AmmoView, BossView, HelpView, HideoutView, PathView, QuestlineView, StationView, StoryView, TradersView, TraderView } from './views'
 
 // The map (Leaflet) loads only when a map is opened.
@@ -36,6 +38,23 @@ const SearchBarMap = lazy(() => import('./SearchBarMap').then((m) => ({ default:
 
 /** Side panels at once (newest first). */
 const MAX_PANELS = 3
+/** The stash scan's two panels stay while other panels come and go. */
+const isScanPanel = (p: View) => p.kind === 'scanItems' || p.kind === 'scanValues'
+/** Item scan on top, Values under it. */
+const SCAN_PANELS: View[] = [{ kind: 'scanItems' }, { kind: 'scanValues' }]
+/** Panels without app pages to open them in. */
+const NO_APP_PAGE = new Set<View['kind']>(['settings', 'help', 'scanItems', 'scanValues'])
+
+/** Newest first, at most MAX_PANELS: the oldest other panel goes before a scan panel does. */
+function trimPanels(ps: View[]): View[] {
+  const out = [...ps]
+  while (out.length > MAX_PANELS) {
+    let i = out.length - 1
+    while (i > 0 && isScanPanel(out[i])) i--
+    out.splice(i, 1)
+  }
+  return out
+}
 const CARD_W = 'w-[372px]'
 
 /** The tallest a card or the panel column may get (the window itself is capped by the screen). */
@@ -90,7 +109,8 @@ function Body({ flip, expanded, setExpanded, glass, strip, grip, onState, raid, 
   const [query, setQuery] = useState('')
   const [cursor, setCursor] = useState(0)
   const [picked, setPicked] = useState<Picked | null>(null)
-  const [panels, setPanels] = useState<View[]>([])
+  // A snip that woke the bar opens with its two panels.
+  const [panels, setPanels] = useState<View[]>(() => (useStashScan.getState().scan?.status === 'waiting' ? SCAN_PANELS : []))
   const [preview, setPreview] = useState(false)
   // A screenshot position, and whether it just arrived (only a new one opens the raid's map).
   const [shot, setShot] = useState<{ pos: PlayerPosition; live: boolean } | null>(null)
@@ -160,7 +180,17 @@ function Body({ flip, expanded, setExpanded, glass, strip, grip, onState, raid, 
   const hits = useMemo(() => searchAll(query, source), [query, source])
 
   // --- Opening things -------------------------------------------------------
-  const openPanel = useCallback((p: View) => setPanels((ps) => [p, ...ps.filter((x) => panelKey(x) !== panelKey(p))].slice(0, MAX_PANELS)), [])
+  const openPanel = useCallback((p: View) => setPanels((ps) => trimPanels([p, ...ps.filter((x) => panelKey(x) !== panelKey(p))])), [])
+  // A stash snip: scan it; a later one also brings its two panels back (Item scan on top).
+  useEffect(() => {
+    const first = useStashScan.getState().scan
+    if (first?.status === 'waiting') void runStashScan(first.id)
+    return useStashScan.subscribe((s, prev) => {
+      if (!s.scan || s.scan.id === prev.scan?.id || s.scan.status !== 'waiting') return
+      for (const p of [...SCAN_PANELS].reverse()) openPanel(p)
+      void runStashScan(s.scan.id)
+    })
+  }, [openPanel])
   const closePanel = (p: View) => setPanels((ps) => ps.filter((x) => panelKey(x) !== panelKey(p)))
   const openMapOption = useCallback((option: MapOption, req: MapRequest = {}) => setPicked({ kind: 'map', map: option, req, nonce: Date.now() }), [])
   // A map opened: switch on the layers it asked for, and remember it.
@@ -414,6 +444,10 @@ function Body({ flip, expanded, setExpanded, glass, strip, grip, onState, raid, 
         return <SettingsView onPreview={setPreview} />
       case 'help':
         return <HelpView />
+      case 'scanItems':
+        return <ScanItemsView />
+      case 'scanValues':
+        return <ScanValuesView />
     }
   }
   const viewTitle = (v: View): string => {
@@ -448,6 +482,10 @@ function Body({ flip, expanded, setExpanded, glass, strip, grip, onState, raid, 
         return 'Settings'
       case 'help':
         return 'Help'
+      case 'scanItems':
+        return 'Item scan'
+      case 'scanValues':
+        return 'Values'
     }
   }
 
@@ -610,7 +648,7 @@ function Body({ flip, expanded, setExpanded, glass, strip, grip, onState, raid, 
             </button>
           )}
           {panels.map((p) => (
-            <PanelFrame key={panelKey(p)} title={viewTitle(p)} onClose={() => closePanel(p)} onOpen={p.kind === 'settings' || p.kind === 'help' ? undefined : () => openInApp(p)}>
+            <PanelFrame key={panelKey(p)} title={viewTitle(p)} onClose={() => closePanel(p)} onOpen={NO_APP_PAGE.has(p.kind) ? undefined : () => openInApp(p)}>
               {renderView(p)}
             </PanelFrame>
           ))}

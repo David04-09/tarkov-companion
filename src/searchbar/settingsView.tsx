@@ -170,6 +170,7 @@ export function SettingsView({ onPreview }: { onPreview: (on: boolean) => void }
         <Check label="Scav cooldown" k="stripScav" hint="The Dashboard's scav timer." />
         <Check label="Story wait timer" k="stripStory" hint="A wait started on the Story tab (shown while one runs)." />
         <Check label="Next trader restock" k="stripRestock" />
+        <Check label="Stash scan button (camera)" k="scanButton" hint="Drag a box over stash slots: keep or sell, and what they are worth." />
       </Group>
 
       <Group title="In raid">

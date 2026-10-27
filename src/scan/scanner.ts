@@ -88,6 +88,14 @@ export function warmUpScanner(): Promise<number> {
   return ensureWorker()
 }
 
+/** Frees the scanner (its item pictures take a lot of memory); the next scan loads it again. */
+export function unloadScanner(): void {
+  if (pending.size || identifying.size) return
+  worker?.terminate()
+  worker = null
+  ready = null
+}
+
 export async function scanImage(
   image: Blob,
   crop: { x: number; y: number; w: number; h: number } | null,

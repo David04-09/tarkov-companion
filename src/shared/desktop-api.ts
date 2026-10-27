@@ -245,6 +245,15 @@ export interface DesktopApi {
   onSearchBarFocus: (cb: () => void) => () => void
   /** Search bar only: snap the glass into a screen corner. */
   searchBarCorner: (corner: 'tl' | 'tr' | 'bl' | 'br') => Promise<void>
+  /**
+   * Search bar only: picture of the bar's screen (taken with the bar hidden), after which the bar
+   * covers that screen until `endSnip` so a box can be dragged; `scale` = picture pixels per page
+   * pixel. null when it cannot start (locked, already snipping).
+   */
+  startSnip: () => Promise<{ png: Uint8Array; scale: number } | null>
+  endSnip: () => Promise<void>
+  /** Search bar only: the snip was stopped from outside (another window clicked, too long). */
+  onSnipCancel: (cb: () => void) => () => void
   /** Search bar only: which way the window grows from the glass (it flips near a screen edge). */
   onSearchBarLayout: (cb: (flip: { left: boolean; up: boolean }) => void) => () => void
   /** Search bar only: show the app window on this page. */

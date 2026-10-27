@@ -17,7 +17,7 @@ import { SettingsStore } from './settings'
 import { latestPosition, parseScreenshotName, watchScreenshots } from './position'
 import { createRaidClock, trashWhenWritten } from './positionShots'
 import { backupDir, listBackups, readBackup, writeBackup } from './backups'
-import { captureScreenUnderCursor, gameScreenshotsDir, listGameScreenshots, readAppResource, readGameScreenshot, resourceResponse } from './capture'
+import { captureDisplay, captureScreenUnderCursor, gameScreenshotsDir, listGameScreenshots, readAppResource, readGameScreenshot, resourceResponse } from './capture'
 
 // Read-only access to the app's own bundled scanner/OCR files (the page is a local file and
 // Chromium cannot fetch() file:// URLs). Must be registered before the app is ready.
@@ -324,7 +324,7 @@ function clampAnchor(p: { x: number; y: number }) {
 
 /** Puts the window around the glass at its current size, flipping towards the room on the screen. */
 function placeSearchBar() {
-  if (!searchBar || searchBar.isDestroyed()) return
+  if (!searchBar || searchBar.isDestroyed() || snipping) return
   const area = screen.getDisplayNearestPoint(searchAnchor).workArea
   const w = Math.max(40, Math.min(Math.round(searchSize.width), area.width))
   const h = Math.max(40, Math.min(Math.round(searchSize.height), area.height))
@@ -402,6 +402,10 @@ function applySearchBar() {
     searchLocked = false
     refreshTrayMenu()
   })
+  // Snipping stops when you click into another window (or the game takes the focus back).
+  w.on('blur', () => {
+    if (searchBar === w) endSnip(true)
+  })
   // The tray says Show or Hide to match (hotkeys and the first load show it too).
   w.on('show', refreshTrayMenu)
   w.on('hide', refreshTrayMenu)
@@ -426,6 +430,7 @@ let searchLocked = false
 
 function setSearchLocked(on: boolean) {
   if (!searchBar || searchBar.isDestroyed()) return
+  endSnip(true)
   searchLocked = on
   searchBar.setIgnoreMouseEvents(on, on ? undefined : { forward: true })
   searchBar.webContents.send('searchbar:locked', on)
@@ -435,9 +440,60 @@ function setSearchLocked(on: boolean) {
 /** Hotkey / tray: hide the bar completely, or bring it back where it was. */
 function toggleSearchBarVisible() {
   if (!searchBar || searchBar.isDestroyed()) return
+  endSnip(true)
   if (searchBar.isVisible()) searchBar.hide()
   else searchBar.showInactive()
   refreshTrayMenu()
+}
+
+/**
+ * Snip for a stash scan (the bar's camera button): a picture of the bar's screen is taken with the
+ * bar hidden, then the bar covers that screen and shows the picture so a box can be dragged around
+ * the slots. Esc, a click into another window or two minutes end it. Only the screen is read, the
+ * same as Win+Shift+S; nothing is sent to the game.
+ */
+let snipping = false
+let snipTimer: NodeJS.Timeout | null = null
+const SNIP_MAX_MS = 120_000
+
+async function startSnip(): Promise<{ png: Uint8Array; scale: number } | null> {
+  const w = searchBar
+  if (!w || w.isDestroyed() || searchLocked || snipping) return null
+  const display = screen.getDisplayMatching(w.getBounds())
+  // The bar must not be in its own picture.
+  w.hide()
+  await new Promise((r) => setTimeout(r, 150))
+  let png: Uint8Array
+  try {
+    png = await captureDisplay(display)
+  } catch (err) {
+    if (!w.isDestroyed()) w.showInactive()
+    throw err
+  }
+  if (w.isDestroyed()) return null
+  snipping = true
+  w.setBounds(display.bounds)
+  w.setIgnoreMouseEvents(false)
+  w.show()
+  w.focus()
+  snipTimer = setTimeout(() => endSnip(true), SNIP_MAX_MS)
+  return { png, scale: display.scaleFactor }
+}
+
+/** Back to the bar's own size; `cancelled` tells the page (it keeps no box). */
+function endSnip(cancelled: boolean) {
+  if (!snipping) return
+  snipping = false
+  if (snipTimer) clearTimeout(snipTimer)
+  snipTimer = null
+  const w = searchBar
+  if (!w || w.isDestroyed()) return
+  placeSearchBar()
+  // The page sets the see-through parts again on the next mouse move.
+  w.setIgnoreMouseEvents(false)
+  if (cancelled) w.webContents.send('searchbar:snipCancel')
+  // The keyboard goes back to the game.
+  w.blur()
 }
 
 /** Hotkey: show the bar and put the cursor in the search box (this takes focus from the game). */
@@ -646,7 +702,11 @@ function registerIpc() {
   })
   handle('searchbar:passthrough', (e, on: unknown) => {
     // Clicks on the see-through parts go to the game; mouse moves still arrive so the bar knows when to take them back.
-    if (fromSearchBar(e) && typeof on === 'boolean' && !searchLocked) searchBar!.setIgnoreMouseEvents(on, { forward: true })
+    if (fromSearchBar(e) && typeof on === 'boolean' && !searchLocked && !snipping) searchBar!.setIgnoreMouseEvents(on, { forward: true })
+  })
+  handle('searchbar:snip', (e) => (fromSearchBar(e) ? startSnip() : null))
+  handle('searchbar:snipEnd', (e) => {
+    if (fromSearchBar(e)) endSnip(false)
   })
   handle('searchbar:lock', (e, on: unknown) => {
     if (fromSearchBar(e) && typeof on === 'boolean') setSearchLocked(on)
