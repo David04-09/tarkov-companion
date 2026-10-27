@@ -80,8 +80,10 @@ export function ScanItemsView() {
     <div className="space-y-2 text-xs">
       <ScanStatus scan={scan} />
       {scan && (
-        <div className="relative overflow-hidden rounded border border-white/10">
-          <img src={scan.url} alt="Your snip" className="block w-full" />
+        // Pinned: the list scrolls underneath, the picture stays (hover a row to see its boxes).
+        <div className="sticky -top-2.5 z-10 -mx-2.5 -mt-2.5 flex justify-center border-b border-white/10 bg-black px-2.5 pb-2 pt-2.5">
+          <div className="relative inline-block overflow-hidden rounded border border-white/10">
+          <img src={scan.url} alt="Your snip" className="block max-h-56 w-auto max-w-full" />
           {grid && (
             <svg viewBox={`0 0 ${scan.width} ${scan.height}`} className="absolute inset-0 h-full w-full" preserveAspectRatio="none">
               {scan.detections.map((d, i) =>
@@ -102,6 +104,7 @@ export function ScanItemsView() {
               )}
             </svg>
           )}
+          </div>
         </div>
       )}
       {scan?.status === 'done' && (

@@ -12,7 +12,9 @@ export interface ChangelogEntry {
 }
 
 /** Committed, waiting for the next update. */
-export const UNRELEASED: string[] = []
+export const UNRELEASED: string[] = [
+  "Search bar stash scan: the snip picture in the Item scan panel stays pinned at the top while you scroll the list of items, so you can hover a row and still see its boxes; tall snips are shown smaller so the list keeps room.",
+]
 
 export const RELEASES: ChangelogEntry[] = [
   {
