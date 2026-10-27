@@ -12,14 +12,20 @@ export interface ChangelogEntry {
 }
 
 /** Committed, waiting for the next update. */
-export const UNRELEASED: string[] = [
-  "Search bar stash scan: the snip picture in the Item scan panel stays pinned at the top while you scroll the list of items, so you can hover a row and still see its boxes; tall snips are shown smaller so the list keeps room.",
-  "Hideout tab: a new Bunker view (now the default) draws your hideout the way the game's hideout overview shows it, seen from above at the same angle: the main hall, the shooting range, the hidden room behind the Defective Wall, the entrance and the Cultist Circle room, with each station as the game's black hexagon and its level number in the corner. Built stations come alive (the vents' fan turns, the generator and heater glow, water drips, the bitcoin farm blinks, the circle glows red) and the bunker gets brighter as you upgrade Illumination. A green arrow marks what you can build now and a blue number how many items are still missing. Hover a station for lines to the stations it needs (green built, red missing) and the ones it opens; zoom in with + and drag to look around; the bar along the bottom lists every station like the game's.",
-  "Hideout tab: click a station for its details: set its level with + and −, see what the next level needs with your Item Collection counts (change them right there), your trader loyalty, build time, what it gives, what it opens up and every level at a glance. Start a build timer (or type the time left the game shows) and you get a notification when it is done. Stations not built in the screenshots the map was drawn from sit at a best guess (marked with ? in Move stations): drag any station to where it is in your hideout and it is remembered. The top bar shows levels built and how many stations are ready, waiting for items or locked (click one to highlight them); Live/Still turns the animations off and Names shows every station's name.",
-  "Hideout tab: station bonuses are shown as the game means them (\"Flea Market fee −30%\" instead of \"−0.3%\"), and a station's own previous level is no longer listed as one of its requirements.",
-]
+export const UNRELEASED: string[] = []
 
 export const RELEASES: ChangelogEntry[] = [
+  {
+    version: '2.15.0',
+    date: '2026-10-28',
+    title: 'Your hideout drawn like the game, with build timers',
+    changes: [
+    "Search bar stash scan: the snip picture in the Item scan panel stays pinned at the top while you scroll the list of items, so you can hover a row and still see its boxes; tall snips are shown smaller so the list keeps room.",
+    "Hideout tab: a new Bunker view (now the default) draws your hideout the way the game's hideout overview shows it, seen from above at the same angle: the main hall, the shooting range, the hidden room behind the Defective Wall, the entrance and the Cultist Circle room, with each station as the game's black hexagon and its level number in the corner. Built stations come alive (the vents' fan turns, the generator and heater glow, water drips, the bitcoin farm blinks, the circle glows red) and the bunker gets brighter as you upgrade Illumination. A green arrow marks what you can build now and a blue number how many items are still missing. Hover a station for lines to the stations it needs (green built, red missing) and the ones it opens; zoom in with + and drag to look around; the bar along the bottom lists every station like the game's.",
+    "Hideout tab: click a station for its details: set its level with + and −, see what the next level needs with your Item Collection counts (change them right there), your trader loyalty, build time, what it gives, what it opens up and every level at a glance. Start a build timer (or type the time left the game shows) and you get a notification when it is done. Stations not built in the screenshots the map was drawn from sit at a best guess (marked with ? in Move stations): drag any station to where it is in your hideout and it is remembered. The top bar shows levels built and how many stations are ready, waiting for items or locked (click one to highlight them); Live/Still turns the animations off and Names shows every station's name.",
+    "Hideout tab: station bonuses are shown as the game means them (\"Flea Market fee −30%\" instead of \"−0.3%\"), and a station's own previous level is no longer listed as one of its requirements.",
+    ],
+  },
   {
     version: '2.14.0',
     date: '2026-10-27',
