@@ -12,11 +12,17 @@ export interface ChangelogEntry {
 }
 
 /** Committed, waiting for the next update. */
-export const UNRELEASED: string[] = [
-  "Search bar: a camera button next to the magnifying glass checks stash slots while you play. Click it, drag a box around a junk box or any stash or container slots, and two panels open beside the bar: \"Item scan\" shows your snip with a box per item (green = still needed for quests or the hideout, red = spare) and what each needed item is for; \"Values\" lists the spare items from most to least valuable (by stack, each or per slot, at the better of flea after the fee and traders) with a \"Do not sell\" list of what you still need at the bottom. Each panel closes on its own. Esc or a right-click cancels a snip. It uses the same item recognition and your own corrections as the app's scanner, and only takes a picture when you click the camera; it can be hidden in the bar's settings.",
-]
+export const UNRELEASED: string[] = []
 
 export const RELEASES: ChangelogEntry[] = [
+  {
+    version: '2.14.0',
+    date: '2026-10-27',
+    title: 'Check stash slots from the search bar: keep or sell, and what they are worth',
+    changes: [
+    "Search bar: a camera button next to the magnifying glass checks stash slots while you play. Click it, drag a box around a junk box or any stash or container slots, and two panels open beside the bar: \"Item scan\" shows your snip with a box per item (green = still needed for quests or the hideout, red = spare) and what each needed item is for; \"Values\" lists the spare items from most to least valuable (by stack, each or per slot, at the better of flea after the fee and traders) with a \"Do not sell\" list of what you still need at the bottom. Each panel closes on its own. Esc or a right-click cancels a snip. It uses the same item recognition and your own corrections as the app's scanner, and only takes a picture when you click the camera; it can be hidden in the bar's settings.",
+    ],
+  },
   {
     version: '2.13.0',
     date: '2026-10-25',
