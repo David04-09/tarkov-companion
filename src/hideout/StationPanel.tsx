@@ -1,5 +1,5 @@
-import { useState, type CSSProperties } from 'react'
-import { Check, ChevronRight, Clock, Hammer, Lock, Minus, Plus, Timer, X } from 'lucide-react'
+import { useState } from 'react'
+import { Check, ChevronRight, Clock, Hammer, Lock, MapPin, Minus, Plus, Timer, X } from 'lucide-react'
 import type { HideoutLevel, Item } from '../api/types'
 import { formatDuration } from '../lib/economy'
 import { formatNumber } from '../lib/format'
@@ -9,6 +9,7 @@ import { useHideoutTimers, type BuildTimer } from '../store/hideoutTimers'
 import type { BunkerProps } from './BunkerView'
 import { Countdown, TimerBar } from './Countdown'
 import { lookLabel, type Look, type Names } from './look'
+import type { SpotSource } from './useStationSpots'
 
 interface PanelProps extends BunkerProps {
   info: StationInfo | null
@@ -16,6 +17,9 @@ interface PanelProps extends BunkerProps {
   timer: BuildTimer | undefined
   names: Names
   ready: StationInfo[]
+  /** Where the station's spot on the map came from. */
+  spotSource?: SpotSource
+  onArrange?: () => void
   onPick: (stationId: string) => void
   onClose: () => void
 }
@@ -69,10 +73,9 @@ function Overview({ ready, onPick }: PanelProps) {
 }
 
 function Details(props: PanelProps & { info: StationInfo; look: Look }) {
-  const { info, look, names, onPick, onClose, setLevel, gameMode } = props
+  const { info, look, names, onPick, onClose, setLevel, gameMode, spotSource, onArrange } = props
   const { station, level, max, next } = info
   const clearTimer = useHideoutTimers((s) => s.clear)
-  const pct = max ? Math.round((Math.min(level, max) / max) * 100) : 100
   const setTo = (n: number) => {
     setLevel(station.id, Math.max(0, Math.min(max, n)))
     clearTimer(gameMode, station.id)
@@ -83,8 +86,10 @@ function Details(props: PanelProps & { info: StationInfo; look: Look }) {
   return (
     <aside className="tc-panel" aria-label={`${station.name} details`}>
       <div className="flex items-start gap-3">
-        <span className={`tc-badge tc-badge-lg tc-st-${look} ${level > 0 ? '' : 'is-empty'}`} style={{ '--pct': pct } as CSSProperties}>
-          {station.imageLink && <img src={station.imageLink} alt="" />}
+        <span className={`tc-hex is-static tc-st-${look} ${level > 0 ? 'is-built' : 'is-empty'}`}>
+          <span className="tc-hex-ring" />
+          <span className="tc-hex-core">{station.imageLink && <img src={station.imageLink} alt="" />}</span>
+          <span className="tc-hex-num">{String(level).padStart(2, '0')}</span>
         </span>
         <div className="min-w-0 flex-1">
           <h2 className="text-lg font-semibold leading-tight">{station.name}</h2>
@@ -115,6 +120,23 @@ function Details(props: PanelProps & { info: StationInfo; look: Look }) {
           ))}
         </span>
       </div>
+
+      {spotSource && (
+        <p className="mt-2 flex items-start gap-1.5 text-[11px] text-ink-dim">
+          <MapPin className="mt-px h-3 w-3 shrink-0" />
+          <span>
+            {spotSource === 'shot' ? 'Spot on the map read from in-game overview screenshots.' : spotSource === 'moved' ? 'Spot on the map moved by you.' : 'Spot on the map is a best guess (not built in the screenshots the map was drawn from).'}
+            {spotSource !== 'shot' && onArrange && (
+              <>
+                {' '}
+                <button type="button" onClick={onArrange} className="text-accent underline underline-offset-2">
+                  Move stations
+                </button>
+              </>
+            )}
+          </span>
+        </p>
+      )}
 
       {shown?.description && (
         <p className="mt-3 border-l-2 border-accent-dim pl-2 text-xs italic text-ink-muted">

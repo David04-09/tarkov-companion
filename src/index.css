@@ -383,8 +383,9 @@ select option {
 }
 
 /* ---- Hideout bunker (Hideout tab, src/hideout) ------------------------------
-   States set --st on a tile/chip; effects only run on built stations and stop with
-   the Live/Still switch (.tc-still) or Settings → Reduce motion. */
+   States set --st on a marker/chip; the map is always dark like the game's overview.
+   Effects only run on built stations and stop with the Live/Still switch (.tc-still)
+   or Settings → Reduce motion. */
 .tc-st-max { --st: var(--color-accent); }
 .tc-st-ready { --st: var(--color-success); }
 .tc-st-done { --st: var(--color-success); }
@@ -442,244 +443,189 @@ select option {
 .tc-counter.is-on { border-color: var(--st); background: color-mix(in srgb, var(--st) 20%, transparent); color: var(--color-ink); }
 .tc-mini { padding: 0.15rem 0.5rem; font-size: 0.6875rem; color: var(--st); }
 
-.tc-bunker {
-  --dark: 0;
-  --vignette: 0.28;
+/* The map. */
+.tc-plan-frame {
   position: relative;
-  isolation: isolate;
   overflow: hidden;
   border: 1px solid var(--color-line);
   border-radius: 0.875rem;
-  background:
-    radial-gradient(ellipse 70% 45% at 50% 0%, color-mix(in srgb, var(--color-accent) 10%, transparent), transparent 70%),
-    linear-gradient(color-mix(in srgb, var(--color-line) 38%, transparent) 1px, transparent 1px) 0 0 / 28px 28px,
-    linear-gradient(90deg, color-mix(in srgb, var(--color-line) 38%, transparent) 1px, transparent 1px) 0 0 / 28px 28px,
-    var(--color-surface);
+  background: radial-gradient(ellipse 80% 70% at 55% 40%, #1b1915, #080807 78%);
+  color: #e8e2d6;
 }
-:root[data-theme="daylight"] .tc-bunker,
-:root[data-theme="arctic"] .tc-bunker { --vignette: 0.08; }
-/* Darker with less Illumination. */
-.tc-bunker::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  background:
-    radial-gradient(ellipse 85% 75% at 50% 45%, transparent 45%, rgb(0 0 0 / var(--vignette)) 100%),
-    rgb(0 0 0 / var(--dark));
-  transition: background 0.6s ease;
-}
-.tc-bus {
-  position: relative;
-  height: 4px;
-  overflow: hidden;
-  border-radius: 2px;
-  background: color-mix(in srgb, var(--color-line) 90%, transparent);
-}
-.tc-bus.is-on { background: color-mix(in srgb, #f2b84b 28%, var(--color-line)); }
-.tc-bus.is-on::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  width: 25%;
-  background: linear-gradient(90deg, transparent, #f2b84b, transparent);
-  animation: tc-slide 2.8s linear infinite;
-}
-
-.tc-room {
-  position: relative;
-  border: 1px solid var(--color-line);
-  border-radius: 0.75rem;
-  background: color-mix(in srgb, var(--color-surface-2) 84%, transparent);
-  /* The inset shadow darkens the floor (not the stations) when Illumination is low. */
-  box-shadow: inset 0 0 0 999px rgb(0 0 0 / calc(var(--dark) * 0.7)), inset 0 1px 0 color-mix(in srgb, var(--color-ink) 5%, transparent), 0 10px 28px -14px rgb(0 0 0 / 0.6);
-}
-.tc-room-head {
-  position: relative;
-  z-index: 2;
+.tc-plan-head {
   display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  border-bottom: 1px solid var(--color-line);
-  border-radius: 0.75rem 0.75rem 0 0;
-  background: var(--color-surface-2);
-  padding: 0.6rem 0.75rem 0.5rem;
-}
-.tc-room-head::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto;
-  height: 3px;
-  border-radius: 0.75rem 0.75rem 0 0;
-  background: repeating-linear-gradient(-45deg, color-mix(in srgb, var(--color-accent) 75%, transparent) 0 6px, transparent 6px 12px);
-  opacity: 0.5;
-}
-.tc-lamp {
-  width: 8px;
-  height: 8px;
-  flex-shrink: 0;
-  border-radius: 50%;
-  background: var(--color-ink-dim);
-  opacity: 0.6;
-}
-.tc-lamp.is-on { background: #ffd27a; opacity: 1; box-shadow: 0 0 8px 2px rgb(255 205 120 / 0.55); }
-.tc-lamp.is-on.is-dim { animation: tc-flicker 3.2s linear infinite; }
-
-.tc-sealed {
-  display: flex;
-  flex: 1 1 18rem;
   flex-wrap: wrap;
-  align-content: flex-start;
-  justify-content: center;
-  gap: 0.625rem;
-  border: 1px dashed var(--color-line);
-  border-radius: 0.6rem;
-  padding: 0.5rem 0.625rem 0.625rem;
-  background: repeating-linear-gradient(-45deg, color-mix(in srgb, var(--color-surface) 75%, transparent) 0 10px, color-mix(in srgb, var(--color-surface-3) 65%, transparent) 10px 20px);
-}
-.tc-sealed:not(.is-open) .tc-station:not(:hover):not(.is-selected) { filter: saturate(0.35) brightness(0.8); }
-.tc-sealed.is-open { border-style: solid; background: color-mix(in srgb, var(--color-surface) 45%, transparent); }
-
-.tc-station {
-  --st: var(--color-ink-dim);
-  --pct: 0;
-  --lvl: 0;
-  position: relative;
-  z-index: 2;
-  display: flex;
-  width: 6.5rem;
-  flex-direction: column;
   align-items: center;
-  gap: 0.35rem;
-  border: 1px solid color-mix(in srgb, var(--st) 30%, var(--color-line));
-  border-radius: 0.7rem;
-  background: linear-gradient(180deg, var(--color-surface-3), var(--color-surface-2));
-  padding: 0.7rem 0.35rem 0.55rem;
-  text-align: center;
+  gap: 6px 12px;
+  border-bottom: 1px solid rgb(255 255 255 / 0.06);
+  background: linear-gradient(180deg, rgb(0 0 0 / 0.5), transparent);
+  padding: 8px 10px 8px 14px;
+  font-size: 11px;
+  color: rgb(232 226 214 / 0.65);
+}
+.tc-plan-title { font-size: 15px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: #ece6da; }
+.tc-plan-scroll { max-height: 75vh; overflow: auto; scrollbar-width: thin; }
+.tc-plan-scroll.is-zoomed { cursor: grab; }
+.tc-plan-scroll.is-zoomed:active { cursor: grabbing; }
+.tc-plan-zoom {
+  display: flex;
+  margin-left: auto;
+  align-items: center;
+  gap: 2px;
+  border: 1px solid rgb(255 255 255 / 0.12);
+  border-radius: 8px;
+  background: rgb(0 0 0 / 0.6);
+  padding: 2px;
+  font-size: 11px;
+  color: rgb(232 226 214 / 0.75);
+}
+.tc-plan-zoom span { min-width: 2.6rem; text-align: center; }
+.tc-plan-zoom button { display: grid; width: 24px; height: 24px; place-items: center; border-radius: 6px; color: #e8e2d6; }
+.tc-plan-zoom button:hover:not(:disabled) { background: rgb(255 255 255 / 0.1); }
+.tc-plan-zoom button:disabled { opacity: 0.35; }
+.tc-plan-zoom svg { width: 14px; height: 14px; }
+.tc-plan { position: relative; min-width: 620px; container-type: inline-size; }
+.tc-plan svg .tc-anim-breathe,
+.tc-plan svg .tc-anim-flicker { transform-box: fill-box; transform-origin: center; }
+.tc-floor { fill: #1f1d19; }
+.tc-floor.is-sealed { fill: #11100e; }
+.tc-tile-line { stroke: rgb(255 255 255 / 0.05); }
+.tc-chalk { fill: none; stroke: rgb(235 230 220 / 0.32); stroke-width: 0.07; stroke-dasharray: 0.35 0.18; }
+.tc-chalk-inner { stroke-dasharray: 0.1 0.26; }
+.tc-wall-face { fill: #2c2a25; }
+.tc-wall-edge { stroke: #0a0a09; stroke-width: 11; stroke-linecap: square; }
+.tc-wall-top { stroke: #4b4842; stroke-width: 6; stroke-linecap: square; }
+.tc-wall.is-defective .tc-wall-face { fill: #3a2a20; }
+.tc-wall.is-defective .tc-wall-top { stroke: #8a5638; stroke-dasharray: 5 3; }
+.tc-room-label { font: 600 13px var(--font-sans); letter-spacing: 0.16em; text-transform: uppercase; fill: rgb(232 226 214 / 0.28); }
+.tc-plan-link.is-met { color: var(--color-success); }
+.tc-plan-link.is-unmet { color: var(--color-danger); }
+.tc-plan-link.is-unlock { color: var(--color-accent); }
+.tc-plan-link path { fill: none; stroke: currentColor; stroke-linecap: round; }
+.tc-link-base { stroke-width: 7; opacity: 0.2; }
+.tc-link-flow { stroke-width: 2.5; stroke-dasharray: 3 7; opacity: 0.95; animation: tc-flow 0.8s linear infinite; }
+.tc-link-flow.is-out { stroke-width: 1.75; opacity: 0.75; }
+
+/* Station markers: the game's hexagon with the level in the corner. */
+.tc-hex {
+  --hex: clamp(30px, 3.6cqw, 46px);
+  --ring: color-mix(in srgb, var(--st) 75%, transparent);
+  position: absolute;
+  z-index: 2;
+  display: block;
+  width: var(--hex);
+  height: calc(var(--hex) * 1.1547);
+  border: 0;
+  background: none;
+  padding: 0;
+  font-size: var(--hex);
+  transform: translate(-50%, -50%);
   cursor: pointer;
-  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, opacity 0.2s ease, filter 0.2s ease;
+  transition: transform 0.15s ease, opacity 0.2s ease, filter 0.2s ease;
 }
-.tc-station:hover,
-.tc-station:focus-visible {
-  z-index: 3;
-  transform: translateY(-3px);
-  border-color: var(--st);
-  outline: none;
-  box-shadow: 0 12px 24px -12px color-mix(in srgb, var(--st) 75%, transparent);
+.tc-hex.is-built { filter: drop-shadow(0 0 7px rgb(255 255 255 / 0.28)); }
+.tc-hex.tc-st-ready,
+.tc-hex.tc-st-done { filter: drop-shadow(0 0 8px color-mix(in srgb, var(--st) 70%, transparent)); }
+.tc-hex.is-static { position: relative; --hex: 52px; flex-shrink: 0; transform: none; cursor: default; }
+.tc-hex-ring,
+.tc-hex-core { position: absolute; clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%); }
+.tc-hex-ring { inset: 0; background: var(--ring); }
+.tc-hex.tc-st-locked { --ring: rgb(255 255 255 / 0.2); }
+.tc-hex-core { inset: 2px; display: grid; place-items: center; overflow: hidden; background: #0b0b0a; }
+.tc-hex-core img { width: 76%; height: 76%; object-fit: contain; filter: grayscale(1) contrast(5); mix-blend-mode: lighten; }
+.tc-hex-core b { color: #fff; font-size: 0.4em; }
+.tc-hex.is-empty .tc-hex-core img { opacity: 0.4; }
+.tc-hex.is-empty .tc-hex-ring { background: rgb(255 255 255 / 0.12); }
+.tc-hex-num {
+  position: absolute;
+  right: -0.5em;
+  bottom: -0.02em;
+  font: 600 0.3em/1 Consolas, ui-monospace, monospace;
+  letter-spacing: 0.03em;
+  color: #fff;
+  text-shadow: 0 0 2px #000, 0 0 5px #000, 0 0 8px #000;
 }
-.tc-station.is-selected {
-  z-index: 3;
-  border-color: var(--st);
-  box-shadow: 0 0 0 1px var(--st), 0 12px 28px -12px color-mix(in srgb, var(--st) 85%, transparent);
-}
-.tc-station.is-dim { opacity: 0.32; }
-/* Room for two lines so every tile in a row lines up. */
-.tc-station-name { display: flex; min-height: 2.3em; align-items: center; font-size: 0.75rem; font-weight: 600; line-height: 1.15; color: var(--color-ink); }
-
-.tc-badge {
-  position: relative;
-  isolation: isolate;
+.tc-hex.is-empty .tc-hex-num { color: rgb(255 255 255 / 0.55); }
+/* Sizes from --hex: the badge's own font-size would otherwise shrink its em-based box. */
+.tc-hex-badge {
+  position: absolute;
+  top: calc(var(--hex) * -0.06);
+  right: calc(var(--hex) * -0.2);
   display: grid;
-  width: 3.75rem;
-  height: 3.75rem;
-  flex-shrink: 0;
+  width: calc(var(--hex) * 0.4);
+  height: calc(var(--hex) * 0.4);
   place-items: center;
   border-radius: 50%;
-  background: conic-gradient(var(--color-accent) calc(var(--pct) * 1%), color-mix(in srgb, var(--color-line) 95%, transparent) 0);
+  background: var(--st);
+  color: #0b0b0a;
+  font: 700 calc(var(--hex) * 0.24) / 1 var(--font-sans);
+  box-shadow: 0 0 0 2px #0b0b0a;
 }
-.tc-badge::before {
-  content: "";
+.tc-hex-badge svg { width: 72%; height: 72%; stroke-width: 3; }
+.tc-hex-name {
   position: absolute;
-  inset: 3px;
-  border-radius: 50%;
-  background: radial-gradient(circle at 50% 30%, var(--color-surface-3), var(--color-surface));
-}
-.tc-badge img { position: relative; z-index: 1; width: 2.6rem; height: 2.6rem; object-fit: contain; transition: filter 0.2s, opacity 0.2s; }
-.tc-badge-lg { width: 4.25rem; height: 4.25rem; }
-.tc-badge-lg img { width: 3rem; height: 3rem; }
-.tc-station.is-empty .tc-badge,
-.tc-badge.is-empty { background: repeating-conic-gradient(var(--color-line) 0 9deg, transparent 9deg 18deg); }
-.tc-station.is-empty .tc-badge img,
-.tc-badge.is-empty img { filter: grayscale(1) brightness(0.75); opacity: 0.5; }
-.tc-station.is-empty:hover .tc-badge img { opacity: 0.8; }
-/* Ready / finished: a soft ping. Building: a turning dashed ring. */
-.tc-st-ready .tc-badge::after,
-.tc-st-done .tc-badge::after {
-  content: "";
-  position: absolute;
-  inset: -4px;
-  border: 2px solid var(--st);
-  border-radius: 50%;
-  opacity: 0;
-  animation: tc-ping 2.4s ease-out infinite;
-}
-.tc-st-building .tc-badge::after {
-  content: "";
-  position: absolute;
-  inset: -5px;
-  border: 2px dashed var(--st);
-  border-radius: 50%;
-  animation: tc-spin 8s linear infinite;
-}
-
-.tc-pips { display: flex; gap: 3px; }
-.tc-pips i { display: block; width: 10px; height: 4px; border-radius: 2px; background: var(--color-line); }
-.tc-pips i.on { background: var(--color-accent); }
-.tc-pips i.next { background: color-mix(in srgb, var(--st) 55%, var(--color-line)); }
-.tc-chip {
-  max-width: 100%;
-  overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--st) 40%, transparent);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--st) 14%, transparent);
-  padding: 1px 6px;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
+  top: calc(100% + 3px);
+  left: 50%;
+  transform: translateX(-50%);
   white-space: nowrap;
-  text-overflow: ellipsis;
-  color: var(--st);
+  font: 600 10.5px/1.1 var(--font-sans);
+  letter-spacing: 0.02em;
+  color: #ece6da;
+  text-shadow: 0 1px 2px #000, 0 0 6px #000, 0 0 10px #000;
+  pointer-events: none;
 }
-.tc-st-locked .tc-chip { color: var(--color-ink-muted); }
-
-/* Effects around a built station's badge. */
-.tc-fx { position: absolute; z-index: 2; pointer-events: none; }
-.tc-fx-corner {
-  top: -6px;
-  right: -8px;
+.tc-hex:hover,
+.tc-hex:focus-visible { z-index: 5; outline: none; transform: translate(-50%, -50%) scale(1.14); }
+.tc-hex.is-selected { z-index: 4; transform: translate(-50%, -50%) scale(1.1); }
+.tc-hex.is-selected .tc-hex-ring { background: #fff; }
+.tc-hex.is-static:hover { transform: none; }
+.tc-hex.is-dim { opacity: 0.25; }
+.tc-hex.is-sealed:not(:hover):not(.is-selected) { opacity: 0.55; filter: saturate(0.3); }
+.tc-plan.is-arranging .tc-hex { cursor: grab; touch-action: none; }
+.tc-plan.is-arranging .tc-hex:active { cursor: grabbing; }
+.tc-hex.is-approx::after {
+  content: "?";
+  position: absolute;
+  top: calc(var(--hex) * -0.06);
+  left: calc(var(--hex) * -0.2);
   display: grid;
-  width: 20px;
-  height: 20px;
+  width: calc(var(--hex) * 0.4);
+  height: calc(var(--hex) * 0.4);
   place-items: center;
-  border: 1px solid var(--color-line);
   border-radius: 50%;
-  background: var(--color-surface);
-  color: var(--fx);
+  background: var(--color-info);
+  color: #0b0b0a;
+  font: 700 calc(var(--hex) * 0.26) / 1 var(--font-sans);
+  box-shadow: 0 0 0 2px #0b0b0a;
 }
-.tc-fx-corner svg { width: 12px; height: 12px; }
+
+/* Bits of life around a built station's marker. */
 .tc-fx-aura {
-  inset: -12px;
+  position: absolute;
+  inset: -45%;
   z-index: -1;
   border-radius: 50%;
-  background: radial-gradient(circle, color-mix(in srgb, var(--fx) 55%, transparent) 0%, transparent 68%);
+  background: radial-gradient(circle, color-mix(in srgb, var(--fx) 55%, transparent) 0%, transparent 66%);
   opacity: calc(0.35 + var(--lvl) * 0.5);
+  pointer-events: none;
 }
 .tc-fx-drip {
-  bottom: -9px;
+  position: absolute;
+  bottom: -0.2em;
   left: 50%;
   width: 5px;
   height: 7px;
   margin-left: -2.5px;
   border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
   background: var(--fx);
+  pointer-events: none;
   animation: tc-drip 2s ease-in infinite;
 }
-.tc-fx-late { margin-left: 6px; animation-delay: 1s; }
-.tc-fx-bubbles { inset: 3px; overflow: hidden; border-radius: 50%; }
+.tc-fx-late { margin-left: 5px; animation-delay: 1s; }
+.tc-fx-bubbles { position: absolute; bottom: 60%; left: 22%; width: 56%; height: 1.1em; overflow: hidden; pointer-events: none; }
 .tc-fx-bubbles i {
   position: absolute;
-  bottom: 4px;
+  bottom: 0;
   width: 5px;
   height: 5px;
   border: 1px solid var(--fx);
@@ -687,45 +633,49 @@ select option {
   opacity: 0;
   animation: tc-rise 2.6s ease-in infinite;
 }
-.tc-fx-bubbles i:nth-child(1) { left: 28%; }
-.tc-fx-bubbles i:nth-child(2) { left: 52%; animation-delay: 0.85s; }
-.tc-fx-bubbles i:nth-child(3) { left: 70%; animation-delay: 1.7s; }
+.tc-fx-bubbles i:nth-child(1) { left: 15%; }
+.tc-fx-bubbles i:nth-child(2) { left: 45%; animation-delay: 0.85s; }
+.tc-fx-bubbles i:nth-child(3) { left: 72%; animation-delay: 1.7s; }
 .tc-fx-steam i { width: 7px; height: 7px; border: 0; background: color-mix(in srgb, var(--fx) 45%, transparent); filter: blur(1px); }
 .tc-fx-leds {
-  bottom: -7px;
+  position: absolute;
+  bottom: -0.16em;
   left: 50%;
   display: flex;
   gap: 3px;
   transform: translateX(-50%);
-  border: 1px solid var(--color-line);
+  border: 1px solid #2a2924;
   border-radius: 4px;
-  background: var(--color-surface);
+  background: #0b0b0a;
   padding: 2px 4px;
+  pointer-events: none;
 }
-.tc-fx-leds i { display: block; width: 4px; height: 4px; border-radius: 50%; background: var(--color-line); }
+.tc-fx-leds i { display: block; width: 4px; height: 4px; border-radius: 50%; background: #2a2924; }
 .tc-fx-leds i.on { background: #6ee07a; box-shadow: 0 0 4px #6ee07a; animation: tc-led 1.1s steps(2, jump-none) infinite; }
 .tc-fx-leds i.on:nth-child(2) { animation-delay: 0.37s; }
 .tc-fx-leds i.on:nth-child(3) { animation-delay: 0.74s; }
-.tc-fx-scan { inset: 3px; overflow: hidden; border-radius: 50%; }
+.tc-fx-scan { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
 .tc-fx-scan::after {
   content: "";
   position: absolute;
   inset: 0 0 auto;
   height: 30%;
-  background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--fx) 55%, transparent), transparent);
+  background: linear-gradient(180deg, transparent, rgb(63 193 201 / 0.45), transparent);
   animation: tc-scan 2.8s linear infinite;
 }
 .tc-fx-rec {
-  top: 3px;
-  right: 3px;
-  width: 8px;
-  height: 8px;
+  position: absolute;
+  top: 0.16em;
+  left: 0.02em;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   background: #ff4d3d;
   box-shadow: 0 0 6px #ff4d3d;
+  pointer-events: none;
   animation: tc-led 1.6s steps(2, jump-none) infinite;
 }
-.tc-fx-shine { inset: 3px; overflow: hidden; border-radius: 50%; }
+.tc-fx-shine { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
 .tc-fx-shine::after {
   content: "";
   position: absolute;
@@ -747,15 +697,54 @@ select option {
 .tc-still *,
 .tc-still *::before,
 .tc-still *::after,
-:root[data-reduce-motion="true"] .tc-bunker *,
-:root[data-reduce-motion="true"] .tc-bunker *::after { animation: none !important; }
+:root[data-reduce-motion="true"] .tc-plan-frame *,
+:root[data-reduce-motion="true"] .tc-plan-frame *::after { animation: none !important; }
 
-/* Lines from what a station needs and to what it opens (BunkerView LinkLayer). */
-.tc-links { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
-.tc-links path { fill: none; stroke: currentColor; stroke-linecap: round; }
-.tc-link-base { stroke-width: 7; opacity: 0.2; }
-.tc-link-flow { stroke-width: 2.5; stroke-dasharray: 3 7; opacity: 0.95; animation: tc-flow 0.8s linear infinite; }
-.tc-link-flow.is-out { stroke-width: 1.75; opacity: 0.7; }
+/* The bar along the bottom of the map, like the game's. */
+.tc-station-bar {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  border-top: 1px solid rgb(255 255 255 / 0.08);
+  background: rgb(0 0 0 / 0.55);
+  padding: 6px 8px;
+  scrollbar-width: thin;
+}
+.tc-bar-item {
+  --st: #6b665b;
+  display: flex;
+  max-width: 15rem;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 3px 9px 3px 3px;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  color: #e8e2d6;
+  transition: background-color 0.15s, border-color 0.15s;
+}
+.tc-bar-item:hover { background: rgb(255 255 255 / 0.06); }
+.tc-bar-item.is-selected { border-color: var(--st); background: color-mix(in srgb, var(--st) 14%, transparent); }
+.tc-bar-item.is-empty { color: rgb(232 226 214 / 0.55); }
+.tc-bar-hex {
+  display: grid;
+  width: 24px;
+  height: 27.7px;
+  flex-shrink: 0;
+  place-items: center;
+  clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+  background: #000;
+}
+.tc-bar-hex img { width: 80%; height: 80%; object-fit: contain; filter: grayscale(1) contrast(5); mix-blend-mode: lighten; }
+.tc-bar-item.is-empty .tc-bar-hex img { opacity: 0.45; }
+.tc-bar-num { font: 600 11px/1 Consolas, ui-monospace, monospace; color: var(--st); }
+
+.tc-pips { display: flex; gap: 3px; }
+.tc-pips i { display: block; width: 10px; height: 4px; border-radius: 2px; background: var(--color-line); }
+.tc-pips i.on { background: var(--color-accent); }
+.tc-pips i.next { background: color-mix(in srgb, var(--st) 55%, var(--color-line)); }
 
 .tc-panel {
   border: 1px solid var(--color-line);
@@ -794,16 +783,14 @@ button.tc-row:hover { background: var(--color-surface-3); }
 
 @keyframes tc-spin { to { transform: rotate(360deg); } }
 @keyframes tc-stripes { to { background-position: 17px 0; } }
-@keyframes tc-slide { from { transform: translateX(-100%); } to { transform: translateX(400%); } }
-@keyframes tc-ping { 0% { transform: scale(0.92); opacity: 0.75; } 100% { transform: scale(1.28); opacity: 0; } }
 @keyframes tc-flicker { 0%, 100% { opacity: 1; } 38% { opacity: 0.8; } 40% { opacity: 1; } 68% { opacity: 0.88; } 70% { opacity: 0.55; } 72% { opacity: 1; } }
-@keyframes tc-breathe { 0%, 100% { transform: scale(0.94); opacity: calc(0.3 + var(--lvl) * 0.4); } 50% { transform: scale(1.06); opacity: calc(0.45 + var(--lvl) * 0.55); } }
-@keyframes tc-beat { 0%, 60%, 100% { transform: scale(1); } 12% { transform: scale(1.28); } 24% { transform: scale(1); } 36% { transform: scale(1.18); } }
+@keyframes tc-breathe { 0%, 100% { transform: scale(0.94); opacity: calc(0.3 + var(--lvl, 1) * 0.4); } 50% { transform: scale(1.06); opacity: calc(0.45 + var(--lvl, 1) * 0.55); } }
+@keyframes tc-beat { 0%, 60%, 100% { transform: scale(1); } 12% { transform: scale(1.22); } 24% { transform: scale(1); } 36% { transform: scale(1.14); } }
 @keyframes tc-wiggle { 0%, 78%, 100% { transform: rotate(0); } 84% { transform: rotate(-20deg); } 90% { transform: rotate(16deg); } 95% { transform: rotate(-8deg); } }
 @keyframes tc-bob { 0%, 100% { transform: translateY(1px); } 50% { transform: translateY(-2px); } }
-@keyframes tc-pulse { 0%, 100% { transform: scale(0.88); opacity: 0.6; } 50% { transform: scale(1.1); opacity: 1; } }
-@keyframes tc-drip { 0% { transform: translateY(-16px) scale(0.5); opacity: 0; } 25% { opacity: 1; } 80% { transform: translateY(4px) scale(1); opacity: 0.9; } 100% { transform: translateY(8px) scale(1.3, 0.4); opacity: 0; } }
-@keyframes tc-rise { 0% { transform: translateY(0) scale(0.7); opacity: 0; } 20% { opacity: 0.9; } 100% { transform: translateY(-46px) scale(1.15); opacity: 0; } }
+@keyframes tc-pulse { 0%, 100% { transform: scale(0.9); opacity: 0.7; } 50% { transform: scale(1.06); opacity: 1; } }
+@keyframes tc-drip { 0% { transform: translateY(-12px) scale(0.5); opacity: 0; } 25% { opacity: 1; } 80% { transform: translateY(5px) scale(1); opacity: 0.9; } 100% { transform: translateY(9px) scale(1.3, 0.4); opacity: 0; } }
+@keyframes tc-rise { 0% { transform: translateY(0) scale(0.7); opacity: 0; } 20% { opacity: 0.9; } 100% { transform: translateY(-38px) scale(1.15); opacity: 0; } }
 @keyframes tc-led { 50% { opacity: 0.2; } }
 @keyframes tc-scan { from { transform: translateY(-100%); } to { transform: translateY(340%); } }
 @keyframes tc-shine { 0%, 55% { transform: translateX(-160%); } 100% { transform: translateX(360%); } }

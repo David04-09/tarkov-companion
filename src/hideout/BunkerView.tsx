@@ -1,14 +1,19 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from 'react'
-import { Crosshair, Dumbbell, Fan, Flame, HeartPulse, Hourglass, Lock, Monitor, Sparkles, Sun, Trophy, Wrench, Zap, type LucideIcon } from 'lucide-react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent } from 'react'
+import { Hourglass, Maximize2, Minus, Move, Plus, RotateCcw, Sparkles, Tag, Zap } from 'lucide-react'
 import type { GameMode } from '../api/client'
 import type { HideoutStation, Item, Trader } from '../api/types'
 import { hideoutSummary, type StationInfo } from '../lib/hideoutState'
 import { useNow } from '../searchbar/shell'
-import { useHideoutTimers, type BuildTimer } from '../store/hideoutTimers'
+import { useHideoutSpots } from '../store/hideoutSpots'
+import { useHideoutTimers } from '../store/hideoutTimers'
 import { Countdown } from './Countdown'
-import { darkness, EFFECTS, roomsFor, WALL_STATION, type Effect } from './layout'
+import { HideoutPlan } from './HideoutPlan'
 import { activeTimer, lookLabel, lookOf, type Look, type Names } from './look'
+import { darkness, WALL_STATION } from './plan'
 import { StationPanel } from './StationPanel'
+import { useStationSpots } from './useStationSpots'
+
+const MAX_ZOOM = 2.5
 
 const COUNTERS: { look: Look; label: string }[] = [
   { look: 'ready', label: 'ready to build' },
@@ -19,13 +24,26 @@ const COUNTERS: { look: Look; label: string }[] = [
   { look: 'max', label: 'fully built' },
 ]
 
-const MOTION_KEY = 'tc-hideout-motion'
-function loadMotion(): boolean {
-  try {
-    return localStorage.getItem(MOTION_KEY) !== 'off'
-  } catch {
-    return true
-  }
+/** On/off switches remembered in this browser only (Live animations, station names on the plan). */
+function useFlag(key: string, fallback: boolean): [boolean, () => void] {
+  const [on, setOn] = useState(() => {
+    try {
+      const v = localStorage.getItem(key)
+      return v === null ? fallback : v === 'on'
+    } catch {
+      return fallback
+    }
+  })
+  const toggle = () =>
+    setOn((v) => {
+      try {
+        localStorage.setItem(key, v ? 'off' : 'on')
+      } catch {
+        /* private window: only this visit */
+      }
+      return !v
+    })
+  return [on, toggle]
 }
 
 export interface BunkerProps {
@@ -43,18 +61,55 @@ export interface BunkerProps {
 
 export function BunkerView(props: BunkerProps) {
   const { stations, infos, gameMode, traders } = props
-  const sceneRef = useRef<HTMLDivElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
   const [selected, setSelected] = useState<string | null>(null)
   const [hover, setHover] = useState<string | null>(null)
   const [highlight, setHighlight] = useState<Look | null>(null)
-  const [motion, setMotion] = useState(loadMotion)
+  const [arrange, setArrange] = useState(false)
+  const [motion, toggleMotion] = useFlag('tc-hideout-motion', true)
+  const [showNames, toggleNames] = useFlag('tc-hideout-names', false)
+  // Zoom: 1 = the whole bunker fits; above that the map scrolls and can be dragged around.
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const [zoom, setZoom] = useState(1)
+  const keepCentre = useRef<{ cx: number; cy: number } | null>(null)
+  const panning = useRef<{ x: number; y: number; left: number; top: number } | null>(null)
+  const zoomTo = (next: number) => {
+    const el = scrollRef.current
+    if (el) keepCentre.current = { cx: (el.scrollLeft + el.clientWidth / 2) / el.scrollWidth, cy: (el.scrollTop + el.clientHeight / 2) / el.scrollHeight }
+    setZoom(Math.min(MAX_ZOOM, Math.max(1, Math.round(next * 100) / 100)))
+  }
+  useLayoutEffect(() => {
+    const el = scrollRef.current
+    const c = keepCentre.current
+    if (!el || !c) return
+    el.scrollLeft = c.cx * el.scrollWidth - el.clientWidth / 2
+    el.scrollTop = c.cy * el.scrollHeight - el.clientHeight / 2
+    keepCentre.current = null
+  }, [zoom])
+  const panStart = (e: PointerEvent<HTMLDivElement>) => {
+    const el = scrollRef.current
+    if (!el || zoom <= 1 || e.button !== 0 || (e.target as HTMLElement).closest('.tc-hex')) return
+    panning.current = { x: e.clientX, y: e.clientY, left: el.scrollLeft, top: el.scrollTop }
+    try {
+      el.setPointerCapture(e.pointerId)
+    } catch {
+      /* pointer already gone */
+    }
+  }
+  const panMove = (e: PointerEvent<HTMLDivElement>) => {
+    const p = panning.current
+    const el = scrollRef.current
+    if (!p || !el) return
+    el.scrollLeft = p.left - (e.clientX - p.x)
+    el.scrollTop = p.top - (e.clientY - p.y)
+  }
   const timers = useHideoutTimers((s) => s.byMode[gameMode])
-  // Tiles flip from "building" to "finished?" on this clock; the countdown text ticks by itself.
-  const anyTimer = Object.keys(timers).length > 0
-  const now = useNow(anyTimer ? 15_000 : null)
+  const spots = useStationSpots(stations)
+  const resetSpots = useHideoutSpots((s) => s.reset)
+  const moved = useHideoutSpots((s) => Object.keys(s.spots).length)
+  // Markers flip from "building" to "finished?" on this clock; the countdown text ticks by itself.
+  const now = useNow(Object.keys(timers).length > 0 ? 15_000 : null)
 
-  const rooms = useMemo(() => roomsFor(stations), [stations])
   const looks = useMemo(() => {
     const out = new Map<string, Look>()
     for (const [id, info] of infos) out.set(id, lookOf(info, timers[id], now))
@@ -66,7 +121,6 @@ export function BunkerView(props: BunkerProps) {
     for (const l of looks.values()) c[l] = (c[l] ?? 0) + 1
     return c
   }, [looks])
-
   const byName = useMemo(() => new Map([...infos.values()].map((i) => [i.station.normalizedName, i])), [infos])
   const names = useMemo<Names>(
     () => ({
@@ -76,8 +130,7 @@ export function BunkerView(props: BunkerProps) {
     [infos, traders],
   )
   const light = byName.get('illumination')
-  const dark = light ? darkness(light.level, light.max) : 0
-  const powered = (byName.get('generator')?.level ?? 0) > 0
+  const generator = byName.get('generator')
   const wall = byName.get(WALL_STATION)
   const wallOpen = !wall || wall.level >= wall.max
 
@@ -90,28 +143,23 @@ export function BunkerView(props: BunkerProps) {
     for (const u of info.unlocks) ids.add(u.stationId)
     return ids
   }, [hover, infos])
+  const shown = (id: string) => (!related || related.has(id)) && (highlight === null || looks.get(id) === highlight)
 
   const pick = (id: string | null) => {
     setSelected((cur) => (cur === id ? null : id))
+    if (id && zoom > 1) requestAnimationFrame(() => scrollRef.current?.querySelector(`[data-station="${CSS.escape(id)}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' }))
     if (id && !window.matchMedia('(min-width: 1280px)').matches) requestAnimationFrame(() => panelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
   }
   useEffect(() => {
-    if (!selected) return
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setSelected(null)
+    if (!selected && !arrange) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      setSelected(null)
+      setArrange(false)
+    }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [selected])
-
-  const toggleMotion = () => {
-    setMotion((m) => {
-      try {
-        localStorage.setItem(MOTION_KEY, m ? 'off' : 'on')
-      } catch {
-        /* private window: only this visit */
-      }
-      return !m
-    })
-  }
+  }, [selected, arrange])
 
   const ready = [...infos.values()].filter((i) => looks.get(i.station.id) === 'ready')
   const building = [...infos.values()].flatMap((i) => {
@@ -120,26 +168,7 @@ export function BunkerView(props: BunkerProps) {
   })
   const pct = summary.total ? Math.round((summary.built / summary.total) * 100) : 0
   const selectedInfo = selected ? infos.get(selected) ?? null : null
-
-  const tile = (s: HideoutStation) => {
-    const info = infos.get(s.id)
-    if (!info) return null
-    const look = looks.get(s.id) ?? info.state
-    const dim = (related && !related.has(s.id)) || (highlight !== null && look !== highlight)
-    return (
-      <StationTile
-        key={s.id}
-        info={info}
-        look={look}
-        label={lookLabel(look, info, names, true)}
-        timer={activeTimer(info, timers[s.id])}
-        selected={selected === s.id}
-        dim={Boolean(dim)}
-        onPick={pick}
-        onHover={setHover}
-      />
-    )
-  }
+  const sorted = useMemo(() => [...stations].sort((a, b) => a.name.localeCompare(b.name)), [stations])
 
   return (
     <div className={`mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_21rem] ${motion ? '' : 'tc-still'}`}>
@@ -172,74 +201,125 @@ export function BunkerView(props: BunkerProps) {
                 </button>
               ))}
             </div>
-            <button type="button" onClick={toggleMotion} aria-pressed={motion} className={`tc-counter ${motion ? 'is-on tc-st-max' : ''}`} title="Moving fans, lights and machines in the bunker">
+          </div>
+          <div className="mt-2.5 flex flex-wrap items-center gap-1.5 border-t border-line pt-2.5 text-xs">
+            <button type="button" onClick={toggleMotion} aria-pressed={motion} className={`tc-counter ${motion ? 'is-on tc-st-max' : ''}`} title="Moving fans, lights and machines">
               <Sparkles className="h-3.5 w-3.5" /> {motion ? 'Live' : 'Still'}
             </button>
+            <button type="button" onClick={toggleNames} aria-pressed={showNames} className={`tc-counter ${showNames ? 'is-on tc-st-max' : ''}`} title="Station names on the map">
+              <Tag className="h-3.5 w-3.5" /> Names
+            </button>
+            <button type="button" onClick={() => setArrange((a) => !a)} aria-pressed={arrange} className={`tc-counter ${arrange ? 'is-on tc-st-items' : ''}`} title="Drag stations to where they are in your hideout">
+              <Move className="h-3.5 w-3.5" /> {arrange ? 'Done moving' : 'Move stations'}
+            </button>
+            {building.map(({ info, timer }) => (
+              <button key={info.station.id} type="button" onClick={() => pick(info.station.id)} className="tc-mini tc-st-building">
+                <Hourglass className="h-3 w-3" /> {info.station.name} {timer.level} · <Countdown endsAt={timer.endsAt} />
+              </button>
+            ))}
+            {ready.length > 0 && <span className="ml-1 text-ink-muted">Build now:</span>}
+            {ready.map((i) => (
+              <button key={i.station.id} type="button" onClick={() => pick(i.station.id)} className="tc-mini tc-st-ready">
+                {i.station.name} {i.next?.level}
+              </button>
+            ))}
           </div>
-          {(ready.length > 0 || building.length > 0) && (
-            <div className="mt-2.5 flex flex-wrap items-center gap-1.5 border-t border-line pt-2.5 text-xs">
-              {building.map(({ info, timer }) => (
-                <button key={info.station.id} type="button" onClick={() => pick(info.station.id)} className="tc-mini tc-st-building">
-                  <Hourglass className="h-3 w-3" /> {info.station.name} {timer.level} · <Countdown endsAt={timer.endsAt} />
-                </button>
-              ))}
-              {ready.length > 0 && <span className="ml-1 text-ink-muted">Build now:</span>}
-              {ready.map((i) => (
-                <button key={i.station.id} type="button" onClick={() => pick(i.station.id)} className="tc-mini tc-st-ready">
-                  {i.station.name} {i.next?.level}
-                </button>
-              ))}
-            </div>
-          )}
         </div>
 
-        {/* The bunker itself. */}
-        <div ref={sceneRef} className="tc-bunker" style={{ '--dark': dark } as CSSProperties}>
-          <div className="relative z-[1] flex items-center gap-2 px-4 pt-3 text-[11px] text-ink-muted">
-            <Zap className={`h-3.5 w-3.5 ${powered ? 'text-[#f2b84b]' : 'text-ink-dim'}`} />
-            <span className="whitespace-nowrap">{powered ? `Generator level ${byName.get('generator')?.level}` : 'No generator yet'}</span>
-            <div className={`tc-bus flex-1 ${powered ? 'is-on' : ''}`} aria-hidden />
-            <span className="whitespace-nowrap">{light && light.level > 0 ? `Lights level ${light.level}` : 'Lights off'}</span>
+        {arrange && (
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-info/50 bg-info/10 px-3 py-2 text-xs text-ink">
+            <Move className="h-4 w-4 text-info" />
+            <span className="flex-1">
+              Drag any station to where it is in your hideout; it is remembered on this computer. Stations with a <b>?</b> were not built in the screenshots this map was drawn from, so their spot is a best guess.
+            </span>
+            {moved > 0 && (
+              <button type="button" onClick={resetSpots} className="btn !px-2 !py-1 !text-xs">
+                <RotateCcw className="h-3.5 w-3.5" /> Put all back
+              </button>
+            )}
+            <button type="button" onClick={() => setArrange(false)} className="btn !px-2 !py-1 !text-xs">
+              Done
+            </button>
           </div>
-          {/* Not its own layer: the lines (z 1) then run above the room floors but under the stations and room headers (z 2). */}
-          <div className="relative grid gap-3 p-3 md:grid-cols-2 md:p-4">
-            {rooms.map(({ room, stations: list }) => {
-              const built = list.reduce((n, s) => n + Math.min(infos.get(s.id)?.level ?? 0, infos.get(s.id)?.max ?? 0), 0)
-              const total = list.reduce((n, s) => n + (infos.get(s.id)?.max ?? 0), 0)
-              const isWall = room.id === 'wall'
-              const inner = isWall ? list.filter((s) => s.normalizedName !== WALL_STATION) : []
+        )}
+
+        {/* The bunker, seen from above like the game's hideout overview. */}
+        <div className="tc-plan-frame">
+          <div className="tc-plan-head">
+            <span className="tc-plan-title">Hideout</span>
+            <span className="flex items-center gap-1">
+              <Zap className={`h-3 w-3 ${generator && generator.level > 0 ? 'text-[#f2b84b]' : ''}`} />
+              {generator && generator.level > 0 ? `Generator ${generator.level}` : 'No generator'}
+            </span>
+            <span>{light && light.level > 0 ? `Lights ${light.level}` : 'Lights off'}</span>
+            <div className="tc-plan-zoom" role="group" aria-label="Zoom">
+              <button type="button" onClick={() => zoomTo(zoom - 0.5)} disabled={zoom <= 1} aria-label="Zoom out" title="Zoom out">
+                <Minus />
+              </button>
+              <span className="tabular-nums">{Math.round(zoom * 100)}%</span>
+              <button type="button" onClick={() => zoomTo(zoom + 0.5)} disabled={zoom >= MAX_ZOOM} aria-label="Zoom in" title="Zoom in">
+                <Plus />
+              </button>
+              <button type="button" onClick={() => zoomTo(1)} disabled={zoom <= 1} aria-label="Show the whole hideout" title="Show the whole hideout">
+                <Maximize2 />
+              </button>
+            </div>
+          </div>
+          <div
+            ref={scrollRef}
+            className={`tc-plan-scroll ${zoom > 1 ? 'is-zoomed' : ''}`}
+            onPointerDown={panStart}
+            onPointerMove={panMove}
+            onPointerUp={() => (panning.current = null)}
+            onPointerCancel={() => (panning.current = null)}
+          >
+            <HideoutPlan
+              zoom={zoom}
+              stations={stations}
+              infos={infos}
+              looks={looks}
+              spots={spots}
+              selected={selected}
+              hover={hover}
+              shown={shown}
+              names={showNames}
+              arrange={arrange}
+              dark={light ? darkness(light.level, light.max) : 0}
+              lightLevel={light && light.max ? light.level / light.max : 1}
+              wallOpen={wallOpen}
+              onPick={pick}
+              onHover={setHover}
+            />
+          </div>
+          {/* Like the game's bar along the bottom of the overview. */}
+          <div className="tc-station-bar" role="list" aria-label="Stations">
+            {sorted.map((s) => {
+              const info = infos.get(s.id)
+              if (!info) return null
+              const look = looks.get(s.id) ?? info.state
               return (
-                <section key={room.id} className={`tc-room ${room.wide ? 'md:col-span-2' : ''}`} aria-label={room.name}>
-                  <header className="tc-room-head">
-                    <span className={`tc-lamp ${light && light.level > 0 ? (light.level < light.max ? 'is-on is-dim' : 'is-on') : ''}`} aria-hidden />
-                    <h3 className="text-xs font-semibold uppercase tracking-[0.12em] text-ink">{room.name}</h3>
-                    <span className="hidden truncate text-[11px] text-ink-dim sm:inline">{room.note}</span>
-                    <span className="ml-auto whitespace-nowrap text-[11px] tabular-nums text-ink-dim">
-                      {built}/{total}
-                    </span>
-                  </header>
-                  {isWall ? (
-                    <div className="flex flex-wrap items-stretch justify-center gap-3 p-3">
-                      {list.filter((s) => s.normalizedName === WALL_STATION).map(tile)}
-                      <div className={`tc-sealed ${wallOpen ? 'is-open' : ''}`}>
-                        <p className="w-full text-center text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-dim">
-                          {wallOpen ? 'Hidden room' : `Sealed · wall ${wall?.level ?? 0}/${wall?.max ?? 6}`}
-                        </p>
-                        {inner.map(tile)}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex flex-wrap justify-center gap-2 p-3">{list.map(tile)}</div>
-                  )}
-                </section>
+                <button
+                  key={s.id}
+                  type="button"
+                  role="listitem"
+                  onClick={() => pick(s.id)}
+                  onMouseEnter={() => setHover(s.id)}
+                  onMouseLeave={() => setHover(null)}
+                  aria-pressed={selected === s.id}
+                  title={lookLabel(look, info, names)}
+                  className={`tc-bar-item tc-st-${look} ${selected === s.id ? 'is-selected' : ''} ${info.level > 0 ? '' : 'is-empty'}`}
+                >
+                  <span className="tc-bar-hex">{s.imageLink && <img src={s.imageLink} alt="" />}</span>
+                  <span className="truncate">{s.name}</span>
+                  <span className="tc-bar-num">{String(info.level).padStart(2, '0')}</span>
+                </button>
               )
             })}
           </div>
-          <p className="relative z-[1] px-4 pb-3 text-[11px] text-ink-dim">
-            Rooms group stations by what they do; they are not the game's floor plan. Hover a station to see what it needs (green built, red still missing) and what it opens (gold).
-          </p>
-          <LinkLayer sceneRef={sceneRef} focus={hover ?? selected} infos={infos} />
         </div>
+        <p className="text-[11px] text-ink-dim">
+          The map follows the game's hideout overview; zoom in with + and drag to look around. Stations you have not built yet in the screenshots it was drawn from sit at a best-guess spot; use Move stations to put them right. Hover a station to see what it needs (green built, red missing) and what it opens (gold).
+        </p>
       </div>
 
       <div ref={panelRef} className="scroll-mt-4 xl:sticky xl:top-4 xl:max-h-[calc(100vh-2rem)] xl:self-start xl:overflow-y-auto">
@@ -248,6 +328,8 @@ export function BunkerView(props: BunkerProps) {
           info={selectedInfo}
           look={selectedInfo ? looks.get(selectedInfo.station.id) ?? selectedInfo.state : null}
           timer={selectedInfo ? activeTimer(selectedInfo, timers[selectedInfo.station.id]) : undefined}
+          spotSource={selectedInfo ? spots[selectedInfo.station.id]?.source : undefined}
+          onArrange={() => setArrange(true)}
           names={names}
           ready={ready}
           onPick={(id) => setSelected(id)}
@@ -256,217 +338,4 @@ export function BunkerView(props: BunkerProps) {
       </div>
     </div>
   )
-}
-
-function StationTile({ info, look, label, timer, selected, dim, onPick, onHover }: {
-  info: StationInfo
-  look: Look
-  label: string
-  timer: BuildTimer | undefined
-  selected: boolean
-  dim: boolean
-  onPick: (id: string) => void
-  onHover: (id: string | null) => void
-}) {
-  const { station, level, max } = info
-  const pct = max ? Math.round((Math.min(level, max) / max) * 100) : 100
-  return (
-    <button
-      type="button"
-      data-station={station.id}
-      aria-pressed={selected}
-      title={`${station.name}: level ${level} of ${max}${label ? ` · ${look === 'locked' ? 'needs ' : ''}${label}` : ''}`}
-      className={`tc-station tc-st-${look} ${level > 0 ? 'is-built' : 'is-empty'} ${selected ? 'is-selected' : ''} ${dim ? 'is-dim' : ''}`}
-      style={{ '--pct': pct, '--lvl': max ? Math.min(level, max) / max : 1 } as CSSProperties}
-      onClick={() => onPick(station.id)}
-      onMouseEnter={() => onHover(station.id)}
-      onMouseLeave={() => onHover(null)}
-      onFocus={() => onHover(station.id)}
-      onBlur={() => onHover(null)}
-    >
-      <span className="tc-badge">
-        {level > 0 && <Fx effect={EFFECTS[station.normalizedName] ?? 'none'} level={level} max={max} />}
-        {station.imageLink ? <img src={station.imageLink} alt="" loading="lazy" draggable={false} /> : <span className="relative z-[1] text-lg font-semibold">{station.name.slice(0, 1)}</span>}
-      </span>
-      <span className="tc-station-name">{station.name}</span>
-      <span className="tc-pips" aria-hidden>
-        {Array.from({ length: max }, (_, i) => (
-          <i key={i} className={i < level ? 'on' : i === level ? 'next' : ''} />
-        ))}
-      </span>
-      <span className="tc-chip">
-        {look === 'building' && timer ? (
-          <>
-            <Hourglass className="mr-0.5 inline h-2.5 w-2.5" />
-            <Countdown endsAt={timer.endsAt} />
-          </>
-        ) : look === 'locked' ? (
-          <>
-            <Lock className="mr-0.5 inline h-2.5 w-2.5 align-[-1px]" />
-            {label}
-          </>
-        ) : (
-          label
-        )}
-      </span>
-    </button>
-  )
-}
-
-/** The little bit of life on a built station (paused by the Live/Still switch and Reduce motion). */
-function Fx({ effect, level, max }: { effect: Effect; level: number; max: number }) {
-  const corner = (Icon: LucideIcon, anim: string, color: string, style: CSSProperties = {}) => (
-    <span className="tc-fx tc-fx-corner" style={{ '--fx': color, ...style } as CSSProperties}>
-      <Icon className={anim} />
-    </span>
-  )
-  const aura = (color: string, anim = 'tc-anim-breathe') => <span className={`tc-fx tc-fx-aura ${anim}`} style={{ '--fx': color } as CSSProperties} />
-  switch (effect) {
-    case 'power':
-      return (
-        <>
-          {aura('#f2b84b')}
-          {corner(Zap, 'tc-anim-flicker', '#f2b84b')}
-        </>
-      )
-    case 'fan':
-      return corner(Fan, 'tc-anim-spin', '#8fc3e6', { '--spin': `${(3 / Math.max(1, level)).toFixed(2)}s` } as CSSProperties)
-    case 'heat':
-      return (
-        <>
-          {aura('#ff8a3d', 'tc-anim-flicker')}
-          {corner(Flame, 'tc-anim-flicker', '#ff8a3d')}
-        </>
-      )
-    case 'water':
-      return (
-        <>
-          <span className="tc-fx tc-fx-drip" style={{ '--fx': '#5fb4ff' } as CSSProperties} />
-          <span className="tc-fx tc-fx-drip tc-fx-late" style={{ '--fx': '#5fb4ff' } as CSSProperties} />
-        </>
-      )
-    case 'btc':
-      return (
-        <span className="tc-fx tc-fx-leds">
-          {Array.from({ length: Math.max(3, max) }, (_, i) => (
-            <i key={i} className={i < level ? 'on' : ''} />
-          ))}
-        </span>
-      )
-    case 'booze':
-    case 'food':
-      return (
-        <span className={`tc-fx tc-fx-bubbles ${effect === 'food' ? 'tc-fx-steam' : ''}`} style={{ '--fx': effect === 'food' ? '#d9d4c7' : '#d7b56d' } as CSSProperties}>
-          <i />
-          <i />
-          <i />
-        </span>
-      )
-    case 'scan':
-      return <span className="tc-fx tc-fx-scan" style={{ '--fx': '#3fc1c9' } as CSSProperties} />
-    case 'ritual':
-      return aura('#e0453a', 'tc-anim-breathe tc-slow')
-    case 'med':
-      return corner(HeartPulse, 'tc-anim-beat', '#ff6b6b')
-    case 'cam':
-      return <span className="tc-fx tc-fx-rec" />
-    case 'light':
-      return aura('#ffd27a', level < max ? 'tc-anim-flicker' : 'tc-anim-breathe tc-slow')
-    case 'sun':
-      return corner(Sun, 'tc-anim-spin tc-slow', '#ffc94d')
-    case 'rest':
-      return corner(Monitor, 'tc-anim-flicker', '#9db8ff')
-    case 'tools':
-      return corner(Wrench, 'tc-anim-wiggle', '#c7a66b')
-    case 'range':
-      return corner(Crosshair, 'tc-anim-pulse', '#ff6b5b')
-    case 'gym':
-      return corner(Dumbbell, 'tc-anim-bob', '#9ad07a')
-    case 'trophy':
-      return (
-        <>
-          <span className="tc-fx tc-fx-shine" />
-          {corner(Trophy, '', '#ffd34d')}
-        </>
-      )
-    default:
-      return null
-  }
-}
-
-interface Link {
-  key: string
-  d: string
-  end: [number, number]
-  kind: 'met' | 'unmet' | 'unlock'
-}
-
-const LINK_COLOR: Record<Link['kind'], string> = { met: 'var(--color-success)', unmet: 'var(--color-danger)', unlock: 'var(--color-accent)' }
-
-/** Lines from what a station needs to it, and from it to what it opens. Measured from the tiles on screen. */
-function LinkLayer({ sceneRef, focus, infos }: { sceneRef: RefObject<HTMLDivElement | null>; focus: string | null; infos: Map<string, StationInfo> }) {
-  const [links, setLinks] = useState<{ focus: string; list: Link[] } | null>(null)
-  useEffect(() => {
-    const scene = sceneRef.current
-    const info = focus ? infos.get(focus) : undefined
-    if (!scene || !info) return
-    const measure = () => {
-      const box = scene.getBoundingClientRect()
-      const at = (id: string) => {
-        const el = scene.querySelector<HTMLElement>(`[data-station="${CSS.escape(id)}"] .tc-badge`)
-        if (!el) return null
-        const r = el.getBoundingClientRect()
-        return { x: r.left - box.left + r.width / 2, y: r.top - box.top + r.height / 2, r: r.width / 2 }
-      }
-      const me = at(info.station.id)
-      const list: Link[] = []
-      if (me) {
-        for (const req of info.next?.stationLevelRequirements ?? []) {
-          const from = at(req.stationId)
-          if (from) list.push({ key: `in-${req.stationId}`, ...curve(from, me), kind: info.blockedBy.some((b) => b.stationId === req.stationId) ? 'unmet' : 'met' })
-        }
-        const seen = new Set<string>()
-        for (const u of info.unlocks) {
-          if (seen.has(u.stationId)) continue
-          seen.add(u.stationId)
-          const to = at(u.stationId)
-          if (to) list.push({ key: `out-${u.stationId}`, ...curve(me, to), kind: 'unlock' })
-        }
-      }
-      setLinks({ focus: info.station.id, list })
-    }
-    // Fires once right away (before paint) and again whenever the bunker changes size.
-    const ro = new ResizeObserver(measure)
-    ro.observe(scene)
-    return () => ro.disconnect()
-  }, [sceneRef, focus, infos])
-  if (!focus || links?.focus !== focus) return null
-  return (
-    <svg className="tc-links" aria-hidden>
-      {links.list.map((l) => (
-        <g key={l.key} style={{ color: LINK_COLOR[l.kind] }}>
-          {l.kind !== 'unlock' && <path d={l.d} className="tc-link-base" />}
-          <path d={l.d} className={`tc-link-flow ${l.kind === 'unlock' ? 'is-out' : ''}`} />
-        </g>
-      ))}
-    </svg>
-  )
-}
-
-/** A gentle arc between two badges, stopping at their rims. */
-function curve(a: { x: number; y: number; r: number }, b: { x: number; y: number; r: number }): { d: string; end: [number, number] } {
-  const dx = b.x - a.x
-  const dy = b.y - a.y
-  const len = Math.hypot(dx, dy) || 1
-  const ux = dx / len
-  const uy = dy / len
-  const x1 = a.x + ux * (a.r + 4)
-  const y1 = a.y + uy * (a.r + 4)
-  const x2 = b.x - ux * (b.r + 6)
-  const y2 = b.y - uy * (b.r + 6)
-  const bend = Math.min(70, len * 0.22)
-  const mx = (x1 + x2) / 2 + uy * bend
-  const my = (y1 + y2) / 2 - ux * bend
-  const f = (n: number) => Math.round(n * 10) / 10
-  return { d: `M${f(x1)},${f(y1)} Q${f(mx)},${f(my)} ${f(x2)},${f(y2)}`, end: [f(x2), f(y2)] }
 }
