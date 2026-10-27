@@ -12,14 +12,20 @@ export interface ChangelogEntry {
 }
 
 /** Committed, waiting for the next update. */
-export const UNRELEASED: string[] = [
-  "Search bar: every box now moves on its own. Cards, the map and each side panel (Item scan, Values, quest and item details) have their own move bar on top and a resize corner bottom right, and they stay where you put them (also after a restart). The bar's settings have \"Put boxes back next to the glass\". Behind the scenes the bar is one see-through window cut to the shape of its boxes, so everywhere else your clicks go straight to the game; it no longer has to watch the mouse to let clicks through.",
-  "Search bar stash scan: a \"Manual tuning\" button on the Item scan picture opens the snip full screen with its boxes and the stash grid. Move or resize a box (it snaps to the slots), draw a box for an item that was missed, delete a wrong one, and pick the right item from the best matches or by searching. If the grid lines do not sit on the slot borders, change the slot size there. Done updates Item scan and Values.",
-  "Scanner learning: every item you fix in Manual tuning is remembered (the same memory as the app's own scanner, so it shows under Your corrections and works in both), including that the old guess was wrong; boxes you only reshaped are remembered more weakly. \"All correct\" remembers every unsure find of a snip at once, so next time they count as sure. The slot size of a good scan, and the one you set in tuning, is kept for the next snips. Items found from your corrections show a \"learned\" or \"fixed\" tag.",
-  "Settings → Appearance: pick the app's font (Segoe UI, Bahnschrift, Arial, Verdana, Tahoma, Trebuchet MS, Calibri, Georgia or Consolas, all fonts Windows already has); the search bar over the game uses it too. Text size now goes from 70% to 160%.",
-]
+export const UNRELEASED: string[] = []
 
 export const RELEASES: ChangelogEntry[] = [
+  {
+    version: '2.16.0',
+    date: '2026-10-28',
+    title: 'Move and resize every search bar box, Manual tuning that teaches the scanner, your own font',
+    changes: [
+    "Search bar: every box now moves on its own. Cards, the map and each side panel (Item scan, Values, quest and item details) have their own move bar on top and a resize corner bottom right, and they stay where you put them (also after a restart). The bar's settings have \"Put boxes back next to the glass\". Behind the scenes the bar is one see-through window cut to the shape of its boxes, so everywhere else your clicks go straight to the game; it no longer has to watch the mouse to let clicks through.",
+    "Search bar stash scan: a \"Manual tuning\" button on the Item scan picture opens the snip full screen with its boxes and the stash grid. Move or resize a box (it snaps to the slots), draw a box for an item that was missed, delete a wrong one, and pick the right item from the best matches or by searching. If the grid lines do not sit on the slot borders, change the slot size there. Done updates Item scan and Values.",
+    "Scanner learning: every item you fix in Manual tuning is remembered (the same memory as the app's own scanner, so it shows under Your corrections and works in both), including that the old guess was wrong; boxes you only reshaped are remembered more weakly. \"All correct\" remembers every unsure find of a snip at once, so next time they count as sure. The slot size of a good scan, and the one you set in tuning, is kept for the next snips. Items found from your corrections show a \"learned\" or \"fixed\" tag.",
+    "Settings → Appearance: pick the app's font (Segoe UI, Bahnschrift, Arial, Verdana, Tahoma, Trebuchet MS, Calibri, Georgia or Consolas, all fonts Windows already has); the search bar over the game uses it too. Text size now goes from 70% to 160%.",
+    ],
+  },
   {
     version: '2.15.0',
     date: '2026-10-28',
