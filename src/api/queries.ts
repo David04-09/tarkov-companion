@@ -569,7 +569,8 @@ export async function fetchHideout(gameMode: GameMode, signal?: AbortSignal): Pr
           level: l.level,
           constructionTime: l.constructionTime ?? 0,
           traderRequirements: (l.traderRequirements ?? []).map((r) => ({ traderId: r.trader, level: r.value })),
-          stationLevelRequirements: (l.stationLevelRequirements ?? []).map((r) => ({ stationId: r.station, level: r.level })),
+          // The data repeats the station's own previous level here; that is never a separate requirement.
+          stationLevelRequirements: (l.stationLevelRequirements ?? []).filter((r) => r.station !== s.id).map((r) => ({ stationId: r.station, level: r.level })),
           itemRequirements: (l.itemRequirements ?? [])
             .filter((r) => r && r.item)
             .map((r) => ({ itemId: r.item, count: r.count ?? 1, foundInRaid: Boolean(r.attributes?.foundInRaid) })),

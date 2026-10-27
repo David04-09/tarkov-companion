@@ -17,6 +17,7 @@ import { useStoryStore } from '../store/story'
 import { useInventoryStore } from '../store/inventory'
 import { WipeBanner } from '../desktop/WipeBanner'
 import { ItemLookup } from './ItemLookup'
+import { HideoutTimerWatcher } from '../hideout/HideoutTimerWatcher'
 import { StoryTimerWatcher } from '../story/StoryTimerWatcher'
 import { AutoUntickCompleted } from '../maps/AutoUntick'
 import { WikiTickCarryOver } from '../quests/WikiTickCarryOver'
@@ -79,6 +80,7 @@ export function Layout() {
       </ErrorBoundary>
       <ErrorBoundary area="Story timers" quiet>
         <StoryTimerWatcher />
+        <HideoutTimerWatcher />
         <AutoUntickCompleted />
         <WikiTickCarryOver />
       </ErrorBoundary>

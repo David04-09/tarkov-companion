@@ -381,3 +381,430 @@ select option {
   font: 700 12px/1 system-ui, sans-serif;
   box-shadow: 0 1px 3px rgb(0 0 0 / 0.6);
 }
+
+/* ---- Hideout bunker (Hideout tab, src/hideout) ------------------------------
+   States set --st on a tile/chip; effects only run on built stations and stop with
+   the Live/Still switch (.tc-still) or Settings → Reduce motion. */
+.tc-st-max { --st: var(--color-accent); }
+.tc-st-ready { --st: var(--color-success); }
+.tc-st-done { --st: var(--color-success); }
+.tc-st-items { --st: var(--color-info); }
+.tc-st-building { --st: var(--color-info); }
+.tc-st-locked { --st: var(--color-ink-dim); }
+
+.tc-hud {
+  border: 1px solid var(--color-line);
+  border-radius: 0.75rem;
+  background: linear-gradient(180deg, var(--color-surface-2), color-mix(in srgb, var(--color-surface-2) 70%, var(--color-surface)));
+  padding: 0.75rem 1rem;
+}
+.tc-meter {
+  position: relative;
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-line) 85%, transparent);
+}
+.tc-meter > span {
+  position: relative;
+  display: block;
+  height: 100%;
+  overflow: hidden;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--color-accent-dim), var(--color-accent));
+  transition: width 0.6s ease;
+}
+.tc-meter-info > span { background: linear-gradient(90deg, color-mix(in srgb, var(--color-info) 55%, transparent), var(--color-info)); }
+.tc-meter > span::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(-45deg, rgb(255 255 255 / 0.14) 0 6px, transparent 6px 12px);
+  animation: tc-stripes 1.2s linear infinite;
+}
+.tc-counter,
+.tc-mini {
+  --st: var(--color-ink-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  border: 1px solid color-mix(in srgb, var(--st) 35%, var(--color-line));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--st) 8%, transparent);
+  padding: 0.2rem 0.6rem;
+  font-size: 0.75rem;
+  color: var(--color-ink-muted);
+  transition: border-color 0.15s, background-color 0.15s, color 0.15s;
+}
+.tc-counter b { color: var(--st); font-variant-numeric: tabular-nums; }
+.tc-counter:hover,
+.tc-mini:hover { border-color: var(--st); color: var(--color-ink); }
+.tc-counter.is-on { border-color: var(--st); background: color-mix(in srgb, var(--st) 20%, transparent); color: var(--color-ink); }
+.tc-mini { padding: 0.15rem 0.5rem; font-size: 0.6875rem; color: var(--st); }
+
+.tc-bunker {
+  --dark: 0;
+  --vignette: 0.28;
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border: 1px solid var(--color-line);
+  border-radius: 0.875rem;
+  background:
+    radial-gradient(ellipse 70% 45% at 50% 0%, color-mix(in srgb, var(--color-accent) 10%, transparent), transparent 70%),
+    linear-gradient(color-mix(in srgb, var(--color-line) 38%, transparent) 1px, transparent 1px) 0 0 / 28px 28px,
+    linear-gradient(90deg, color-mix(in srgb, var(--color-line) 38%, transparent) 1px, transparent 1px) 0 0 / 28px 28px,
+    var(--color-surface);
+}
+:root[data-theme="daylight"] .tc-bunker,
+:root[data-theme="arctic"] .tc-bunker { --vignette: 0.08; }
+/* Darker with less Illumination. */
+.tc-bunker::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 85% 75% at 50% 45%, transparent 45%, rgb(0 0 0 / var(--vignette)) 100%),
+    rgb(0 0 0 / var(--dark));
+  transition: background 0.6s ease;
+}
+.tc-bus {
+  position: relative;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--color-line) 90%, transparent);
+}
+.tc-bus.is-on { background: color-mix(in srgb, #f2b84b 28%, var(--color-line)); }
+.tc-bus.is-on::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 25%;
+  background: linear-gradient(90deg, transparent, #f2b84b, transparent);
+  animation: tc-slide 2.8s linear infinite;
+}
+
+.tc-room {
+  position: relative;
+  border: 1px solid var(--color-line);
+  border-radius: 0.75rem;
+  background: color-mix(in srgb, var(--color-surface-2) 84%, transparent);
+  /* The inset shadow darkens the floor (not the stations) when Illumination is low. */
+  box-shadow: inset 0 0 0 999px rgb(0 0 0 / calc(var(--dark) * 0.7)), inset 0 1px 0 color-mix(in srgb, var(--color-ink) 5%, transparent), 0 10px 28px -14px rgb(0 0 0 / 0.6);
+}
+.tc-room-head {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-bottom: 1px solid var(--color-line);
+  border-radius: 0.75rem 0.75rem 0 0;
+  background: var(--color-surface-2);
+  padding: 0.6rem 0.75rem 0.5rem;
+}
+.tc-room-head::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  border-radius: 0.75rem 0.75rem 0 0;
+  background: repeating-linear-gradient(-45deg, color-mix(in srgb, var(--color-accent) 75%, transparent) 0 6px, transparent 6px 12px);
+  opacity: 0.5;
+}
+.tc-lamp {
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--color-ink-dim);
+  opacity: 0.6;
+}
+.tc-lamp.is-on { background: #ffd27a; opacity: 1; box-shadow: 0 0 8px 2px rgb(255 205 120 / 0.55); }
+.tc-lamp.is-on.is-dim { animation: tc-flicker 3.2s linear infinite; }
+
+.tc-sealed {
+  display: flex;
+  flex: 1 1 18rem;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  justify-content: center;
+  gap: 0.625rem;
+  border: 1px dashed var(--color-line);
+  border-radius: 0.6rem;
+  padding: 0.5rem 0.625rem 0.625rem;
+  background: repeating-linear-gradient(-45deg, color-mix(in srgb, var(--color-surface) 75%, transparent) 0 10px, color-mix(in srgb, var(--color-surface-3) 65%, transparent) 10px 20px);
+}
+.tc-sealed:not(.is-open) .tc-station:not(:hover):not(.is-selected) { filter: saturate(0.35) brightness(0.8); }
+.tc-sealed.is-open { border-style: solid; background: color-mix(in srgb, var(--color-surface) 45%, transparent); }
+
+.tc-station {
+  --st: var(--color-ink-dim);
+  --pct: 0;
+  --lvl: 0;
+  position: relative;
+  z-index: 2;
+  display: flex;
+  width: 6.5rem;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  border: 1px solid color-mix(in srgb, var(--st) 30%, var(--color-line));
+  border-radius: 0.7rem;
+  background: linear-gradient(180deg, var(--color-surface-3), var(--color-surface-2));
+  padding: 0.7rem 0.35rem 0.55rem;
+  text-align: center;
+  cursor: pointer;
+  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, opacity 0.2s ease, filter 0.2s ease;
+}
+.tc-station:hover,
+.tc-station:focus-visible {
+  z-index: 3;
+  transform: translateY(-3px);
+  border-color: var(--st);
+  outline: none;
+  box-shadow: 0 12px 24px -12px color-mix(in srgb, var(--st) 75%, transparent);
+}
+.tc-station.is-selected {
+  z-index: 3;
+  border-color: var(--st);
+  box-shadow: 0 0 0 1px var(--st), 0 12px 28px -12px color-mix(in srgb, var(--st) 85%, transparent);
+}
+.tc-station.is-dim { opacity: 0.32; }
+/* Room for two lines so every tile in a row lines up. */
+.tc-station-name { display: flex; min-height: 2.3em; align-items: center; font-size: 0.75rem; font-weight: 600; line-height: 1.15; color: var(--color-ink); }
+
+.tc-badge {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  width: 3.75rem;
+  height: 3.75rem;
+  flex-shrink: 0;
+  place-items: center;
+  border-radius: 50%;
+  background: conic-gradient(var(--color-accent) calc(var(--pct) * 1%), color-mix(in srgb, var(--color-line) 95%, transparent) 0);
+}
+.tc-badge::before {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 30%, var(--color-surface-3), var(--color-surface));
+}
+.tc-badge img { position: relative; z-index: 1; width: 2.6rem; height: 2.6rem; object-fit: contain; transition: filter 0.2s, opacity 0.2s; }
+.tc-badge-lg { width: 4.25rem; height: 4.25rem; }
+.tc-badge-lg img { width: 3rem; height: 3rem; }
+.tc-station.is-empty .tc-badge,
+.tc-badge.is-empty { background: repeating-conic-gradient(var(--color-line) 0 9deg, transparent 9deg 18deg); }
+.tc-station.is-empty .tc-badge img,
+.tc-badge.is-empty img { filter: grayscale(1) brightness(0.75); opacity: 0.5; }
+.tc-station.is-empty:hover .tc-badge img { opacity: 0.8; }
+/* Ready / finished: a soft ping. Building: a turning dashed ring. */
+.tc-st-ready .tc-badge::after,
+.tc-st-done .tc-badge::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border: 2px solid var(--st);
+  border-radius: 50%;
+  opacity: 0;
+  animation: tc-ping 2.4s ease-out infinite;
+}
+.tc-st-building .tc-badge::after {
+  content: "";
+  position: absolute;
+  inset: -5px;
+  border: 2px dashed var(--st);
+  border-radius: 50%;
+  animation: tc-spin 8s linear infinite;
+}
+
+.tc-pips { display: flex; gap: 3px; }
+.tc-pips i { display: block; width: 10px; height: 4px; border-radius: 2px; background: var(--color-line); }
+.tc-pips i.on { background: var(--color-accent); }
+.tc-pips i.next { background: color-mix(in srgb, var(--st) 55%, var(--color-line)); }
+.tc-chip {
+  max-width: 100%;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--st) 40%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--st) 14%, transparent);
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--st);
+}
+.tc-st-locked .tc-chip { color: var(--color-ink-muted); }
+
+/* Effects around a built station's badge. */
+.tc-fx { position: absolute; z-index: 2; pointer-events: none; }
+.tc-fx-corner {
+  top: -6px;
+  right: -8px;
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  border: 1px solid var(--color-line);
+  border-radius: 50%;
+  background: var(--color-surface);
+  color: var(--fx);
+}
+.tc-fx-corner svg { width: 12px; height: 12px; }
+.tc-fx-aura {
+  inset: -12px;
+  z-index: -1;
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--fx) 55%, transparent) 0%, transparent 68%);
+  opacity: calc(0.35 + var(--lvl) * 0.5);
+}
+.tc-fx-drip {
+  bottom: -9px;
+  left: 50%;
+  width: 5px;
+  height: 7px;
+  margin-left: -2.5px;
+  border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+  background: var(--fx);
+  animation: tc-drip 2s ease-in infinite;
+}
+.tc-fx-late { margin-left: 6px; animation-delay: 1s; }
+.tc-fx-bubbles { inset: 3px; overflow: hidden; border-radius: 50%; }
+.tc-fx-bubbles i {
+  position: absolute;
+  bottom: 4px;
+  width: 5px;
+  height: 5px;
+  border: 1px solid var(--fx);
+  border-radius: 50%;
+  opacity: 0;
+  animation: tc-rise 2.6s ease-in infinite;
+}
+.tc-fx-bubbles i:nth-child(1) { left: 28%; }
+.tc-fx-bubbles i:nth-child(2) { left: 52%; animation-delay: 0.85s; }
+.tc-fx-bubbles i:nth-child(3) { left: 70%; animation-delay: 1.7s; }
+.tc-fx-steam i { width: 7px; height: 7px; border: 0; background: color-mix(in srgb, var(--fx) 45%, transparent); filter: blur(1px); }
+.tc-fx-leds {
+  bottom: -7px;
+  left: 50%;
+  display: flex;
+  gap: 3px;
+  transform: translateX(-50%);
+  border: 1px solid var(--color-line);
+  border-radius: 4px;
+  background: var(--color-surface);
+  padding: 2px 4px;
+}
+.tc-fx-leds i { display: block; width: 4px; height: 4px; border-radius: 50%; background: var(--color-line); }
+.tc-fx-leds i.on { background: #6ee07a; box-shadow: 0 0 4px #6ee07a; animation: tc-led 1.1s steps(2, jump-none) infinite; }
+.tc-fx-leds i.on:nth-child(2) { animation-delay: 0.37s; }
+.tc-fx-leds i.on:nth-child(3) { animation-delay: 0.74s; }
+.tc-fx-scan { inset: 3px; overflow: hidden; border-radius: 50%; }
+.tc-fx-scan::after {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 30%;
+  background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--fx) 55%, transparent), transparent);
+  animation: tc-scan 2.8s linear infinite;
+}
+.tc-fx-rec {
+  top: 3px;
+  right: 3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ff4d3d;
+  box-shadow: 0 0 6px #ff4d3d;
+  animation: tc-led 1.6s steps(2, jump-none) infinite;
+}
+.tc-fx-shine { inset: 3px; overflow: hidden; border-radius: 50%; }
+.tc-fx-shine::after {
+  content: "";
+  position: absolute;
+  top: -20%;
+  bottom: -20%;
+  width: 35%;
+  background: linear-gradient(100deg, transparent, rgb(255 255 255 / 0.35), transparent);
+  animation: tc-shine 4s ease-in-out infinite;
+}
+.tc-anim-spin { animation: tc-spin var(--spin, 2.4s) linear infinite; }
+.tc-anim-spin.tc-slow { animation-duration: 14s; }
+.tc-anim-flicker { animation: tc-flicker 2.2s linear infinite; }
+.tc-anim-breathe { animation: tc-breathe 3s ease-in-out infinite; }
+.tc-anim-breathe.tc-slow { animation-duration: 5s; }
+.tc-anim-beat { animation: tc-beat 1.4s ease-in-out infinite; }
+.tc-anim-wiggle { animation: tc-wiggle 3.5s ease-in-out infinite; }
+.tc-anim-bob { animation: tc-bob 1.6s ease-in-out infinite; }
+.tc-anim-pulse { animation: tc-pulse 2s ease-in-out infinite; }
+.tc-still *,
+.tc-still *::before,
+.tc-still *::after,
+:root[data-reduce-motion="true"] .tc-bunker *,
+:root[data-reduce-motion="true"] .tc-bunker *::after { animation: none !important; }
+
+/* Lines from what a station needs and to what it opens (BunkerView LinkLayer). */
+.tc-links { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.tc-links path { fill: none; stroke: currentColor; stroke-linecap: round; }
+.tc-link-base { stroke-width: 7; opacity: 0.2; }
+.tc-link-flow { stroke-width: 2.5; stroke-dasharray: 3 7; opacity: 0.95; animation: tc-flow 0.8s linear infinite; }
+.tc-link-flow.is-out { stroke-width: 1.75; opacity: 0.7; }
+
+.tc-panel {
+  border: 1px solid var(--color-line);
+  border-radius: 0.75rem;
+  background: var(--color-surface-2);
+  padding: 1rem;
+}
+.tc-panel-h { font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-ink-muted); }
+.tc-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: 0.375rem;
+  background: var(--color-surface);
+  padding: 0.3rem 0.5rem;
+  font-size: 0.75rem;
+}
+button.tc-row:hover { background: var(--color-surface-3); }
+.tc-row.is-done { box-shadow: inset 2px 0 0 var(--color-success); }
+.tc-timeline { position: relative; display: grid; gap: 0.5rem; padding-left: 1rem; }
+.tc-timeline::before { content: ""; position: absolute; top: 4px; bottom: 4px; left: 3px; width: 2px; background: var(--color-line); }
+.tc-timeline li { position: relative; }
+.tc-timeline li::before {
+  content: "";
+  position: absolute;
+  top: 4px;
+  left: -1rem;
+  width: 8px;
+  height: 8px;
+  border: 2px solid var(--color-line);
+  border-radius: 50%;
+  background: var(--color-surface-2);
+}
+.tc-timeline li.is-done::before { border-color: var(--color-accent); background: var(--color-accent); }
+.tc-timeline li.is-next::before { border-color: var(--color-info); }
+
+@keyframes tc-spin { to { transform: rotate(360deg); } }
+@keyframes tc-stripes { to { background-position: 17px 0; } }
+@keyframes tc-slide { from { transform: translateX(-100%); } to { transform: translateX(400%); } }
+@keyframes tc-ping { 0% { transform: scale(0.92); opacity: 0.75; } 100% { transform: scale(1.28); opacity: 0; } }
+@keyframes tc-flicker { 0%, 100% { opacity: 1; } 38% { opacity: 0.8; } 40% { opacity: 1; } 68% { opacity: 0.88; } 70% { opacity: 0.55; } 72% { opacity: 1; } }
+@keyframes tc-breathe { 0%, 100% { transform: scale(0.94); opacity: calc(0.3 + var(--lvl) * 0.4); } 50% { transform: scale(1.06); opacity: calc(0.45 + var(--lvl) * 0.55); } }
+@keyframes tc-beat { 0%, 60%, 100% { transform: scale(1); } 12% { transform: scale(1.28); } 24% { transform: scale(1); } 36% { transform: scale(1.18); } }
+@keyframes tc-wiggle { 0%, 78%, 100% { transform: rotate(0); } 84% { transform: rotate(-20deg); } 90% { transform: rotate(16deg); } 95% { transform: rotate(-8deg); } }
+@keyframes tc-bob { 0%, 100% { transform: translateY(1px); } 50% { transform: translateY(-2px); } }
+@keyframes tc-pulse { 0%, 100% { transform: scale(0.88); opacity: 0.6; } 50% { transform: scale(1.1); opacity: 1; } }
+@keyframes tc-drip { 0% { transform: translateY(-16px) scale(0.5); opacity: 0; } 25% { opacity: 1; } 80% { transform: translateY(4px) scale(1); opacity: 0.9; } 100% { transform: translateY(8px) scale(1.3, 0.4); opacity: 0; } }
+@keyframes tc-rise { 0% { transform: translateY(0) scale(0.7); opacity: 0; } 20% { opacity: 0.9; } 100% { transform: translateY(-46px) scale(1.15); opacity: 0; } }
+@keyframes tc-led { 50% { opacity: 0.2; } }
+@keyframes tc-scan { from { transform: translateY(-100%); } to { transform: translateY(340%); } }
+@keyframes tc-shine { 0%, 55% { transform: translateX(-160%); } 100% { transform: translateX(360%); } }
+@keyframes tc-flow { to { stroke-dashoffset: -10; } }

@@ -14,6 +14,9 @@ export interface ChangelogEntry {
 /** Committed, waiting for the next update. */
 export const UNRELEASED: string[] = [
   "Search bar stash scan: the snip picture in the Item scan panel stays pinned at the top while you scroll the list of items, so you can hover a row and still see its boxes; tall snips are shown smaller so the list keeps room.",
+  "Hideout tab: a new Bunker view (now the default) draws your hideout as rooms of stations that come alive once built: the generator hums and powers a cable along the top, fans spin, the heater flickers, water drips, the bitcoin farm blinks, the still bubbles, the security camera records, and the whole bunker gets brighter as you upgrade Illumination. Each station shows its level ring and whether it is ready to build, waiting for items or locked (and by what). Hover one to see lines to the stations it needs (green built, red missing) and the ones it opens; the stations behind the Defective Wall stay sealed until the wall is rebuilt.",
+  "Hideout tab: click a station for its details: set its level with + and −, see what the next level needs with your Item Collection counts (change them right there), your trader loyalty, build time, what it gives, what it opens up and every level at a glance. Start a build timer (or type the time left the game shows) and you get a notification when it is done. The top bar shows levels built, how many stations are ready, waiting for items or locked (click one to highlight them) and what you can build now; a Live/Still switch turns the animations off.",
+  "Hideout tab: station bonuses are shown as the game means them (\"Flea Market fee −30%\" instead of \"−0.3%\"), and a station's own previous level is no longer listed as one of its requirements.",
 ]
 
 export const RELEASES: ChangelogEntry[] = [
