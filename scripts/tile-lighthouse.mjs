@@ -61,3 +61,8 @@ const manifest = {
 }
 fs.writeFileSync(path.join(OUT, 'manifest.json'), JSON.stringify(manifest, null, 2))
 console.log(`wrote ${count} tiles to ${OUT}`, manifest.zoom0Size)
+
+// The updated Lighthouse drawing (scripts/lighthouse-map, CC BY-NC-SA like the render) travels in
+// the same content pack, so it stays out of the installer too.
+fs.copyFileSync('scripts/lighthouse-map/lighthouse-2026.svg', path.join(OUT, 'drawing-2026.svg'))
+console.log(`copied the updated drawing to ${OUT}/drawing-2026.svg`)

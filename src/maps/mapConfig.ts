@@ -49,6 +49,8 @@ export interface LayerCredit {
   link?: string
   /** e.g. "MIT", "CC BY-NC-SA 4.0" */
   license?: string
+  /** What the picture is in the credit line ("render" when absent). */
+  what?: 'render' | 'drawing'
   /** Individual map author, when known. */
   author?: string
   authorLink?: string
@@ -208,10 +210,37 @@ interface ExtraLayers {
   overrides?: Record<string, Partial<Pick<BaseLayerConfig, 'label' | 'note' | 'outdated'>>>
 }
 
+/** Our updated Lighthouse drawing keeps tarkov.dev's frame (viewBox, bounds, transform). */
+const TD_LIGHTHOUSE = file.maps.find((m) => m.normalizedName === 'lighthouse')
+export const LIGHTHOUSE_2026 = 'drawing-2026'
+
 export const EXTRA_BASE_LAYERS: Record<string, ExtraLayers> = {
   lighthouse: {
-    defaultBaseLayerId: 're3mr',
+    defaultBaseLayerId: LIGHTHOUSE_2026,
     layers: [
+      {
+        id: LIGHTHOUSE_2026,
+        label: 'Updated drawing (2026)',
+        kind: 'svg',
+        // In the Lighthouse content pack with the render (same licence); see scripts/lighthouse-map.
+        svgPath: typeof window !== 'undefined' && window.desktop ? 'tcres://app/tiles/lighthouse-re3mr/drawing-2026.svg' : `${import.meta.env.BASE_URL}tiles/lighthouse-re3mr/drawing-2026.svg`,
+        svgLayer: 'Ground_Level',
+        pack: 'lighthouse',
+        minZoom: TD_LIGHTHOUSE?.minZoom ?? 1,
+        maxZoom: TD_LIGHTHOUSE?.maxZoom ?? 6,
+        affine: affineFromTarkovDev(TD_LIGHTHOUSE?.transform ?? [0.2, 0, 0.2, 0], TD_LIGHTHOUSE?.coordinateRotation ?? 180),
+        bounds: TD_LIGHTHOUSE?.bounds ?? [[515, -998], [-545, 725]],
+        floors: [],
+        credit: {
+          what: 'drawing',
+          name: 'tarkov.dev SVG maps + RE3MR',
+          link: 'https://github.com/the-hideout/tarkov-dev-svg-maps',
+          license: 'CC BY-NC-SA 4.0',
+          author: 'Shebuka (ground), re3mr (2026 layout)',
+          authorLink: 'https://reemr.se/maps/Lighthouse/',
+        },
+        note: "Today's layout in the flat drawing style: buildings, roads, the rebuilt lighthouse island and the south road landslide traced from RE3MR's 1.7 render and lined up with the game's own positions; minefields from the game data; ground from the tarkov.dev drawing.",
+      },
       {
         id: 're3mr',
         label: 'RE3MR render',

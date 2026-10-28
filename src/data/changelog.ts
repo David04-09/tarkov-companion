@@ -12,7 +12,9 @@ export interface ChangelogEntry {
 }
 
 /** Committed, waiting for the next update. */
-export const UNRELEASED: string[] = []
+export const UNRELEASED: string[] = [
+  "Maps: a new Lighthouse picture, \"Updated drawing (2026)\", now the default for Lighthouse. It has the same flat look as tarkov.dev's drawing, but shows today's layout: the rebuilt lighthouse island and the causeway, the landslide that cut off the south-east coastal road, the water treatment plant, logistics terminal, village and hill houses with their buildings, roads, yards and concrete where they are now, and the minefields straight from the game's data. It is traced from RE3MR's up-to-date render and lined up with the game's own positions (quest zones, door locks and containers sit on the right buildings). If you had picked the old tarkov.dev drawing, you are switched to the new one; the RE3MR render and the old drawing are still in the picture menu. On the desktop app it comes with the Lighthouse map download.",
+]
 
 export const RELEASES: ChangelogEntry[] = [
   {
