@@ -412,7 +412,6 @@ function NotificationsSection() {
   const [enabled, setEnabled] = usePref('notifications')
   const [lead, setLead] = usePref('traderRestockLeadMinutes')
   const [story, setStory] = usePref('storyTimerAlerts')
-  const [raidPrompt, setRaidPrompt] = usePref('raidResultPrompt')
   const [toast, setToast] = usePref('liveTickToast')
   const [volume, setVolume] = usePref('soundVolume')
   const sounds = useTimersStore((s) => s.soundsEnabled)
@@ -421,7 +420,7 @@ function NotificationsSection() {
   const permText =
     permission === 'granted' ? 'Allowed' : permission === 'denied' ? 'Blocked (allow it in your browser or Windows settings)' : permission === 'unsupported' ? 'Not supported here' : 'Not asked yet'
   return (
-    <Section id="notifications" title="Notifications & sounds" icon={Bell} keywords="notification alert popup trader restock story timer hideout build raid result toast sound beep volume">
+    <Section id="notifications" title="Notifications & sounds" icon={Bell} keywords="notification alert popup trader restock story timer hideout build toast sound beep volume">
       <Row label="System notifications" hint={`Pop-ups from Windows or the browser. Permission: ${permText}.`}>
         <div className="flex items-center gap-2">
           <button
@@ -457,9 +456,6 @@ function NotificationsSection() {
       </Row>
       {isDesktop() && (
         <>
-          <Row label="Ask for the raid result" hint="After each raid, a small card asks how it went (for My stats → Raid log).">
-            <Switch checked={raidPrompt} onChange={setRaidPrompt} label="Ask for the raid result" />
-          </Row>
           <Row label="Show quests ticked from the game log" hint="A short message with Undo whenever a quest is ticked automatically.">
             <Switch checked={toast} onChange={setToast} label="Show auto-tick messages" />
           </Row>

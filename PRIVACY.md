@@ -4,7 +4,7 @@ Tarkov Companion has no accounts, no tracking, no analytics and no advertising. 
 
 ## What stays on your computer
 
-Everything you enter or the app works out: quests, level and faction, item collection, keys, hideout, drawings, story progress, raid log, settings, backups and what the stash scanner learned. It is stored in the app's own folder (`%APPDATA%\Tarkov Companion` for the desktop app) or in your browser's storage (web version). You can export, back up and delete it from Settings.
+Everything you enter or the app works out: quests, level and faction, item collection, keys, hideout, drawings, story progress, settings, backups and what the stash scanner learned. It is stored in the app's own folder (`%APPDATA%\Tarkov Companion` for the desktop app) or in your browser's storage (web version). You can export, back up and delete it from Settings.
 
 The desktop app reads Escape from Tarkov's own log files and the names of your in-game screenshots on your computer. What it reads from them (quest hand-ins, raids, your in-game position) is only used inside the app.
 

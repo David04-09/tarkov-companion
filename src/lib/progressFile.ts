@@ -7,19 +7,14 @@ import type { GameMode } from '../api/client'
 import { parseDrawings, useDrawingsStore } from '../store/drawings'
 import { useInventoryStore, type ModeInventory } from '../store/inventory'
 import { useProgressStore } from '../store/progress'
-import { useRaidLogStore, type ManualRaid, type RaidEntry } from '../store/raidLog'
 import { parseStory, useStoryStore } from '../store/story'
 
 export function buildProgressFile() {
-  const raid = useRaidLogStore.getState()
   return {
     ...useProgressStore.getState().exportProgress(),
     inventory: useInventoryStore.getState().byMode,
     drawings: useDrawingsStore.getState().byKey,
     story: useStoryStore.getState().byMode,
-    raidLog: raid.byMode,
-    raidLogManual: raid.manual,
-    raidLogHidden: raid.hidden,
   }
 }
 
@@ -49,17 +44,6 @@ export function importProgressFile(parsed: unknown): string[] {
   if (story) {
     useStoryStore.getState().importAll(story)
     restored.push('story chapters')
-  }
-  if (isObj(p.raidLog)) {
-    const r = p.raidLog as Partial<Record<GameMode, Record<string, RaidEntry>>>
-    const m = (isObj(p.raidLogManual) ? p.raidLogManual : {}) as Partial<Record<GameMode, ManualRaid[]>>
-    const h = (isObj(p.raidLogHidden) ? p.raidLogHidden : {}) as Partial<Record<GameMode, string[]>>
-    useRaidLogStore.getState().importAll(
-      { regular: r.regular ?? {}, pve: r.pve ?? {} },
-      { regular: Array.isArray(m.regular) ? m.regular : [], pve: Array.isArray(m.pve) ? m.pve : [] },
-      { regular: Array.isArray(h.regular) ? h.regular : [], pve: Array.isArray(h.pve) ? h.pve : [] },
-    )
-    restored.push('raid log')
   }
   return restored
 }
