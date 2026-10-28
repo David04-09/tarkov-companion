@@ -12,13 +12,19 @@ export interface ChangelogEntry {
 }
 
 /** Committed, waiting for the next update. */
-export const UNRELEASED: string[] = [
-  "Search bar: boxes now open on the side of the bar that has room. With the bar on the right of the screen, cards, the map and side panels open to its left instead of off the screen; panels that no longer fit beside it go to the other side, and a box that would still stick out is moved back onto the screen. A box you moved low on the screen gets shorter so its bottom stays visible, and a drag whose mouse release goes missing (say you let go over the game) now ends instead of following the mouse.",
-  "Stash snip Values panel: \"Keep back, don't sell\" checkboxes. Quest hand-ins, Collector (Kappa) and hideout upgrades keep only as many as are still needed (untick one to sell those too); keys and keycards, ammo, meds, food and drink, guns, weapon parts, armour and gear, cases, and items you starred keep every one. The choices are remembered and the Item scan colours follow them.",
-  "Stash snip pictures are bigger: drag the bottom edge of the Item scan picture to make it taller (the panel widens with it, remembered), and Manual tuning can zoom in up to 6× with the zoom buttons, Ctrl + mouse wheel or the + and - keys; the picture scrolls when it is bigger than the screen.",
-]
+export const UNRELEASED: string[] = []
 
 export const RELEASES: ChangelogEntry[] = [
+  {
+    version: '2.17.0',
+    date: '2026-10-28',
+    title: 'Search bar boxes open where there is room, keep-back checkboxes, bigger snip pictures',
+    changes: [
+    "Search bar: boxes now open on the side of the bar that has room. With the bar on the right of the screen, cards, the map and side panels open to its left instead of off the screen; panels that no longer fit beside it go to the other side, and a box that would still stick out is moved back onto the screen. A box you moved low on the screen gets shorter so its bottom stays visible, and a drag whose mouse release goes missing (say you let go over the game) now ends instead of following the mouse.",
+    "Stash snip Values panel: \"Keep back, don't sell\" checkboxes. Quest hand-ins, Collector (Kappa) and hideout upgrades keep only as many as are still needed (untick one to sell those too); keys and keycards, ammo, meds, food and drink, guns, weapon parts, armour and gear, cases, and items you starred keep every one. The choices are remembered and the Item scan colours follow them.",
+    "Stash snip pictures are bigger: drag the bottom edge of the Item scan picture to make it taller (the panel widens with it, remembered), and Manual tuning can zoom in up to 6× with the zoom buttons, Ctrl + mouse wheel or the + and - keys; the picture scrolls when it is bigger than the screen.",
+    ],
+  },
   {
     version: '2.16.0',
     date: '2026-10-28',
