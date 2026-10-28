@@ -53,6 +53,20 @@ interface ImageryProps {
 }
 
 /**
+ * The pane for the SVG map drawing: above the tiles (200), below everything drawn on the map (400+).
+ * In the overlay pane itself the drawing covered every canvas-drawn dot (containers, spawns, loot
+ * spots), because Leaflet's CSS puts an <svg> (z-index 200) above the canvas (100) in a pane.
+ */
+function basePane(map: L.Map): string {
+  if (!map.getPane('tcBase')) {
+    const pane = map.createPane('tcBase')
+    pane.style.zIndex = '250'
+    pane.style.pointerEvents = 'none'
+  }
+  return 'tcBase'
+}
+
+/**
  * Imperative Leaflet layer management (tiles, SVG, floors). Lives inside
  * MapContainer so it can use the map instance. The MapContainer is keyed on the
  * base layer, so changing imagery remounts everything (the CRS can't change).
@@ -135,7 +149,7 @@ function Imagery({ layer, floor, onState }: ImageryProps) {
         .then((svg) => {
           svgElRef.current = svg
           svg.classList.toggle('tc-hide-base', useTiles)
-          const overlay = L.svgOverlay(svg, svgBounds, { className: 'tc-svg-overlay', interactive: false })
+          const overlay = L.svgOverlay(svg, svgBounds, { className: 'tc-svg-overlay', interactive: false, pane: basePane(map) })
           svgOverlayRef.current = overlay
           overlay.addTo(map)
           setSvgReady(true)

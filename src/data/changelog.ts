@@ -12,7 +12,9 @@ export interface ChangelogEntry {
 }
 
 /** Committed, waiting for the next update. */
-export const UNRELEASED: string[] = []
+export const UNRELEASED: string[] = [
+  "Maps (Maps tab and the search bar): loot container dots show again on maps drawn with the tarkov.dev drawing, such as Lighthouse. When zoomed out you saw groups like \"Jacket ×3, Toolbox ×2\", but after zooming in the single dots were hidden underneath the map drawing. The same fix brings back other small dots drawn there (PMC and Scav spawns, loot spots, and quest markers on busy maps).",
+]
 
 export const RELEASES: ChangelogEntry[] = [
   {
