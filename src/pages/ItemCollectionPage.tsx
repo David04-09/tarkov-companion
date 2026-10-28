@@ -4,7 +4,7 @@ import { imageFromClipboard, useScanStore } from '../scan/scanStore'
 import { ErrorPanel, LoadingPanel } from '../components/DataState'
 import { useNeeds } from '../hooks/useNeeds'
 import { formatNumber } from '../lib/format'
-import { remainingFor, type ItemNeed } from '../lib/needs'
+import { countedNeed, type ItemNeed, type NeedCount } from '../lib/needs'
 import { useInventoryStore } from '../store/inventory'
 import { useLinkParam } from '../lib/linkParam'
 import { useProgressStore } from '../store/progress'
@@ -13,6 +13,19 @@ const selectClass =
   'rounded border border-line bg-surface-2 px-2 py-1.5 text-sm text-ink focus:border-accent focus:outline-none'
 
 type SortKey = 'name' | 'needed' | 'remaining'
+
+/** The "Count" choice is remembered on this PC. */
+const COUNT_KEY = 'tc-items-count'
+function loadCount(): NeedCount {
+  try {
+    const v = localStorage.getItem(COUNT_KEY)
+    return v === 'fir' || v === 'any' ? v : 'all'
+  } catch {
+    return 'all'
+  }
+}
+
+const COUNT_WORDS: Record<NeedCount, string> = { all: '', fir: 'found-in-raid ', any: 'non-FIR ' }
 
 /** Opens the stash scanner; Ctrl+V with a screenshot on this page opens it with the image. */
 function ScanButton() {
@@ -41,44 +54,59 @@ export function ItemCollectionPage() {
 
   const [search, setSearch] = useState('')
   useLinkParam('q', setSearch)
-  const [firOnly, setFirOnly] = useState(false)
+  const [count, setCountState] = useState<NeedCount>(loadCount)
+  const setCount = (v: NeedCount) => {
+    setCountState(v)
+    try {
+      localStorage.setItem(COUNT_KEY, v)
+    } catch {
+      /* private window: only this visit */
+    }
+  }
   const [trader, setTrader] = useState('all')
   const [station, setStation] = useState('all')
   const [hideDone, setHideDone] = useState(true)
   const [sort, setSort] = useState<SortKey>('remaining')
   const [expanded, setExpanded] = useState<string | null>(null)
 
+  /** Every need as the Count choice sees it; needs with nothing left to count drop out. */
+  const counted = useMemo(() => {
+    const list: { need: ItemNeed; total: number; sources: ItemNeed['sources']; remaining: number }[] = []
+    for (const need of needs.values()) {
+      const c = countedNeed(need, count)
+      if (c.total > 0) list.push({ need, ...c, remaining: Math.max(0, c.total - (inventory.collected[need.itemId] ?? 0)) })
+    }
+    return list
+  }, [needs, count, inventory.collected])
+
   const rows = useMemo(() => {
     const needle = search.trim().toLowerCase()
-    const list = [...needs.values()].filter((n) => {
-      const item = items.data?.items[n.itemId]
-      if (firOnly && n.fir === 0) return false
-      if (trader !== 'all' && !n.sources.some((s) => s.kind === 'quest' && s.traderId === trader)) return false
-      if (station !== 'all' && !n.sources.some((s) => (s.kind === 'hideout' || s.kind === 'craft') && s.stationId === station)) return false
-      if (hideDone && remainingFor(n, inventory.collected[n.itemId] ?? 0) === 0) return false
-      if (needle && !(item?.name ?? n.itemId).toLowerCase().includes(needle)) return false
+    const list = counted.filter(({ need, sources, remaining }) => {
+      const item = items.data?.items[need.itemId]
+      if (trader !== 'all' && !sources.some((s) => s.kind === 'quest' && s.traderId === trader)) return false
+      if (station !== 'all' && !sources.some((s) => (s.kind === 'hideout' || s.kind === 'craft') && s.stationId === station)) return false
+      if (hideDone && remaining === 0) return false
+      if (needle && !(item?.name ?? need.itemId).toLowerCase().includes(needle)) return false
       return true
     })
     const name = (n: ItemNeed) => items.data?.items[n.itemId]?.name ?? n.itemId
     list.sort((a, b) => {
-      if (sort === 'name') return name(a).localeCompare(name(b))
-      if (sort === 'needed') return b.total - a.total || name(a).localeCompare(name(b))
-      const ra = remainingFor(a, inventory.collected[a.itemId] ?? 0)
-      const rb = remainingFor(b, inventory.collected[b.itemId] ?? 0)
-      return rb - ra || name(a).localeCompare(name(b))
+      if (sort === 'name') return name(a.need).localeCompare(name(b.need))
+      if (sort === 'needed') return b.total - a.total || name(a.need).localeCompare(name(b.need))
+      return b.remaining - a.remaining || name(a.need).localeCompare(name(b.need))
     })
     return list
-  }, [needs, items.data, firOnly, trader, station, hideDone, search, sort, inventory.collected])
+  }, [counted, items.data, trader, station, hideDone, search, sort])
 
   const progress = useMemo(() => {
     let needed = 0
     let have = 0
-    for (const n of needs.values()) {
-      needed += n.total
-      have += Math.min(n.total, inventory.collected[n.itemId] ?? 0)
+    for (const c of counted) {
+      needed += c.total
+      have += c.total - c.remaining
     }
     return { needed, have, pct: needed ? Math.round((100 * have) / needed) : 0 }
-  }, [needs, inventory.collected])
+  }, [counted])
 
   const tradersUsed = useMemo(() => {
     const ids = new Set<string>()
@@ -103,7 +131,7 @@ export function ItemCollectionPage() {
         <div className="flex flex-col items-end gap-1.5">
           <ScanButton />
           <div className="text-right text-xs text-ink-muted">
-            {formatNumber(progress.have)} / {formatNumber(progress.needed)} items collected ({progress.pct}%)
+            {formatNumber(progress.have)} / {formatNumber(progress.needed)} {COUNT_WORDS[count]}items collected ({progress.pct}%)
           </div>
         </div>
       </div>
@@ -133,10 +161,23 @@ export function ItemCollectionPage() {
           <option value="needed">Most needed first</option>
           <option value="name">Name</option>
         </select>
-        <label className="flex items-center gap-1.5 text-sm"><input type="checkbox" checked={firOnly} onChange={(e) => setFirOnly(e.target.checked)} /> FIR only</label>
+        <select value={count} onChange={(e) => setCount(e.target.value as NeedCount)} aria-label="Which needs to count" title="Which needs Needed, Remaining and the progress bar count" className={`${selectClass} ${count !== 'all' ? '!border-accent' : ''}`}>
+          <option value="all">Count all needs</option>
+          <option value="fir">Count found in raid only</option>
+          <option value="any">Count not found in raid only</option>
+        </select>
         <label className="flex items-center gap-1.5 text-sm"><input type="checkbox" checked={hideDone} onChange={(e) => setHideDone(e.target.checked)} /> Hide completed</label>
         <span className="ml-auto text-xs text-ink-dim">{rows.length} items</span>
       </div>
+
+      {count !== 'all' && (
+        <p className="mt-2 text-xs text-ink-muted">
+          {count === 'fir'
+            ? 'Counting only what quests and the hideout want found in raid. Needs that any copy will do for are left out of Needed, Remaining and the progress bar.'
+            : 'Counting only needs that any copy will do for (bought or found). Found-in-raid needs are left out of Needed, Remaining and the progress bar.'}{' '}
+          Your Collected numbers stay the same in every view.
+        </p>
+      )}
 
       <div className="mt-4 overflow-hidden rounded-lg border border-line bg-surface-2">
         <table className="w-full text-sm">
@@ -152,14 +193,14 @@ export function ItemCollectionPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-line">
-            {rows.map((n) => {
+            {rows.map(({ need: n, total, sources, remaining }) => {
               const item = items.data?.items[n.itemId]
               const collected = inventory.collected[n.itemId] ?? 0
-              const remaining = remainingFor(n, collected)
               const open = expanded === n.itemId
-              const quests = n.sources.filter((s) => s.kind === 'quest').length
-              const hide = n.sources.filter((s) => s.kind === 'hideout').length
-              const crafts = n.sources.filter((s) => s.kind === 'craft').length
+              const quests = sources.filter((s) => s.kind === 'quest').length
+              const hide = sources.filter((s) => s.kind === 'hideout').length
+              const crafts = sources.filter((s) => s.kind === 'craft').length
+              const left = n.total - total
               return (
                 <Fragment key={n.itemId}>
                   <tr className={`cursor-pointer hover:bg-surface-3 ${remaining === 0 ? 'text-ink-muted' : ''}`} onClick={() => setExpanded(open ? null : n.itemId)}>
@@ -169,8 +210,14 @@ export function ItemCollectionPage() {
                       {n.alternatives.length > 0 && <div className="text-xs text-ink-dim">or {n.alternatives.length} alternative item{n.alternatives.length === 1 ? '' : 's'}</div>}
                     </td>
                     <td className="px-3 py-1.5 text-right tabular-nums">
-                      {n.total}
-                      <div className="text-[10px] text-ink-dim">{n.fir > 0 ? `${n.fir} FIR` : ''}{n.fir > 0 && n.nonFir > 0 ? ' · ' : ''}{n.nonFir > 0 ? `${n.nonFir} any` : ''}</div>
+                      {total}
+                      {count === 'all' ? (
+                        <div className="text-[10px] text-ink-dim">{n.fir > 0 ? `${n.fir} FIR` : ''}{n.fir > 0 && n.nonFir > 0 ? ' · ' : ''}{n.nonFir > 0 ? `${n.nonFir} any` : ''}</div>
+                      ) : (
+                        <div className="text-[10px] text-ink-dim" title={left > 0 ? `${left} more needed ${count === 'fir' ? 'without' : 'with'} found in raid (not counted)` : undefined}>
+                          {count === 'fir' ? 'FIR' : 'any'}{left > 0 ? ` · +${left} ${count === 'fir' ? 'any' : 'FIR'}` : ''}
+                        </div>
+                      )}
                     </td>
                     <td className="px-3 py-1.5 text-right" onClick={(e) => e.stopPropagation()}>
                       <input type="number" min={0} value={collected} onChange={(e) => setCollected(gameMode, n.itemId, e.target.valueAsNumber)} aria-label={`Collected ${item?.name ?? ''}`} className="w-20 rounded border border-line bg-surface px-2 py-1 text-right text-sm focus:border-accent focus:outline-none" />
@@ -186,7 +233,7 @@ export function ItemCollectionPage() {
                       <td colSpan={7} className="bg-surface px-4 py-2">
                         <ul className="space-y-0.5 text-xs">
                           {n.sources.map((s, i) => (
-                            <li key={i} className="flex gap-2">
+                            <li key={i} className={`flex gap-2 ${sources.includes(s) ? '' : 'opacity-45'}`} title={sources.includes(s) ? undefined : 'Not counted in this view'}>
                               <span className="w-14 shrink-0 uppercase tracking-wide text-ink-dim">{s.kind}</span>
                               <span className="flex-1">{s.name}{s.kind === 'quest' ? ` (${s.traderName})` : ''}</span>
                               <span className="tabular-nums text-ink-muted">×{s.count}{'fir' in s && s.fir ? ' FIR' : ''}</span>

@@ -106,3 +106,19 @@ export function computeNeeds(input: NeedsInput): Map<string, ItemNeed> {
 export function remainingFor(need: ItemNeed, collected: number): number {
   return Math.max(0, need.total - collected)
 }
+
+/** Which needs Item Collection counts: all of them, only found-in-raid ones, or only the ones any copy will do for. */
+export type NeedCount = 'all' | 'fir' | 'any'
+
+/**
+ * The part of a need that a count mode looks at: its total and the sources behind it. Crafts never
+ * ask for found in raid, so they count as "any".
+ */
+export function countedNeed(need: ItemNeed, count: NeedCount): { total: number; sources: NeedSource[] } {
+  if (count === 'all') return { total: need.total, sources: need.sources }
+  const fir = count === 'fir'
+  return {
+    total: fir ? need.fir : need.nonFir,
+    sources: need.sources.filter((s) => (s.kind !== 'craft' && s.fir) === fir),
+  }
+}

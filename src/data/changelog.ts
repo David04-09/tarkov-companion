@@ -12,7 +12,10 @@ export interface ChangelogEntry {
 }
 
 /** Committed, waiting for the next update. */
-export const UNRELEASED: string[] = []
+export const UNRELEASED: string[] = [
+  "Item Collection: a new \"Count\" choice next to the filters. \"Count found in raid only\" makes Needed, Remaining and the progress bar count only what quests and the hideout want found in raid; \"Count not found in raid only\" counts the rest (things you can buy). Items show how many more are needed the other way, and when you open a row the parts that are not counted are greyed out. Your Collected numbers stay the same; the choice is remembered. It replaces the old \"FIR only\" tick box, which only hid rows.",
+  "My stats: the Raid log (marking each raid survived, died, MIA or run-through) and the card that asked after every raid are gone. The game never writes how a raid ended, so it could only ever be filled in by hand. Raid counts, time in raid and the rest of My stats are unchanged.",
+]
 
 export const RELEASES: ChangelogEntry[] = [
   {
