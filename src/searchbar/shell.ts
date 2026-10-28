@@ -28,15 +28,45 @@ export const useDragging = create<{ count: number; begin: () => void; end: () =>
 /**
  * Drag with the mouse: `onMove` gets the screen pixels moved since the press, `onEnd` runs when
  * it is let go. A press without moving is a click (and Enter/Space on the focused handle).
+ * A release the handle never hears (the window lost the mouse, the box closed) still ends the
+ * drag, so the bar's window never keeps the whole screen's mouse.
  */
 export function useDrag(h: { onStart?: () => void; onMove?: (dx: number, dy: number) => void; onEnd?: () => void; onClick?: () => void }): DragProps {
   const st = useRef<{ x: number; y: number; moved: boolean } | null>(null)
+  const unwatch = useRef<(() => void) | null>(null)
   // The newest handlers (they close over the newest state).
   const handlers = useRef(h)
   useLayoutEffect(() => {
     handlers.current = h
   })
+  // Closed mid-drag: give the mouse back.
+  useEffect(
+    () => () => {
+      unwatch.current?.()
+      unwatch.current = null
+      if (st.current?.moved) useDragging.getState().end()
+      st.current = null
+    },
+    [],
+  )
+  /** Window-wide watch while dragging: a release anywhere, a move with no button down, leaving the window. */
+  const watch = () => {
+    const up = () => end(false)
+    const move = (e: globalThis.PointerEvent) => {
+      if (e.buttons === 0) end(false)
+    }
+    window.addEventListener('pointerup', up, true)
+    window.addEventListener('pointermove', move, true)
+    window.addEventListener('blur', up)
+    unwatch.current = () => {
+      window.removeEventListener('pointerup', up, true)
+      window.removeEventListener('pointermove', move, true)
+      window.removeEventListener('blur', up)
+    }
+  }
   const end = (click: boolean) => {
+    unwatch.current?.()
+    unwatch.current = null
     const s = st.current
     st.current = null
     if (!s) return
@@ -67,6 +97,7 @@ export function useDrag(h: { onStart?: () => void; onMove?: (dx: number, dy: num
         if (Math.hypot(dx, dy) < 4) return
         s.moved = true
         useDragging.getState().begin()
+        watch()
         handlers.current.onStart?.()
       }
       handlers.current.onMove?.(dx, dy)

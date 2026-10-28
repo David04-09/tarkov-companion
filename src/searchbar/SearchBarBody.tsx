@@ -20,7 +20,7 @@ import { useProfile, useProgressStore } from '../store/progress'
 import { useStoryStore } from '../store/story'
 import { useUiStore } from '../store/ui'
 import { Box } from './Box'
-import { anchorStyle, GAP } from './boxes'
+import { anchorStyle, boxPlace, GLASS, hangX, panelSpots } from './boxes'
 import { ItemDetails, OnMapBox, PictureDetails, QuestDetails, SideButton } from './details'
 import { DetailsContext, panelKey, type DetailsCtx, type KeyMap, type MapRequest, type View } from './detailsContext'
 import { bossIndex, extractIndex, mapRows, raidMap, type MapRow, type RaidState } from './overlayLogic'
@@ -44,6 +44,8 @@ const TuneLayer = lazy(() => import('./TuneLayer'))
 const MAX_PANELS = 3
 /** The stash scan's two panels stay while other panels come and go. */
 const isScanPanel = (p: View) => p.kind === 'scanItems' || p.kind === 'scanValues'
+/** Widest the Item scan panel grows for a big picture (page pixels; drag its corner for more). */
+const SCAN_PANEL_MAX = 900
 /** Item scan on top, Values under it. */
 const SCAN_PANELS: View[] = [{ kind: 'scanItems' }, { kind: 'scanValues' }]
 /** Panels without app pages to open them in. */
@@ -163,6 +165,8 @@ function Body({ expanded, setExpanded, glass, strip, grip, onState, raid, raidRo
 
   const mapShown = picked?.kind === 'map'
   const tuning = useStashScan((s) => s.tuning)
+  // The Item scan panel is as wide as its picture wants (drag the picture taller and it widens).
+  const snipShape = useStashScan((s) => (s.scan ? s.scan.width / Math.max(1, s.scan.height) : 0))
   useEffect(() => onState(mapShown || panels.length > 0 || tuning, mapShown || panels.length > 0 || tuning, preview), [onState, mapShown, panels.length, tuning, preview])
 
   // The map table for the raid pill (names and raid lengths), kept between starts.
@@ -578,10 +582,16 @@ function Body({ expanded, setExpanded, glass, strip, grip, onState, raid, raidRo
     </li>
   )
 
-  // A card or the map opens under the bar; side panels open beside them (until moved).
-  const below = anchorStyle(anchor, frame, flip, 0, 50)
-  const pickedW = picked?.kind === 'map' ? (prefs.mapW + (prefs.sidebar ? prefs.sideW : 0) + 26) * zoom : CARD_PX * zoom
-  const besideX = Math.round(Math.max(CARD_PX * zoom, picked ? pickedW : 0) + GAP)
+  // A card or the map opens under the bar; side panels open beside them on the side with room
+  // (until moved). Nothing opens off the screen.
+  const barW = Math.round(CARD_PX * zoom) + 2
+  const pickedW = Math.round(picked?.kind === 'map' ? (prefs.mapW + (prefs.sidebar ? prefs.sideW : 0) + 26) * zoom : CARD_PX * zoom) + 2
+  const barX = flip.left ? anchor.x - frame.x + GLASS - barW : anchor.x - frame.x
+  const pickedX = hangX(anchor, frame, flip, pickedW)
+  const below = boxPlace(anchor, frame, flip, pickedX, 50)
+  const column = picked ? { left: Math.min(barX, pickedX), right: Math.max(barX + barW, pickedX + pickedW) } : { left: barX, right: barX + barW }
+  const panelWidth = (p: View) => (p.kind === 'scanItems' && snipShape ? Math.min(SCAN_PANEL_MAX, Math.max(prefs.panelW, Math.round(prefs.snipH * snipShape) + 22)) : prefs.panelW)
+  const spots = panelSpots(column, frame.width, panels.map((p) => Math.round(panelWidth(p) * zoom) + 2), flip.left)
   const panelIds = slotIds(panels.map((p) => ({ key: panelKey(p), kind: p.kind })))
 
   return (
@@ -684,9 +694,9 @@ function Body({ expanded, setExpanded, glass, strip, grip, onState, raid, raidRo
           <Box
             key={panelKey(p)}
             id={panelIds[i]}
-            place={anchorStyle(anchor, frame, flip, besideX + i * Math.round(prefs.panelW * zoom + GAP), 0)}
+            place={boxPlace(anchor, frame, flip, spots[i].x, spots[i].dy)}
             title={viewTitle(p)}
-            width={prefs.panelW}
+            width={panelWidth(p)}
             maxHeight={(cap + 60) / zoom}
             onClose={() => closePanel(p)}
             actions={

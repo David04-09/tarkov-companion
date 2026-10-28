@@ -39,11 +39,68 @@ export function openSide(anchor: Point, frame: Rect): Flip {
   return { left: anchor.x - frame.x > frame.width * 0.55, up: anchor.y - frame.y > frame.height * 0.55 }
 }
 
-/** CSS position of something hanging off the glass (window coordinates), growing away from the near screen edges. */
+/**
+ * CSS position of something hanging off the glass (window coordinates), growing away from the near
+ * screen edges. dx/dy move it further away from the glass (leftwards/upwards when flipped).
+ */
 export function anchorStyle(anchor: Point, frame: Rect, flip: Flip, dx = 0, dy = 0): { left?: number; right?: number; top?: number; bottom?: number } {
-  const x = flip.left ? { right: frame.x + frame.width - (anchor.x + GLASS) - dx } : { left: anchor.x - frame.x + dx }
-  const y = flip.up ? { bottom: frame.y + frame.height - (anchor.y + GLASS) - dy } : { top: anchor.y - frame.y + dy }
+  const x = flip.left ? { right: frame.x + frame.width - (anchor.x + GLASS) + dx } : { left: anchor.x - frame.x + dx }
+  const y = flip.up ? { bottom: frame.y + frame.height - (anchor.y + GLASS) + dy } : { top: anchor.y - frame.y + dy }
   return { ...x, ...y }
+}
+
+/** Left edge (window x) of a box this wide hanging off the glass on its open side, kept inside the window. */
+export function hangX(anchor: Point, frame: Rect, flip: Flip, width: number): number {
+  const gx = anchor.x - frame.x
+  const x = flip.left ? gx + GLASS - width : gx
+  return Math.round(Math.max(0, Math.min(x, frame.width - width)))
+}
+
+/** Where a box opens: window x of its left edge, dy away from the glass vertically (as anchorStyle). */
+export function boxPlace(anchor: Point, frame: Rect, flip: Flip, x: number, dy = 0): { left: number; top?: number; bottom?: number } {
+  const { top, bottom } = anchorStyle(anchor, frame, flip, 0, dy)
+  return top === undefined ? { left: Math.round(x), bottom } : { left: Math.round(x), top }
+}
+
+/** Overlapping panels step this far from each other so every move bar stays in reach. */
+export const STACK_STEP = 34
+
+/**
+ * Where side panels of these widths open (window x of each left edge, dy = how far they step away from the glass):
+ * in a row beside the search column on the side it opens towards, then on the other side, never
+ * off the screen. When neither side has room left, the rest overlap at the roomier edge, each a
+ * step lower so their move bars show.
+ */
+export function panelSpots(col: { left: number; right: number }, windowWidth: number, widths: number[], preferLeft: boolean): { x: number; dy: number }[] {
+  let right = col.right + GAP
+  let left = col.left - GAP
+  let stacked = 0
+  const out: { x: number; dy: number }[] = []
+  for (const panelW of widths) {
+    const fitsRight = right + panelW <= windowWidth
+    const fitsLeft = left - panelW >= 0
+    if (fitsLeft && (preferLeft || !fitsRight)) {
+      out.push({ x: left - panelW, dy: 0 })
+      left -= panelW + GAP
+    } else if (fitsRight) {
+      out.push({ x: right, dy: 0 })
+      right += panelW + GAP
+    } else {
+      stacked++
+      const atLeft = col.left >= windowWidth - col.right
+      out.push({ x: atLeft ? 0 : Math.max(0, windowWidth - panelW), dy: (stacked - 1) * STACK_STEP })
+    }
+  }
+  return out.map((p) => ({ x: Math.round(p.x), dy: p.dy }))
+}
+
+/**
+ * How far a box that opened at its default spot has to shift to be fully inside the window
+ * (it opened by the glass, and content can grow it past the screen's edge). Too big = top left shows.
+ */
+export function nudgeInto(r: Rect, width: number, height: number): Point {
+  const fit = (start: number, size: number, room: number) => (size >= room || start < 0 ? -start : Math.min(0, room - (start + size)))
+  return { x: Math.round(fit(r.x, r.width, width)), y: Math.round(fit(r.y, r.height, height)) }
 }
 
 /** Keeps a moved box on the screen: at least its move bar can still be grabbed. */
@@ -51,7 +108,7 @@ export function clampPos(p: BoxPos, frame: Rect, keep = 90): BoxPos {
   const x = Math.min(Math.max(p.x, frame.x - (p.w ?? 300) + keep), frame.x + frame.width - keep)
   const y = Math.min(Math.max(p.y, frame.y), frame.y + frame.height - 36)
   const w = p.w === undefined ? undefined : Math.min(Math.max(p.w, MIN_W), frame.width)
-  const h = p.h === undefined ? undefined : Math.min(Math.max(p.h, MIN_H), frame.height)
+  const h = p.h === undefined ? undefined : Math.min(Math.max(p.h, MIN_H), frame.y + frame.height - y)
   return { x: Math.round(x), y: Math.round(y), ...(w === undefined ? {} : { w: Math.round(w) }), ...(h === undefined ? {} : { h: Math.round(h) }) }
 }
 

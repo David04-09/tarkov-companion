@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
-import { Check, Grid3x3, Loader2, Minus, MousePointer2, Plus, Search, SquareDashed, Trash2, X } from 'lucide-react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { Check, Grid3x3, Loader2, Minus, MousePointer2, Plus, Search, SquareDashed, Trash2, X, ZoomIn, ZoomOut } from 'lucide-react'
 import { cellAt, covers, moveBox, resizeBox, sameCells, spanCells, type Cells, type Corner } from '../scan/boxEdit'
 import { keepCellSize } from '../scan/cellSize'
 import type { Detection, Grid } from '../scan/core'
@@ -10,6 +10,9 @@ import { useDetails } from './detailsContext'
 import { endTuning, prepareTuning, useStashScan } from './stashScan'
 
 type EditDet = Detection & { removed?: boolean; edited?: boolean; fixed?: boolean }
+
+/** Most zoom on top of "whole snip on the screen". */
+const MAX_ZOOM = 6
 type Cell = { col: number; row: number }
 type Drag = { kind: 'move'; spot: number; start: Cell; orig: Cells } | { kind: 'resize'; spot: number; corner: Corner; orig: Cells } | { kind: 'new'; start: Cell; startPx: { x: number; y: number } }
 
@@ -43,8 +46,43 @@ export default function TuneLayer() {
   const [showGrid, setShowGrid] = useState(true)
   const [taught, setTaught] = useState(0)
   const [fit, setFit] = useState(1)
+  // Zoom on top of the fitted size (1 = the whole snip on the screen); the stage scrolls when bigger.
+  const [zoom, setZoom] = useState(1)
+  const keepPoint = useRef<{ fx: number; fy: number; px: number; py: number } | null>(null)
   const svg = useRef<SVGSVGElement>(null)
   const stage = useRef<HTMLDivElement>(null)
+
+  /** Zooms in or out, keeping the spot under the mouse (or the middle) where it is. */
+  const zoomTo = (z: number, at?: { clientX: number; clientY: number }) => {
+    const el = stage.current
+    const next = Math.round(Math.min(MAX_ZOOM, Math.max(1, z)) * 100) / 100
+    if (!el || next === zoom) return
+    const r = el.getBoundingClientRect()
+    const px = at ? at.clientX - r.left : el.clientWidth / 2
+    const py = at ? at.clientY - r.top : el.clientHeight / 2
+    keepPoint.current = { fx: (el.scrollLeft + px) / el.scrollWidth, fy: (el.scrollTop + py) / el.scrollHeight, px, py }
+    setZoom(next)
+  }
+  useLayoutEffect(() => {
+    const el = stage.current
+    const p = keepPoint.current
+    if (!el || !p) return
+    keepPoint.current = null
+    el.scrollLeft = p.fx * el.scrollWidth - p.px
+    el.scrollTop = p.fy * el.scrollHeight - p.py
+  }, [zoom])
+  // Ctrl + mouse wheel zooms at the mouse (a plain wheel scrolls).
+  useEffect(() => {
+    const el = stage.current
+    if (!el) return
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey) return
+      e.preventDefault()
+      zoomTo(zoom * (e.deltaY < 0 ? 1.25 : 0.8), e)
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  })
 
   const ready = (r: { grid: Grid; detections: Detection[] } | null) => {
     if (!r) return setPhase('error')
@@ -244,7 +282,9 @@ export default function TuneLayer() {
       } else if (e.key === 'Escape') {
         if (selected !== null) setSelected(null)
         else endTuning()
-      }
+      } else if (!typing && (e.key === '+' || e.key === '=')) zoomTo(zoom * 1.25)
+      else if (!typing && e.key === '-') zoomTo(zoom * 0.8)
+      else if (!typing && e.key === '0') zoomTo(1)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -292,6 +332,20 @@ export default function TuneLayer() {
             <SquareDashed className="h-3.5 w-3.5" /> Draw new box
           </button>
         </span>
+        <span className="flex items-center gap-1 text-xs text-white/60" title="Zoom in to place boxes exactly (Ctrl + mouse wheel, or + and -). The picture scrolls when it is bigger than the screen.">
+          <button type="button" onClick={() => zoomTo(zoom * 0.8)} disabled={zoom <= 1} aria-label="Zoom out" className="rounded border border-white/15 p-0.5 hover:text-white disabled:opacity-40">
+            <ZoomOut className="h-3.5 w-3.5" />
+          </button>
+          <span className="w-11 text-center tabular-nums text-white">{Math.round(zoom * 100)}%</span>
+          <button type="button" onClick={() => zoomTo(zoom * 1.25)} disabled={zoom >= MAX_ZOOM} aria-label="Zoom in" className="rounded border border-white/15 p-0.5 hover:text-white disabled:opacity-40">
+            <ZoomIn className="h-3.5 w-3.5" />
+          </button>
+          {zoom > 1 && (
+            <button type="button" onClick={() => zoomTo(1)} className="rounded border border-white/15 px-1.5 py-0.5 hover:text-white">
+              Fit
+            </button>
+          )}
+        </span>
         <button type="button" onClick={() => setShowGrid((v) => !v)} aria-pressed={showGrid} className={`flex items-center gap-1 rounded border px-2 py-0.5 text-xs ${showGrid ? 'border-white/40 text-white' : 'border-white/15 text-white/60'}`}>
           <Grid3x3 className="h-3.5 w-3.5" /> Grid
         </button>
@@ -325,9 +379,10 @@ export default function TuneLayer() {
       </header>
 
       <div className="flex min-h-0 flex-1">
-        <div ref={stage} className="relative grid min-w-0 flex-1 place-items-center overflow-hidden">
-          <div className="relative" style={{ width: scan.width * fit, height: scan.height * fit }}>
-            <img src={scan.url} alt="Your snip" draggable={false} className="absolute inset-0 h-full w-full select-none" style={{ imageRendering: fit > 1.5 ? 'pixelated' : 'auto' }} />
+        <div ref={stage} className="relative min-w-0 flex-1 overflow-auto [scrollbar-width:thin]">
+          <div className="flex min-h-full w-max min-w-full items-center justify-center p-3">
+          <div className="relative shrink-0" style={{ width: scan.width * fit * zoom, height: scan.height * fit * zoom }}>
+            <img src={scan.url} alt="Your snip" draggable={false} className="absolute inset-0 h-full w-full select-none" style={{ imageRendering: fit * zoom > 1.5 ? 'pixelated' : 'auto' }} />
             {grid && (
               <svg
                 ref={svg}
@@ -380,6 +435,7 @@ export default function TuneLayer() {
                 })()}
               </svg>
             )}
+          </div>
           </div>
         </div>
 

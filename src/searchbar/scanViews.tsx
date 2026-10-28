@@ -1,10 +1,14 @@
-import { useMemo, useState } from 'react'
-import { CheckCheck, Loader2, SlidersHorizontal } from 'lucide-react'
+import { useMemo, useRef, useState } from 'react'
+import { CheckCheck, ChevronDown, ChevronRight, GripHorizontal, Loader2, SlidersHorizontal } from 'lucide-react'
 import type { Item } from '../api/types'
 import { sellValue } from '../lib/economy'
 import { formatRoubles } from '../lib/format'
-import { groupDetections, needLookup, sourceLabel, sortSell, stashValues, type Confidence, type SellSort } from '../scan/stashValues'
+import { DEFAULT_KEEP, KEEP_KINDS, keepLabel, keptKind, type KeepKind } from '../scan/keepKinds'
+import { groupDetections, needLookup, sourceLabel, sortSell, stashValues, type Confidence, type KeepLine, type SellSort } from '../scan/stashValues'
 import { useDetails } from './detailsContext'
+import { useFrame } from './frameContext'
+import { LIMITS, useOverlayPrefs } from './overlayPrefs'
+import { useDrag } from './shell'
 import { confirmScan, useStashScan, type StashScan } from './stashScan'
 
 const KEEP_FILL = 'rgba(34,197,94,0.32)'
@@ -14,9 +18,14 @@ const SELL_FILL = 'rgba(239,68,68,0.28)'
 function useScanAnalysis() {
   const ctx = useDetails()
   const scan = useStashScan((s) => s.scan)
-  const needFor = useMemo(() => needLookup(ctx.needs.values(), ctx.collected), [ctx.needs, ctx.collected])
+  // What to keep back (Values panel checkboxes): the needs that count, and kinds kept whole.
+  const keep = useOverlayPrefs((p) => p.keep)
+  const stars = useOverlayPrefs((p) => p.stars)
+  const kinds = useMemo(() => new Set<KeepKind>(keep), [keep])
+  const starred = useMemo(() => new Set(stars.filter((r) => r.kind === 'item').map((r) => r.id)), [stars])
+  const needFor = useMemo(() => needLookup(ctx.needs.values(), ctx.collected, kinds), [ctx.needs, ctx.collected, kinds])
   const found = useMemo(() => (scan?.status === 'done' ? groupDetections(scan.detections) : []), [scan])
-  const values = useMemo(() => (ctx.items ? stashValues(found, needFor, ctx.items, sellValue) : null), [found, needFor, ctx.items])
+  const values = useMemo(() => (ctx.items ? stashValues(found, needFor, ctx.items, sellValue, (it) => keptKind(it, kinds, starred)) : null), [found, needFor, ctx.items, kinds, starred])
   // How many of each item to keep (the rest is spare).
   const keepById = useMemo(() => {
     const m = new Map<string, number>()
@@ -53,6 +62,79 @@ function ConfChip({ c }: { c: Confidence }) {
   )
 }
 
+/** "for Gunsmith (Mechanic) +2 more · 3 still needed", or the ticked kind it falls under. */
+function keepReason(k: KeepLine, short = false): string {
+  const need = k.need ? `for ${sourceLabel(k.need.sources[0])}${k.need.sources.length > 1 ? ` +${k.need.sources.length - 1} more` : ''}` : ''
+  if (!k.kind) return short ? need : `${need} · ${k.need?.remaining ?? 0} still needed`
+  return need ? `${need} · all ${keepLabel(k.kind).toLowerCase()} kept` : `kept: ${keepLabel(k.kind).toLowerCase()}`
+}
+
+/** The checkboxes of what the sell list keeps back (quests, hideout, keys…). Changes apply at once. */
+function KeepChoices() {
+  const keep = useOverlayPrefs((p) => p.keep)
+  const open = useOverlayPrefs((p) => p.keepOpen)
+  const set = useOverlayPrefs((p) => p.set)
+  const toggle = (k: KeepKind) => set({ keep: keep.includes(k) ? keep.filter((x) => x !== k) : [...keep, k] })
+  const isDefault = keep.length === DEFAULT_KEEP.length && DEFAULT_KEEP.every((k) => keep.includes(k))
+  return (
+    <div className="rounded border border-white/15">
+      <button type="button" onClick={() => set({ keepOpen: !open })} className="flex w-full items-center gap-1 px-2 py-1 text-left text-[11px] text-white/70 hover:text-white" aria-expanded={open}>
+        {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+        <span className="flex-1 uppercase tracking-wide">Keep back, don't sell</span>
+        <span className="text-white/45">{keep.length} ticked</span>
+      </button>
+      {open && (
+        <div className="border-t border-white/10 px-2 py-1.5">
+          <ul className="grid grid-cols-2 gap-x-2 gap-y-0.5">
+            {KEEP_KINDS.map((k) => (
+              <li key={k.id}>
+                <label className="flex cursor-pointer items-center gap-1.5 py-0.5 text-[11px] text-white/80 hover:text-white" title={k.note}>
+                  <input type="checkbox" checked={keep.includes(k.id)} onChange={() => toggle(k.id)} className="h-3 w-3 accent-amber-300" />
+                  <span className="truncate">{k.label}</span>
+                </label>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-1 text-[10px] text-white/45">
+            Quests, Collector and hideout keep only as many as are still needed; the others keep every one.{' '}
+            {!isDefault && (
+              <button type="button" onClick={() => set({ keep: DEFAULT_KEEP })} className="underline hover:text-white">
+                Back to quests + hideout
+              </button>
+            )}
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** The snip picture, as tall as you drag its bottom edge (remembered). */
+function useSnipHeight() {
+  const { zoom } = useFrame()
+  const saved = useOverlayPrefs((p) => p.snipH)
+  const set = useOverlayPrefs((p) => p.set)
+  const [live, setLive] = useState<number | null>(null)
+  const start = useRef(saved)
+  const last = useRef<number | null>(null)
+  const [lo, hi] = LIMITS.snipH
+  const grip = useDrag({
+    onStart: () => {
+      start.current = saved
+    },
+    onMove: (_dx, dy) => {
+      last.current = Math.min(hi, Math.max(lo, Math.round(start.current + dy / zoom)))
+      setLive(last.current)
+    },
+    onEnd: () => {
+      if (last.current !== null) set({ snipH: last.current })
+      last.current = null
+      setLive(null)
+    },
+  })
+  return { height: live ?? saved, grip }
+}
+
 function Icon({ item }: { item: Item | undefined }) {
   return item?.iconLink ? <img src={item.iconLink} alt="" className="h-7 w-7 shrink-0 rounded-sm bg-white/5 object-contain" loading="lazy" /> : <span className="h-7 w-7 shrink-0 rounded-sm bg-white/5" />
 }
@@ -63,6 +145,7 @@ function Icon({ item }: { item: Item | undefined }) {
  */
 export function ScanItemsView() {
   const { ctx, scan, found, values, keepById } = useScanAnalysis()
+  const snip = useSnipHeight()
   const [hover, setHover] = useState<string | null>(null)
   const [confirmNote, setConfirmNote] = useState<string | null>(null)
   // Items whose boxes came from your corrections (saved earlier or fixed in tuning).
@@ -77,7 +160,7 @@ export function ScanItemsView() {
   }, [scan])
   const unsure = found.filter((f) => f.confidence !== 'sure').length
   const name = (id: string) => ctx.items?.[id]?.name ?? 'Unknown item'
-  const needOf = (id: string) => values?.keep.find((k) => k.itemId === id)?.need
+  const keepOf = (id: string) => values?.keep.find((k) => k.itemId === id)
   const rows = useMemo(
     () => [...found].sort((a, b) => Number(keepById.has(b.itemId)) - Number(keepById.has(a.itemId)) || (ctx.items?.[a.itemId]?.name ?? '').localeCompare(ctx.items?.[b.itemId]?.name ?? '')),
     [found, keepById, ctx.items],
@@ -93,9 +176,9 @@ export function ScanItemsView() {
       <ScanStatus scan={scan} />
       {scan && (
         // Pinned: the list scrolls underneath, the picture stays (hover a row to see its boxes).
-        <div className="sticky -top-2.5 z-10 -mx-2.5 -mt-2.5 flex justify-center border-b border-white/10 bg-black px-2.5 pb-2 pt-2.5">
+        <div className="sticky -top-2.5 z-10 -mx-2.5 -mt-2.5 flex justify-center border-b border-white/10 bg-black px-2.5 pb-3 pt-2.5">
           <div className="relative inline-block overflow-hidden rounded border border-white/10">
-          <img src={scan.url} alt="Your snip" className="block max-h-56 w-auto max-w-full" />
+          <img src={scan.url} alt="Your snip" className="block w-auto max-w-full" style={{ maxHeight: snip.height }} />
           {scan.status === 'done' && (
             <button
               type="button"
@@ -127,13 +210,16 @@ export function ScanItemsView() {
             </svg>
           )}
           </div>
+          <span {...snip.grip} title="Drag to make the picture bigger or smaller (widen the panel too for more)" aria-label="Resize the picture" className="absolute inset-x-0 bottom-0 flex h-2.5 cursor-ns-resize touch-none justify-center text-white/30 hover:text-white">
+            <GripHorizontal className="h-3 w-3 -translate-y-0.5" />
+          </span>
         </div>
       )}
       {scan?.status === 'done' && (
         <>
           <p className="text-white/55">
             {total === 0 ? 'No items found. Try a box that covers whole slots, or Manual tuning.' : `${total} item${total === 1 ? '' : 's'}, ${found.length} kind${found.length === 1 ? '' : 's'}.`}{' '}
-            <span className="text-emerald-300/80">Green</span> = still needed, <span className="text-red-300/80">red</span> = spare.
+            <span className="text-emerald-300/80">Green</span> = keep, <span className="text-red-300/80">red</span> = spare.
           </p>
           {unsure > 0 && !scan.confirmed && (
             <button
@@ -149,7 +235,7 @@ export function ScanItemsView() {
           <ul className="space-y-1">
             {rows.map((f) => {
               const keep = keepById.get(f.itemId) ?? 0
-              const need = needOf(f.itemId)
+              const why = keepOf(f.itemId)
               return (
                 <li key={f.itemId}>
                   <button
@@ -171,13 +257,13 @@ export function ScanItemsView() {
                           </span>
                         )}
                       </span>
-                      {keep > 0 && need ? (
-                        <span className="block truncate text-[11px] text-emerald-300/90" title={need.sources.map(sourceLabel).join('\n')}>
-                          Keep {keep < f.count ? `${keep} ` : ''}for {sourceLabel(need.sources[0])}
-                          {need.sources.length > 1 ? ` +${need.sources.length - 1} more` : ''}
+                      {keep > 0 && why ? (
+                        <span className="block truncate text-[11px] text-emerald-300/90" title={why.need?.sources.map(sourceLabel).join('\n')}>
+                          Keep {keep < f.count ? `${keep} ` : ''}
+                          {keepReason(why, true)}
                         </span>
                       ) : (
-                        <span className="block text-[11px] text-white/45">Not needed for quests or the hideout</span>
+                        <span className="block text-[11px] text-white/45">Spare: nothing you ticked keeps it</span>
                       )}
                     </span>
                   </button>
@@ -214,6 +300,7 @@ export function ScanValuesView() {
 
   return (
     <div className="space-y-2 text-xs">
+      <KeepChoices />
       <div className="flex items-center gap-2">
         <span className="flex-1 text-white/70">
           {sell.length === 0 ? 'Nothing spare here.' : <>Spare: about <span className="font-semibold text-white">{formatRoubles(values.total)}</span></>}
@@ -261,12 +348,12 @@ export function ScanValuesView() {
       <div className="rounded border border-amber-300/30 bg-amber-300/5 p-2">
         <h4 className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-amber-200">Do not sell</h4>
         {values.keep.length === 0 ? (
-          <p className="text-white/55">Nothing here is needed for quests or the hideout.</p>
+          <p className="text-white/55">Nothing here is kept back by what you ticked.</p>
         ) : (
           <ul className="space-y-1">
             {values.keep.map((k) => (
               <li key={k.itemId}>
-                <button type="button" onClick={() => ctx.open({ kind: 'item', id: k.itemId })} className="flex w-full items-center gap-2 rounded px-1 py-0.5 text-left hover:bg-white/10" title={k.need.sources.map(sourceLabel).join('\n')}>
+                <button type="button" onClick={() => ctx.open({ kind: 'item', id: k.itemId })} className="flex w-full items-center gap-2 rounded px-1 py-0.5 text-left hover:bg-white/10" title={k.need?.sources.map(sourceLabel).join('\n')}>
                   <Icon item={items[k.itemId]} />
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center gap-1">
@@ -275,10 +362,7 @@ export function ScanValuesView() {
                       {k.fir && <span className="rounded border border-sky-300/50 px-1 text-[10px] text-sky-200" title="Needed found in raid: check the tick on the item">FIR</span>}
                       <ConfChip c={k.confidence} />
                     </span>
-                    <span className="block truncate text-[11px] text-white/55">
-                      for {sourceLabel(k.need.sources[0])}
-                      {k.need.sources.length > 1 ? ` +${k.need.sources.length - 1} more` : ''} · {k.need.remaining} still needed
-                    </span>
+                    <span className="block truncate text-[11px] text-white/55">{keepReason(k)}</span>
                   </span>
                 </button>
               </li>

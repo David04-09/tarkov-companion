@@ -6,6 +6,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { cleanBoxes, type BoxPos } from './boxes'
+import { DEFAULT_KEEP, KEEP_KIND_IDS, type KeepKind } from '../scan/keepKinds'
 
 /** Map layers the bar can draw (its own choice, separate from the Maps tab). */
 export type OverlayLayer =
@@ -97,6 +98,10 @@ export interface OverlayPrefs {
   stars: Ref[]
   /** Boxes (cards, the map, side panels) moved or resized by hand, by box id (boxes.ts). */
   boxes: Record<string, BoxPos>
+  /** Stash snip: what the sell list keeps back, whether that list of checkboxes is open, picture height. */
+  keep: KeepKind[]
+  keepOpen: boolean
+  snipH: number
 }
 
 export const DEFAULT_LAYERS: Record<OverlayLayer, boolean> = {
@@ -166,6 +171,9 @@ export const DEFAULT_PREFS: OverlayPrefs = {
   recent: [],
   stars: [],
   boxes: {},
+  keep: DEFAULT_KEEP,
+  keepOpen: true,
+  snipH: 224,
 }
 
 export const LIMITS = {
@@ -178,6 +186,7 @@ export const LIMITS = {
   sideW: [160, 360],
   panelW: [240, 520],
   lootMin: [0, 10_000_000],
+  snipH: [100, 1400],
 } as const
 
 const clamp = (v: unknown, [lo, hi]: readonly [number, number], d: number) => (typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, Math.round(v))) : d)
@@ -226,6 +235,9 @@ export function cleanOverlayPrefs(raw: unknown): OverlayPrefs {
     recent: refs(p.recent, 10),
     stars: refs(p.stars, 40),
     boxes: cleanBoxes(p.boxes),
+    keep: Array.isArray(p.keep) ? KEEP_KIND_IDS.filter((k) => (p.keep as unknown[]).includes(k)) : DEFAULT_KEEP,
+    keepOpen: bool(p.keepOpen, d.keepOpen),
+    snipH: clamp(p.snipH, LIMITS.snipH, d.snipH),
   }
 }
 

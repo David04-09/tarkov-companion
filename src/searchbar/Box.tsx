@@ -1,6 +1,6 @@
-import { useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { GripHorizontal, X } from 'lucide-react'
-import { clampPos, MIN_H, MIN_W, type BoxPos } from './boxes'
+import { clampPos, MIN_H, MIN_W, nudgeInto, type BoxPos, type Point } from './boxes'
 import { useFrame } from './frameContext'
 import { useOverlayPrefs } from './overlayPrefs'
 import { useDrag, type DragProps } from './shell'
@@ -37,6 +37,26 @@ export function Box({ id, place, title, actions, onClose, width, maxHeight, resi
   const start = useRef<BoxPos>({ x: 0, y: 0 })
   const last = useRef<BoxPos | null>(null)
   const pos = live ?? (saved ? clampPos(saved, frame) : null)
+  // A box at its opening spot is shifted back onto the screen when it (or its content) would stick out.
+  const [nudge, setNudge] = useState<Point>({ x: 0, y: 0 })
+  const nudgeRef = useRef(nudge)
+  const placeKey = JSON.stringify(place)
+  const moved = Boolean(pos)
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (moved || !el) return
+    const fit = () => {
+      const r = el.getBoundingClientRect()
+      const was = nudgeRef.current
+      const n = nudgeInto({ x: r.left - was.x, y: r.top - was.y, width: r.width, height: r.height }, window.innerWidth, window.innerHeight)
+      if (n.x === was.x && n.y === was.y) return
+      nudgeRef.current = n
+      setNudge(n)
+    }
+    const ro = new ResizeObserver(fit)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [moved, placeKey, frame])
 
   /** Where the box is on the screen right now (it may still be at its opening spot). */
   const here = (): BoxPos => {
@@ -69,7 +89,10 @@ export function Box({ id, place, title, actions, onClose, width, maxHeight, resi
     onEnd: finish,
   })
 
-  const style: CSSProperties = pos ? { left: pos.x - frame.x, top: pos.y - frame.y, width: pos.w, height: pos.h } : place
+  const style: CSSProperties = pos ? { left: pos.x - frame.x, top: pos.y - frame.y, width: pos.w, height: pos.h } : nudge.x || nudge.y ? { ...place, translate: `${nudge.x}px ${nudge.y}px` } : place
+  // A box moved low on the screen gets shorter, so its bottom never ends up off the screen.
+  const room = pos && !pos.h ? Math.max(80, (frame.y + frame.height - pos.y - 36 * zoom) / zoom) : undefined
+  const bodyMax = maxHeight === undefined ? room : room === undefined ? maxHeight : Math.min(maxHeight, room)
   const grip = resizable && (
     <span {...resize} title="Drag to resize" aria-label="Resize" className="absolute bottom-0 right-0 z-[1100] flex h-4 w-4 cursor-nwse-resize touch-none items-end justify-end p-0.5 text-white/35 hover:text-white">
       <svg viewBox="0 0 8 8" className="h-2.5 w-2.5" aria-hidden>
@@ -98,7 +121,7 @@ export function Box({ id, place, title, actions, onClose, width, maxHeight, resi
             </button>
           )}
         </header>
-        <div className="min-h-0 flex-1 overflow-y-auto p-2.5 [scrollbar-width:thin]" style={!pos?.h && maxHeight ? { maxHeight } : undefined}>
+        <div className="min-h-0 flex-1 overflow-y-auto p-2.5 [scrollbar-width:thin]" style={!pos?.h && bodyMax !== undefined ? { maxHeight: bodyMax } : undefined}>
           {children}
         </div>
       </div>

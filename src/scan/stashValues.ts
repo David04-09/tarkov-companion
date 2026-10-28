@@ -6,6 +6,7 @@
 import type { Item, ItemsById } from '../api/types'
 import { remainingFor, type ItemNeed, type NeedSource } from '../lib/needs'
 import type { Detection } from './core'
+import { needKind, type KeepKind } from './keepKinds'
 
 export type Confidence = 'sure' | 'likely' | 'check'
 
@@ -30,11 +31,19 @@ export interface NeedInfo {
   sources: NeedSource[]
 }
 
-/** Item id (including the alternatives a quest also accepts) → the need it counts toward. */
-export function needLookup(needs: Iterable<ItemNeed>, collected: Record<string, number>): Map<string, NeedInfo> {
+/**
+ * Item id (including the alternatives a quest also accepts) → the need it counts toward. With
+ * `kinds`, only those needs count (no quests: only what the hideout still wants).
+ */
+export function needLookup(needs: Iterable<ItemNeed>, collected: Record<string, number>, kinds?: ReadonlySet<KeepKind>): Map<string, NeedInfo> {
   const m = new Map<string, NeedInfo>()
   for (const n of needs) {
-    const entry = { needId: n.itemId, remaining: remainingFor(n, collected[n.itemId] ?? 0), total: n.total, sources: n.sources }
+    const sources = kinds ? n.sources.filter((s) => kinds.has(needKind(s))) : n.sources
+    if (sources.length === 0) continue
+    const all = sources.length === n.sources.length
+    const total = all ? n.total : sources.reduce((sum, s) => sum + s.count, 0)
+    const remaining = all ? remainingFor(n, collected[n.itemId] ?? 0) : Math.max(0, total - (collected[n.itemId] ?? 0))
+    const entry = { needId: n.itemId, remaining, total, sources }
     m.set(n.itemId, entry)
     for (const alt of n.alternatives) if (!m.has(alt)) m.set(alt, entry)
   }
@@ -80,7 +89,10 @@ export interface SellLine {
 export interface KeepLine {
   itemId: string
   count: number
-  need: NeedInfo
+  /** What it is still needed for (absent when it is only kept for its kind). */
+  need?: NeedInfo
+  /** Kept whole because its kind is ticked (keys, ammo…). */
+  kind?: KeepKind
   /** A quest or hideout level wants it found in raid (the snip cannot see the tick). */
   fir: boolean
   confidence: Confidence
@@ -109,6 +121,7 @@ export function stashValues(
   needFor: Map<string, NeedInfo>,
   items: ItemsById,
   price: (item: Item | undefined, count: number) => { total: number; via: 'flea' | 'trader' | null },
+  keepWhole: (item: Item | undefined) => KeepKind | null = () => null,
 ): StashValues {
   const left = new Map<string, number>()
   const sell: SellLine[] = []
@@ -119,13 +132,21 @@ export function stashValues(
     const need = needFor.get(f.itemId)
     const remaining = need ? (left.get(need.needId) ?? need.remaining) : 0
     const kept = Math.min(f.count, remaining)
-    if (need && kept > 0) {
-      left.set(need.needId, remaining - kept)
-      keep.push({ itemId: f.itemId, count: kept, need, fir: need.sources.some((s) => 'fir' in s && s.fir), confidence: f.confidence })
-    }
-    const spare = f.count - kept
-    if (spare <= 0) continue
     const item = items[f.itemId]
+    const whole = keepWhole(item)
+    const needed = need && kept > 0 ? need : undefined
+    if (needed) left.set(needed.needId, remaining - kept)
+    if (needed || whole)
+      keep.push({
+        itemId: f.itemId,
+        count: whole ? f.count : kept,
+        ...(needed ? { need: needed } : {}),
+        ...(whole ? { kind: whole } : {}),
+        fir: Boolean(needed?.sources.some((s) => 'fir' in s && s.fir)),
+        confidence: f.confidence,
+      })
+    const spare = whole ? 0 : f.count - kept
+    if (spare <= 0) continue
     const each = price(item, 1)
     const all = price(item, spare)
     const slots = item ? Math.max(1, item.width * item.height) : 1
