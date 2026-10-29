@@ -44,7 +44,7 @@ function shapePoints(s) {
   const ry1 = Math.min(F.RENDER_SIZE[1], Math.ceil(Math.max(...cs.map((c) => c[1]))) + 2)
   const rw = rx1 - rx0
   const rh = ry1 - ry0
-  const { data } = await sharp(F.RENDER, { limitInputPixels: false }).extract({ left: rx0, top: ry0, width: rw, height: rh }).raw().toBuffer({ resolveWithObject: true })
+  const data = await F.renderRegion(rx0, ry0, rw, rh)
   const img = Buffer.alloc(W * H * 3)
   for (let j = 0; j < H; j++)
     for (let i = 0; i < W; i++) {

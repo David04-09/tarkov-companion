@@ -82,4 +82,39 @@ function svgInner(file) {
   return s.slice(start, end).replace(/<style[\s\S]*?<\/style>/, '')
 }
 
-module.exports = { ROOT, VIEW, svgToGame, gameToSvg, RENDER, RENDER_SIZE, appRenderAffine, gameToRender, svgToRenderMatrix, invert, svgInner }
+/** Full-resolution tiles of the render (npm run tiles:lighthouse): reading a few 256 px tiles is far lighter than decoding the 62-megapixel PNG. */
+const TILES = path.join(ROOT, 'public', 'tiles', 'lighthouse-re3mr', '6')
+
+/** Raw RGB pixels of a region of the render, from the tiles when they exist, else from the PNG. */
+async function renderRegion(left, top, width, height) {
+  const sharp = require('sharp')
+  sharp.concurrency(1)
+  sharp.cache(false)
+  if (!fs.existsSync(TILES)) {
+    const { data } = await sharp(RENDER, { limitInputPixels: false }).extract({ left, top, width, height }).removeAlpha().raw().toBuffer({ resolveWithObject: true })
+    return data
+  }
+  const out = Buffer.alloc(width * height * 3)
+  for (let ty = Math.floor(top / 256); ty <= Math.floor((top + height - 1) / 256); ty++)
+    for (let tx = Math.floor(left / 256); tx <= Math.floor((left + width - 1) / 256); tx++) {
+      const file = path.join(TILES, String(tx), `${ty}.png`)
+      if (!fs.existsSync(file)) continue
+      const { data, info } = await sharp(file).removeAlpha().raw().toBuffer({ resolveWithObject: true })
+      for (let y = 0; y < info.height; y++) {
+        const gy = ty * 256 + y - top
+        if (gy < 0 || gy >= height) continue
+        for (let x = 0; x < info.width; x++) {
+          const gx = tx * 256 + x - left
+          if (gx < 0 || gx >= width) continue
+          const s = 3 * (y * info.width + x)
+          const d = 3 * (gy * width + gx)
+          out[d] = data[s]
+          out[d + 1] = data[s + 1]
+          out[d + 2] = data[s + 2]
+        }
+      }
+    }
+  return out
+}
+
+module.exports = { ROOT, VIEW, svgToGame, gameToSvg, RENDER, RENDER_SIZE, appRenderAffine, gameToRender, svgToRenderMatrix, invert, svgInner, renderRegion }

@@ -1,38 +1,66 @@
 # Updated Lighthouse drawing
 
-`lighthouse-2026.svg` is Lighthouse in tarkov.dev's flat drawing style, updated to the current
-layout. The app shows it as "Updated drawing (2026)" (the default Lighthouse picture); it travels in
-the Lighthouse content pack (`scripts/tile-lighthouse.mjs` copies it next to the RE3MR tiles), so it
-is not in the installer.
+`lighthouse-2026.svg` is Lighthouse as of September 2026 in tarkov.dev's flat drawing style. The app
+shows it as "Updated drawing (2026)", the default Lighthouse picture. It travels in the Lighthouse
+content pack (`scripts/tile-lighthouse.mjs` copies it next to the RE3MR tiles), so it is not in the
+installer.
 
-**Licence: CC BY-NC-SA 4.0.** It combines tarkov.dev's Lighthouse drawing
-([the-hideout/tarkov-dev-svg-maps](https://github.com/the-hideout/tarkov-dev-svg-maps), Shebuka and
-contributors, CC BY-NC-SA 4.0, not for use in cheating software) with shapes traced from RE3MR's
-Lighthouse 1.7 render ([reemr.se](https://reemr.se/maps/Lighthouse/), CC BY-NC-SA 4.0).
+**Sources and licences**
+- **Layout** (sea, land, forest, rock, sand, dirt, concrete, roads, buildings): Jindouz's 2D Lighthouse
+  map, uploaded by him to the EFT Wiki (`File:Jindouz Lighthouse Map V1.png`, September 2026; the
+  wiki's licence is CC BY-SA 3.0).
+- **Style and the playable-area border**: tarkov.dev's drawing
+  ([the-hideout/tarkov-dev-svg-maps](https://github.com/the-hideout/tarkov-dev-svg-maps), Shebuka and
+  contributors, CC BY-NC-SA 4.0, not for use in cheating software).
+- **Minefields**: the game's own outlines from json.tarkov.dev (`minefields.json`, from `hazards.cjs`).
 
-## How it is made
+## Why Jindouz's map, and how it is placed
 
-- **Ground** (sea, land, lakes, rock, dirt roads, west-coast piers, the map border) is tarkov.dev's
-  drawing (`tarkov-dev-lighthouse.svg`, kept as downloaded), minus the old lighthouse island.
-- **Roads, yards, concrete, rails, walls, buildings, tanks, the rebuilt island, the causeway and the
-  south road landslide** are traced from the RE3MR render in `specs/*.json` (drawing units ≈ metres:
-  `r` rectangles, `p` polygons, `c`+`w`/`h`/`a` turned rectangles, `c`+`rad` circles, `l` lines with
-  width `w`).
-- RE3MR's render is a hand-made model, so it drifts from the game in places. `specs/warp.json` moves
-  the traced shapes onto the game's own positions: no change where quest zones, door locks and
-  containers from the game data sit right on the render (most of the map), up to ~17 m on the
-  causeway and ~8 m on the island, where the game's claymores and the Top Secret quest zone show the
-  render is off.
-- **Minefields** are the game's own outlines (`minefields.json`, from `hazards.cjs`).
+The first version (2.18.0) was traced from RE3MR's render. Checked against the game's own data, that
+render drifts:
+- 7–12 m at the water plant;
+- about 70 m on Lightkeeper island, where its lighthouse stands where the game has open rock.
 
-`frames.cjs` holds the coordinate frames (game ↔ drawing ↔ render, using the app's RE3MR fit).
+As a result, containers and loot showed up beside their buildings.
+
+The game data says where the buildings really are. Indoor-only spots must lie inside a building:
+- 844 loose-loot spots;
+- the drawers, jackets, PC blocks, safes and medcases among the containers;
+- the door locks.
+
+`jindouz.cjs fit` slides Jindouz's map over the game positions in 260 m windows. For each window it
+finds the shift, turn and scale that put the most of those spots on his building pixels. Most windows
+are about 10–25 m off and turned 2°; the island is about 30 m off. `jindouz.cjs extract` then:
+- sorts every pixel of his map into a class by colour;
+- fills labels, icons and outlines in from their surroundings;
+- blanks his floor-plan panels;
+- traces each class with marching squares and simplifies the outlines;
+- squares up building walls;
+- places everything through the blended window fits.
+
+The result is `specs/jindouz.json`.
+
+`check.cjs` is the measure. Of the 110 indoor-only spots (car trunks left out), 93 lie inside a drawn
+building. The 2.18.0 drawing managed 32. The misses are:
+- spots 1–3 m from a wall: doors sit on walls, and upper floors on the island;
+- a crashed helicopter;
+- a few jackets on open ground.
+
+Drawn by hand over the fitted map, in game positions:
+- `specs/island.json`: the causeway (a straight line that passes over the game's parked car and its
+  claymores), its road and the island's north jetty;
+- `specs/extras.json`: the water plant's eight basins (open, covered, empty), the terminal's five
+  tracks, and the seaside houses on their piers by the Icebreaker transit (his map's label sits on
+  them).
 
 ## Commands (run from the repository root; without Node use `ELECTRON_RUN_AS_NODE=1 node_modules/electron/dist/electron.exe`)
 
-- `node scripts/lighthouse-map/build.cjs scripts/lighthouse-map/tarkov-dev-lighthouse.svg scripts/lighthouse-map/minefields.json scripts/lighthouse-map/lighthouse-2026.svg` rebuilds the drawing.
-- `trace.cjs <out.png> --box=u0,v0,u1,v1 --px=4 [--specs=a.json;b.json] [--old=old.svg --all=1] [--points=points.json]` shows the render straightened into drawing units with a grid, for tracing and checking.
-- `drawing.cjs <svg> <out.png> --box=… [--points=…] [--zones=…]` draws a drawing with game points and quest zones on top.
-- `side.cjs <svg> <out.png> --crop=x,y,w,h` puts the render and a drawing side by side.
-- `points.cjs`, `hazards.cjs`, `zones.cjs` fetch the game's containers/locks/extracts, minefields and quest zones from json.tarkov.dev; `straighten.cjs` and `tile.cjs` are picture helpers.
+- `node scripts/lighthouse-map/jindouz.cjs fetch`: downloads Jindouz's map to `assets-src/lighthouse/` (SHA-256 checked).
+- `node scripts/lighthouse-map/check.cjs scripts/lighthouse-map/lighthouse-2026.svg --cache=<points.json> [--list]`: fetches the game points once into the cache and prints the indoor check.
+- `node scripts/lighthouse-map/jindouz.cjs fit --cache=<points.json>`: the window fits, written to `specs/jindouz-fits.json`.
+- `node scripts/lighthouse-map/jindouz.cjs extract`: writes `specs/jindouz.json`; single-threaded, a few seconds.
+- `node scripts/lighthouse-map/build.cjs scripts/lighthouse-map/tarkov-dev-lighthouse.svg scripts/lighthouse-map/minefields.json scripts/lighthouse-map/lighthouse-2026.svg`: builds the drawing from the committed specs. It does not need the picture.
+- `jindouz.cjs view <out.png> --box=u0,v0,u1,v1 [--px=3] [--cache=<points.json>]`: the fitted map with game points, for checking and measuring. `jindouz.cjs probe --box=…` prints the map's colours there.
+- `drawing.cjs <svg> <out.png> --box=… [--points=…]`: a drawing with game points on top. `trace.cjs` and `side.cjs` show RE3MR's render the same way (they need `assets-src/lighthouse/re3mrLighthouseVERT.png` or the built tiles).
 
-All of them need the RE3MR render in `assets-src/lighthouse/re3mrLighthouseVERT.png` (`npm run tiles:fetch`), except `build.cjs`.
+If Jindouz updates his map, fetch it with the new checksum and run `fit`, `extract`, `build` and `check` again. Then look at the result with `drawing.cjs` before shipping it.

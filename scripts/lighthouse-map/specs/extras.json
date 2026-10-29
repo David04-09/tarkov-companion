@@ -1,0 +1,32 @@
+{
+  "about": "Things the fitted layout does not draw as buildings or ground, measured on it (jindouz.cjs view), in game positions (drawing units). Water plant basins: water = open basin with water, covered = closed basin, ring = empty basin (the north one has the crashed helicopter).",
+  "tanks": [
+    { "n": "basin 1", "kind": "water", "c": [538.3, 329], "rad": 22 },
+    { "n": "basin 2", "kind": "water", "c": [611.7, 329], "rad": 22 },
+    { "n": "basin 3", "kind": "water", "c": [538.3, 384.3], "rad": 22 },
+    { "n": "basin 4", "kind": "covered", "c": [611.7, 385], "rad": 22 },
+    { "n": "basin 5", "kind": "covered", "c": [538.3, 443.3], "rad": 22 },
+    { "n": "basin 6 (crashed helicopter)", "kind": "ring", "c": [611.7, 445.7], "rad": 21.5 },
+    { "n": "basin 7", "kind": "covered", "c": [538.3, 503.3], "rad": 22 },
+    { "n": "basin 8", "kind": "ring", "c": [611.7, 502.3], "rad": 21.5 }
+  ],
+  "rails": [
+    { "n": "terminal track 1", "l": [[515, 17], [515, 183]] },
+    { "n": "terminal track 2", "l": [[537.7, 17], [537.7, 183]] },
+    { "n": "terminal track 3", "l": [[559.3, 17], [559.3, 183]] },
+    { "n": "terminal track 4", "l": [[568.3, 17], [568.3, 183]] },
+    { "n": "terminal track 5", "l": [[577.3, 17], [577.3, 183]] }
+  ],
+  "wood": [
+    { "n": "seaside houses: north platform", "r": [373, 799, 391, 819] },
+    { "n": "seaside houses: south platform", "r": [366, 854, 384.5, 872] },
+    { "n": "seaside houses: boardwalk along the shore", "r": [384.5, 812, 390, 872] },
+    { "n": "seaside houses: north walkway to the shore", "r": [389, 806, 410, 811] },
+    { "n": "seaside houses: south walkway to the shore", "r": [382, 861, 410, 864.5] },
+    { "n": "seaside houses: long pier (Icebreaker transit)", "p": [[352, 831], [387, 836], [387, 841], [351, 837.5]] }
+  ],
+  "buildings": [
+    { "n": "seaside house north (on the pier)", "r": [375, 801, 389, 813.5] },
+    { "n": "seaside house south (on the pier)", "r": [368, 856, 382.5, 869.5] }
+  ]
+}

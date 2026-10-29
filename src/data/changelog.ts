@@ -12,7 +12,10 @@ export interface ChangelogEntry {
 }
 
 /** Committed, waiting for the next update. */
-export const UNRELEASED: string[] = []
+export const UNRELEASED: string[] = [
+  "Maps: the updated Lighthouse drawing is redrawn and now lines up with the game. The 2.18 version was traced from RE3MR's render, which turned out to be off from the game by 7-12 m at the water plant and about 70 m on Lightkeeper island, so containers and loot showed up beside their buildings. The new one takes today's layout from Jindouz's 2D map (EFT Wiki, September 2026) and places it using the game's own loot spots, so drawers, jackets, safes and door locks now sit inside their buildings (93 of 110, was 32). It also shows what was missing: the rebuilt island with its houses, lighthouse and jetty in the right place, the causeway, roads, dirt paths, rivers and lakes, sand and rock, the water plant's basins, the terminal tracks, the resort and chalets, and the seaside houses on their piers at the Icebreaker transit. Minefields are only shown where you can walk, so the big red boxes over the sea are gone.",
+  "Desktop: the Lighthouse map download (48 MB) is no longer downloaded again after every app update. Its file carried the build time, so every release looked like a new map; it now only changes when the map really changes.",
+]
 
 export const RELEASES: ChangelogEntry[] = [
   {
