@@ -12,11 +12,17 @@ export interface ChangelogEntry {
 }
 
 /** Committed, waiting for the next update. */
-export const UNRELEASED: string[] = [
-  "Maps: Lighthouse's roadblocks and camps are on the updated drawing. The three roadblocks on the main road (the middle one with its concrete blocks and road gantry, the UN checkpoint, and the southern one) show their trucks, vans and cars where the game has them, and vehicles everywhere are drawn as vehicles instead of small buildings. The four camps (the beach north of the seaside houses, above the seaside houses, by the hideout under the landing stage, and on the hill at the crashed helicopter) have a tent in a clearing.",
-]
+export const UNRELEASED: string[] = []
 
 export const RELEASES: ChangelogEntry[] = [
+  {
+    version: '2.21.0',
+    date: '2026-10-29',
+    title: 'Lighthouse roadblocks, vehicles and camps',
+    changes: [
+    "Maps: Lighthouse's roadblocks and camps are on the updated drawing. The three roadblocks on the main road (the middle one with its concrete blocks and road gantry, the UN checkpoint, and the southern one) show their trucks, vans and cars where the game has them, and vehicles everywhere are drawn as vehicles instead of small buildings. The four camps (the beach north of the seaside houses, above the seaside houses, by the hideout under the landing stage, and on the hill at the crashed helicopter) have a tent in a clearing.",
+    ],
+  },
   {
     version: '2.20.0',
     date: '2026-10-29',
