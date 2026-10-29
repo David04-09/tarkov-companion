@@ -106,14 +106,23 @@ function shapePoints(s) {
       })
     }
   }
+  // game-data outlines in drawing units ({p} list, e.g. minefields.json): red
+  if (opt('zones')) {
+    const zones = JSON.parse(fs.readFileSync(opt('zones'), 'utf8'))
+    for (const z of zones.zones ?? zones) {
+      if (z.p.every(([u, v]) => u < u0 || u > u1 || v < v0 || v > v1)) continue
+      g.push(`<polygon points="${z.p.map(([u, v]) => `${X(u).toFixed(1)},${Y(v).toFixed(1)}`).join(' ')}" fill="#ff0000" fill-opacity="0.25" stroke="#ff2020" stroke-width="1.2"/>`)
+    }
+  }
   // game-data points (points.json from points.cjs): locks red, containers yellow, extracts cyan, guns orange
   const pointsFile = opt('points')
   if (pointsFile) {
-    const COLOR = { lock: '#ff2020', container: '#ffe600', extract: '#00e5ff', switch: '#39ff14', gun: '#ff8c00' }
+    const COLOR = { lock: '#ff2020', container: '#ffe600', extract: '#00e5ff', switch: '#39ff14', gun: '#ff8c00', loose: '#ff4dff' }
     for (const p of JSON.parse(fs.readFileSync(pointsFile, 'utf8'))) {
       const [u, v] = F.gameToSvg(p.x, p.z)
       if (u < u0 || u > u1 || v < v0 || v > v1) continue
-      g.push(`<circle cx="${X(u).toFixed(1)}" cy="${Y(v).toFixed(1)}" r="${p.k === 'lock' ? 3.5 : 2.5}" fill="${COLOR[p.k]}" stroke="#000" stroke-width="1"/>`)
+      const r = p.k === 'lock' ? 3.5 : p.k === 'loose' ? 1.8 : 2.5
+      g.push(`<circle cx="${X(u).toFixed(1)}" cy="${Y(v).toFixed(1)}" r="${r}" fill="${COLOR[p.k]}" stroke="#000" stroke-width="${p.k === 'loose' ? 0.6 : 1}"/>`)
     }
   }
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">${g.join('')}</svg>`
