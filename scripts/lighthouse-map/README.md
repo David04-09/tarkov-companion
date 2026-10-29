@@ -49,9 +49,19 @@ building. The 2.18.0 drawing managed 32. The misses are:
 Drawn by hand over the fitted map, in game positions:
 - `specs/island.json`: the causeway (a straight line that passes over the game's parked car and its
   claymores), its road and the island's north jetty;
-- `specs/extras.json`: the water plant's eight basins (open, covered, empty), the terminal's five
-  tracks, and the seaside houses on their piers by the Icebreaker transit (his map's label sits on
-  them).
+- `specs/extras.json`:
+  - the water plant's eight basins (open, covered, empty) and the terminal's five tracks;
+  - the seaside houses on their piers by the Icebreaker transit (his map's label sits on them);
+  - the three roadblocks on the main road (middle, UN checkpoint, south): vehicles, concrete blocks
+    and the road gantry. They are traced from RE3MR's render, which is within about 3 m there (the
+    game's loot lies in and beside its vehicles). The layout's own shapes inside those areas are
+    left out (`replace`).
+  - the four camps where Jindouz puts his tent icon, drawn as a tent in a clearing
+    (`jindouz.cjs camps` lists the icons it finds; some hits are label lettering, so only the
+    checked ones are listed);
+  - the crashed helicopter at the hill camp.
+
+Vehicles in his map (narrow outlines under 40 m²) are drawn as vehicles, not buildings.
 
 ## Commands (run from the repository root; without Node use `ELECTRON_RUN_AS_NODE=1 node_modules/electron/dist/electron.exe`)
 

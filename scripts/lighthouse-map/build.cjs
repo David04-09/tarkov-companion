@@ -47,6 +47,12 @@ function lineSvg(s, cls) {
   const width = s.w ? ` style="stroke-width:${s.w}"` : ''
   return `<path class="${cls}"${width} d="${line(s.l)}"/>`
 }
+/** A camp: a trodden clearing with a tent (top view: canvas square with its ridge). */
+function campSvg(s) {
+  const [u, v] = s.c
+  return `<g transform="translate(${r1(u)} ${r1(v)})"><circle class="tc26-camp-ground" r="6"/><path class="tc26-tent" d="M-2.6 -2.2 L2.6 -2.2 L2.6 2.2 L-2.6 2.2Z"/><path class="tc26-tent-ridge" d="M-2.6 0 L2.6 0"/></g>`
+}
+
 /** One even-odd path for a layer of rings (holes included). */
 const evenOdd = (rings) => (rings.length ? `<path fill-rule="evenodd" d="${rings.map(ring).join('')}"/>` : '')
 
@@ -59,6 +65,15 @@ function oldGroup(id) {
   const open = old.indexOf('>', start) + 1
   return old.slice(open, old.indexOf('</g>', open))
 }
+
+// --- areas drawn by hand instead of the layout (roadblocks): its shapes there are left out -------------
+const centre = (r) => r.reduce((a, [u, v]) => [a[0] + u / r.length, a[1] + v / r.length], [0, 0])
+const replaced = (r) => {
+  const [u, v] = centre(r)
+  return all('replace').some(([a, b, c, d]) => u >= a && u <= c && v >= b && v <= d)
+}
+const buildings = layout.building.filter((r) => !replaced(r))
+const vehicles = (layout.vehicle ?? []).filter((r) => !replaced(r))
 
 // --- minefields (game data), clipped to where you can walk --------------------------------------------
 const mines = JSON.parse(fs.readFileSync(minesFile, 'utf8'))
@@ -75,14 +90,20 @@ const out = `<svg xmlns="http://www.w3.org/2000/svg" width="${F.VIEW[0]}" height
     .tc26-water { fill:#4a6b96; stroke:#c6c2c2; stroke-width:1.5 }
     .tc26-covered { fill:#c6c2c2; stroke:#8a8a8a; stroke-width:1 }
     .tc26-ring { fill:none; stroke:#c6c2c2; stroke-width:2 }
+    .tc26-vehicle { fill:#4b5a66; stroke:#c6c2c2; stroke-width:.4 }
+    .tc26-block { fill:#c6c2c2; stroke:#1a2632; stroke-width:.4 }
+    .tc26-gantry { fill:none; stroke:#c6c2c2; stroke-width:1; stroke-dasharray:1.5,1 }
+    .tc26-camp-ground { fill:#946d3e; fill-opacity:.7 }
+    .tc26-tent { fill:#8a7f4e; stroke:#1a2632; stroke-width:.6 }
+    .tc26-tent-ridge { fill:none; stroke:#1a2632; stroke-width:.6 }
   </style>
   <defs><clipPath id="tc26-walkable">${walkable}</clipPath></defs>
   <g id="Ground_Level" data-layer="Ground_Level">
     <rect class="water" x="0" y="0" width="${F.VIEW[0]}" height="${F.VIEW[1]}"/>
-${g('land', 'land', evenOdd(layout.land))}${g('forest', 'trees', evenOdd(layout.forest))}${g('rock', 'rock', evenOdd(layout.rock))}${g('sand', 'tc26-sand', evenOdd(layout.sand))}${g('dirt', 'gravel', evenOdd(layout.dirt))}${g('concrete', 'cement', evenOdd(layout.concrete) + all('cement').map((s) => shapeSvg(s)).join(''))}${g('roads', 'tc26-road', evenOdd(layout.road))}${g('road_lines', '', all('roads').map((s) => lineSvg(s, 'road_tarmac')).join(''))}${g('railroad', '', all('rails').map((s) => lineSvg(s, 'railroad')).join(''))}${g('pier', 'wood', all('wood').map((s) => shapeSvg(s)).join(''))}${g('tanks', '', all('tanks').map((s) => shapeSvg(s).replace(/^<(\w+)/, `<$1 class="tc26-${s.kind}"`)).join(''))}${g('buildings', 'building', layout.building.map((r) => `<path d="${ring(r)}"/>`).join('') + all('buildings').map((s) => shapeSvg(s)).join(''))}${g('limit', 'map_border', oldGroup('limit'))}    <g id="mines" class="tc26-mines" clip-path="url(#tc26-walkable)">${mines.map((m) => `<path d="${ring(m.p)}"/>`).join('')}</g>
+${g('land', 'land', evenOdd(layout.land))}${g('forest', 'trees', evenOdd(layout.forest))}${g('rock', 'rock', evenOdd(layout.rock))}${g('sand', 'tc26-sand', evenOdd(layout.sand))}${g('dirt', 'gravel', evenOdd(layout.dirt))}${g('concrete', 'cement', evenOdd(layout.concrete) + all('cement').map((s) => shapeSvg(s)).join(''))}${g('roads', 'tc26-road', evenOdd(layout.road))}${g('road_lines', '', all('roads').map((s) => lineSvg(s, 'road_tarmac')).join(''))}${g('railroad', '', all('rails').map((s) => lineSvg(s, 'railroad')).join(''))}${g('pier', 'wood', all('wood').map((s) => shapeSvg(s)).join(''))}${g('tanks', '', all('tanks').map((s) => shapeSvg(s).replace(/^<(\w+)/, `<$1 class="tc26-${s.kind}"`)).join(''))}${g('roadblocks', '', all('blocks').map((s) => shapeSvg(s).replace(/^<(\w+)/, '<$1 class="tc26-block"')).join('') + all('gantries').map((s) => lineSvg(s, 'tc26-gantry')).join(''))}${g('vehicles', 'tc26-vehicle', vehicles.map((r) => `<path d="${ring(r)}"/>`).join('') + all('vehicles').map((s) => shapeSvg(s)).join(''))}${g('buildings', 'building', buildings.map((r) => `<path d="${ring(r)}"/>`).join('') + all('buildings').map((s) => shapeSvg(s)).join(''))}${g('camps', '', all('camps').map(campSvg).join(''))}${g('limit', 'map_border', oldGroup('limit'))}    <g id="mines" class="tc26-mines" clip-path="url(#tc26-walkable)">${mines.map((m) => `<path d="${ring(m.p)}"/>`).join('')}</g>
   </g>
 </svg>
 `
 fs.mkdirSync(path.dirname(outFile), { recursive: true })
 fs.writeFileSync(outFile, out)
-console.log(`wrote ${outFile} (${(out.length / 1024).toFixed(0)} KB): ${layout.building.length + all('buildings').length} buildings, ${layout.road.length} road areas, ${all('tanks').length} tanks, ${mines.length} minefields`)
+console.log(`wrote ${outFile} (${(out.length / 1024).toFixed(0)} KB): ${buildings.length + all('buildings').length} buildings, ${vehicles.length + all('vehicles').length} vehicles, ${all('camps').length} camps, ${layout.road.length} road areas, ${all('tanks').length} tanks, ${mines.length} minefields`)
